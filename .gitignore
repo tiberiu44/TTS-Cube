@@ -1,0 +1,44 @@
+*.pyc
+build/
+dist/
+nlpcube.egg-info/
+package/
+logs/*
+corpus/*
+cube/misc/conll17_ud_eval.py
+cube/.idea/*
+cube/venv/*
+.idea/*
+venv/*
+*.txt
+data/
+
+# CMake
+cmake-build-debug/
+cmake-build-release/
+
+# Mongo Explorer plugin:
+cube/.idea/**/mongoSettings.xml
+
+## File-based project format:
+*.iws
+
+## Plugin-specific files:
+
+# IntelliJ
+cube/out/
+
+# mpeltonen/sbt-idea plugin
+cube/.idea_modules/
+
+# JIRA plugin
+atlassian-ide-plugin.xml
+
+# Cursive Clojure plugin
+cube/.idea/replstate.xml
+
+# Crashlytics plugin (for Android Studio and IntelliJ)
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
