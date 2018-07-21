@@ -18,7 +18,10 @@ Encoder outputs:
 Vocoder output (conditioned on gold-standard data)
 
 ![audio](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.wav)
-
+<audio controls="controls">
+  <source type="audio/wav" src="https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.wav"></source>
+  <p>Your browser does not support the audio element.</p>
+</audio>
 # Technical details
 
 TTS-Cube is based on concepts described in Tacotron (1 and 2), Char2Wav and WaveRNN, but it's architecture does not stick to the exact recipes:
