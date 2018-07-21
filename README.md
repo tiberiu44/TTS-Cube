@@ -19,11 +19,16 @@ It is entirely based on neural networks, requires no pre-aligned data and can be
 
 **Note**: The mel-spectrum is computed with a frame-shift of 12.5ms. This means that Griffin-Lim reconstruction produces sloppy results at most (regardless on the number of iterations)
 
-[original](https://github.com/tiberiu44/TTS-Cube/raw/master/examples/vocoder/anca_dcnews_0127.orig.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://github.com/tiberiu44/TTS-Cube/raw/master/examples/vocoder/anca_dcnews_0127.mp3)
+[original](https://github.com/tiberiu44/TTS-Cube/raw/master/examples/vocoder/anca_dcnews_0127.orig.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://github.com/tiberiu44/TTS-Cube/raw/master/examples/vocoder/anca_dcnews_0127.mp4)
 
 [original](https://github.com/tiberiu44/TTS-Cube/raw/master/examples/vocoder/anca_dcnews_0439.orig.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://github.com/tiberiu44/TTS-Cube/raw/master/examples/vocoder/anca_dcnews_0439.mp3)
 
 [original](https://github.com/tiberiu44/TTS-Cube/raw/master/examples/vocoder/anca_dcnews_0925.orig.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://github.com/tiberiu44/TTS-Cube/raw/master/examples/vocoder/anca_dcnews_0925.mp3)
+
+## End to end decoding
+
+[example 1](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+[example 2](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.wav)
 
 ## Technical details
  
