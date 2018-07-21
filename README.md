@@ -7,12 +7,19 @@ It is entirely based on neural networks, requires no pre-aligned data and can be
 # Output examples
 
 Encoder outputs:
- 
+
+*"Arată că interesul utilizatorilor de internet față de acțiuni ecologiste de genul Earth Hour este unul extrem de ridicat."* 
 ![encoder_output_1](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/encoder/anca_dcnews_0023.png "Encoder output example 1")
+
+*"Pentru a contracara proiectul, Rusia a demarat un proiect concurent, South Stream, în care a încercat să atragă inclusiv o parte dintre partenerii Nabucco."*
 ![encoder_output_2](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/encoder/anca_dcnews_0439.png "Encoder output example 2")
 
 
-#Technical details
+Vocoder output (conditioned on gold-standard data)
+
+![audio](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.wav)
+
+# Technical details
 
 TTS-Cube is based on concepts described in Tacotron (1 and 2), Char2Wav and WaveRNN, but it's architecture does not stick to the exact recipes:
 
