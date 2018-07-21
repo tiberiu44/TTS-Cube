@@ -30,7 +30,8 @@ It is entirely based on neural networks, requires no pre-aligned data and can be
 The encoder model is still converging, so right now the examples are still of low quality. We will update the files as soon as we have a stable Encoder model. 
 
 [example 1](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-[example 2](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.wav)
+[example 2](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+[example 3](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.wav)
 
 ## Technical details
  

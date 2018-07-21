@@ -95,11 +95,9 @@ if __name__ == '__main__':
         final_list = []
         for file in train_files_tmp:
             base_name = file[:-4]
-            phs_name = base_name + '.phs'
-            lab_name = base_name + '.lab'
+            lab_name = base_name + '.txt'
             wav_name = base_name + '.wav'
-            if exists(join(params.train_folder, phs_name)) and exists(join(params.train_folder, lab_name)) and exists(
-                    join(params.train_folder, wav_name)):
+            if exists(join(params.train_folder, lab_name)) and exists(join(params.train_folder, wav_name)):
                 if base_name not in final_list:
                     final_list.append(base_name)
 
@@ -110,11 +108,9 @@ if __name__ == '__main__':
         final_list = []
         for file in dev_files_tmp:
             base_name = file[:-4]
-            phs_name = base_name + '.phs'
-            lab_name = base_name + '.lab'
+            lab_name = base_name + '.txt'
             wav_name = base_name + '.wav'
-            if exists(join(params.dev_folder, phs_name)) and exists(join(params.dev_folder, lab_name)) and exists(
-                    join(params.dev_folder, wav_name)):
+            if exists(join(params.dev_folder, lab_name)) and exists(join(params.dev_folder, wav_name)):
                 if base_name not in final_list:
                     final_list.append(base_name)
 
@@ -132,57 +128,37 @@ if __name__ == '__main__':
             sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(train_files)))
             sys.stdout.flush()
             base_name = train_files[index]
-            phs_name = base_name + '.phs'
-            lab_name = base_name + '.lab'
+            lab_name = base_name + '.txt'
             wav_name = base_name + '.wav'
             spc_name = base_name + '.png'
 
-            copyfile(join(base_folder, phs_name), join('data/processed/train', phs_name))
             copyfile(join(base_folder, lab_name), join('data/processed/train', lab_name))
 
             # WAVE
             data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
             mgc = vocoder.melspectrogram(data, sample_rate=params.target_sample_rate, num_mels=params.mgc_order)
+            # SPECT
             render_spectrogram(mgc, join('data/processed/train', spc_name))
-
-            # dio.write_wave(join('data/processed/train', base_name + '.resynth.wav'), resynth, sample_rate)
             dio.write_wave(join('data/processed/train', base_name + '.orig.wav'), data, sample_rate)
-            # # f0
-            # array2file(f0, join('data/processed/train', base_name + '.f0'))
-            # # ap
-            # array2file(ap, join('data/processed/train', base_name + '.ap'))
-            # # sp
-            # array2file(sp, join('data/processed/train', base_name + '.sp'))
-            # # mgc
             array2file(mgc, join('data/processed/train', base_name + '.mgc'))
+
         sys.stdout.write('\n')
         base_folder = params.dev_folder
         for index in xrange(len(dev_files)):
             sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(dev_files)))
             sys.stdout.flush()
             base_name = dev_files[index]
-            phs_name = base_name + '.phs'
-            lab_name = base_name + '.lab'
+            lab_name = base_name + '.txt'
             wav_name = base_name + '.wav'
             spc_name = base_name + '.png'
 
-            copyfile(join(base_folder, phs_name), join('data/processed/dev/', phs_name))
             copyfile(join(base_folder, lab_name), join('data/processed/dev/', lab_name))
-
             # WAVE
             data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
             mgc = vocoder.melspectrogram(data, sample_rate=params.target_sample_rate, num_mels=params.mgc_order)
+            # SPECT
             render_spectrogram(mgc, join('data/processed/dev', spc_name))
-
-            # dio.write_wave(join('data/processed/train', base_name + '.resynth.wav'), resynth, sample_rate)
             dio.write_wave(join('data/processed/dev', base_name + '.orig.wav'), data, sample_rate)
-            # # f0
-            # array2file(f0, join('data/processed/train', base_name + '.f0'))
-            # # ap
-            # array2file(ap, join('data/processed/train', base_name + '.ap'))
-            # # sp
-            # array2file(sp, join('data/processed/train', base_name + '.sp'))
-            # # mgc
             array2file(mgc, join('data/processed/dev', base_name + '.mgc'))
 
         sys.stdout.write('\n')
@@ -229,6 +205,9 @@ if __name__ == '__main__':
         f.close()
 
         encoder = Encoder(params, len(character2int), character2int)
+        if params.resume:
+            sys.stdout.write('Resuming from previous checkpoint\n')
+            encoder.load('data/models/rnn_encoder')
         trainer = Trainer(encoder, trainset, devset)
         trainer.start_training(10, 1000)
 

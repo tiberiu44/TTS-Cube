@@ -116,9 +116,14 @@ class Encoder:
         encoder = x_input
 
         decoder = self.decoder.initial_state().add_input(self.decoder_start_lookup[0])
-
+        last_att_pos = None
+        if gold_mgc is None:
+            last_att_pos = 0
         while True:
-            att, align = self._attend(encoder, decoder)
+            att, align = self._attend(encoder, decoder, last_att_pos)
+
+            if gold_mgc is None:
+                last_att_pos = np.argmax(align.value())
             output_att.append(align)
             # main output
             mgc_proj = dy.tanh(self.last_mgc_proj_w.expr() * last_mgc + self.last_mgc_proj_b.expr())
@@ -174,7 +179,7 @@ class Encoder:
         index = 0
         for mgc, real_mgc in zip(output_mgc, target_mgc):
             t_mgc = dy.inputVector(real_mgc)
-            #losses.append(self._compute_binary_divergence(mgc, t_mgc) )
+            # losses.append(self._compute_binary_divergence(mgc, t_mgc) )
             losses.append(dy.l1_distance(mgc, t_mgc))
 
             if index % 3 == 0:
@@ -208,7 +213,10 @@ class Encoder:
     def store(self, output_base):
         self.model.save(output_base + ".network")
 
-    def _attend(self, input_list, decoder_state):
+    def load(self, output_base):
+        self.model.populate(output_base + ".network")
+
+    def _attend(self, input_list, decoder_state, last_pos=None):
         w1 = self.att_w1.expr()
         w2 = self.att_w2.expr()
         v = self.att_v.expr()
@@ -220,6 +228,18 @@ class Encoder:
             attention_weights.append(attention_weight)
 
         attention_weights = dy.softmax(dy.concatenate(attention_weights))
+        # force incremental attention if this is runtime
+        if last_pos is not None:
+            current_pos = np.argmax(attention_weights.value())
+            if current_pos < last_pos or current_pos >= last_pos + 3:
+                current_pos = last_pos + 1
+                if current_pos >= len(input_list):
+                    current_pos = len(input_list) - 1
+                output_vectors = input_list[current_pos]
+                simulated_att = np.zeros((len(input_list)))
+                simulated_att[current_pos] = 1.0
+                new_att_vec = dy.inputVector(simulated_att)
+                return output_vectors, new_att_vec
 
         output_vectors = dy.esum(
             [vector * attention_weight for vector, attention_weight in zip(input_list, attention_weights)])
