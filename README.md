@@ -8,7 +8,8 @@ It is entirely based on neural networks, requires no pre-aligned data and can be
 
 Encoder outputs:
  
-![alt text](https://github.com/tiberiu44/TTS-Cube/examples/encoder/anca_dcnews_0023att.png "Logo Title Text 1")
+![encoder_output_1](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/encoder/anca_dcnews_0023.png "Encoder output example 1")
+![encoder_output_2](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/encoder/anca_dcnews_0439.png "Encoder output example 2")
 
 
 #Technical details
