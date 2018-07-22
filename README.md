@@ -19,23 +19,23 @@ It is entirely based on neural networks, requires no pre-aligned data and can be
 
 **Note**: The mel-spectrum is computed with a frame-shift of 12.5ms. This means that Griffin-Lim reconstruction produces sloppy results at most (regardless on the number of iterations)
 
-[original](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.orig.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.mp3)
+[original](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.orig.mp3) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.mp3)
 
-[original](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0439.orig.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0439.mp3)
+[original](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0439.orig.mp3) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0439.mp3)
 
-[original](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0925.orig.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0925.mp3)
+[original](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0925.orig.mp3) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[vocoder](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0925.mp3)
 
 ## End to end decoding
 
 The encoder model is still converging, so right now the examples are still of low quality. We will update the files as soon as we have a stable Encoder model. 
 
-[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.orig.wav)
+[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.mp3) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.orig.mp3)
 
-[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.orig.wav)
+[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.mp3) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.orig.mp3)
 
-[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.orig.wav)
+[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.mp3) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.orig.mp3)
 
-[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0001.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0001.orig.wav)
+[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0001.mp3) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0001.orig.mp3)
 
 ## Technical details
  
