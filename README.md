@@ -29,21 +29,25 @@ It is entirely based on neural networks, requires no pre-aligned data and can be
 
 The encoder model is still converging, so right now the examples are still of low quality. We will update the files as soon as we have a stable Encoder model. 
 
-[example 1](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-[example 2](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-[example 3](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.wav)
+[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.orig.wav)
+
+[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.orig.wav)
+
+[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.orig.wav)
+
+[synthesized](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0001.wav) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [original(unseen)](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0001.orig.wav)
 
 ## Technical details
  
 TTS-Cube is based on concepts described in Tacotron (1 and 2), Char2Wav and WaveRNN, but it's architecture does not stick to the exact recipes:
 
 - It has a dual-architecture, composed of (a) a module (Encoder) that converts sequences of characters or phonemes into mel-log spectrogram and (b) a RNN-based Vocoder that is conditioned on the spectrogram to produce audio
-- The Encoder is similar to those proposed in Tacotron and Char2Wav, but 
+- The Encoder is similar to those proposed in Tacotron [(Wang et al., 2017)](http://bengio.abracadoudou.com/cv/publications/pdf/wang_2017_arxiv.pdf) and Char2Wav [(Sotelo et al., 2017)](https://openreview.net/pdf?id=B1VWyySKx), but 
     - has a lightweight architecture with just a two-layer BDLSTM encoder and a two-layer LSTM decoder
-    - uses the guided attention trick (Tachibana et al., 2017), which provides incredibly fast convergence of the attention module (in our experiments we were unable to reach an acceptable model without this trick)
+    - uses the guided attention trick [(Tachibana et al., 2017)](https://arxiv.org/pdf/1710.08969), which provides incredibly fast convergence of the attention module (in our experiments we were unable to reach an acceptable model without this trick)
     - does not employ any CNN/pre-net or post-net
     - uses a simple highway connection from the attention to the output of the decoder (which we observed that forces the encoder to actually learn how to produce the mean-values of the mel-log spectrum for particular phones/characters)
-- The Vocoder is similar to WaveRNN, but instead of modifying the RNN cells (as proposed in their paper), we used two coupled neural networks
+- The Vocoder is similar to WaveRNN[(Kalchbrenner et al., 2018)](https://arxiv.org/pdf/1802.08435), but instead of modifying the RNN cells (as proposed in their paper), we used two coupled neural networks
     
     
 
