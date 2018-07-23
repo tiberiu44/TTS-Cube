@@ -208,7 +208,7 @@ class Trainer:
 
                 import time
                 start = time.time()
-                if len(mgc) < 1000:
+                if len(mgc) < 2000:
                     loss = self.vocoder.learn(phones, mgc)
                 else:
                     sys.stdout.write(' too long, skipping')
