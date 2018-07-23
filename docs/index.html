@@ -1,1 +1,252 @@
-TTS Cube
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <meta name="description" content="">
+        <meta name="author" content="">
+
+        <title>TTS Cube</title>
+
+        <!-- Bootstrap core CSS -->
+
+        <!-- Custom styles for this template -->
+        <style>
+            body {
+                padding-top: 54px;
+            }
+            @media (min-width: 992px) {
+                body {
+                    font-family: source-sans-pro, sans-serif ;
+                    padding-top: 56px;
+                }
+            }
+
+        </style>
+        <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet" media='screen'>
+        <link href="css/style.css" rel="stylesheet">
+        <link rel="stylesheet" href="vendor/font-awesome/css/font-awesome.min.css">
+        <script src="vendor/jquery/jquery.min.js"></script>
+        <script src="vendor/bootstrap/js/bootstrap.min.js"></script>
+
+    </head>
+
+    <body>
+
+        <!-- Navigation -->
+        <nav class="navbar navbar-expand-lg navbar-light bg-white fixed-top">
+            <div class="container">
+                <a class="navbar-brand" href="#">TTS Cube</a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarResponsive">
+                    <ul class="navbar-nav ml-auto">
+                        <li class="nav-item active">
+                            <a class="nav-link" href="index.html">Home</a>
+                        </li>
+                        <!--
+<li class="nav-item">
+<a class="nav-link" href="start.html">Getting started</a>
+</li>
+<li class="nav-item">
+<a class="nav-link" href="examples.html">Examples</a>
+</li>
+<li class="nav-item">
+<a class="nav-link" href="blog/list.html">Blog</a>
+</li>
+-->
+                        <li class="nav-item">
+                            <a class="nav-link" href="contact.html">Contact</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Page Content -->
+
+        <div id='hero-wrapper'>
+            <div class="container">
+                <div class="row">
+                    <div class="col-lg-12 text-center">
+                        <h1 class="mt-5">TTS - Cube</h1>
+                        <p class="lead">Trainable end-to-end speech synthesis system using recurrent neural networks</p>
+                        <ul class="list-unstyled">
+                            <li><a href='https://github.com/tiberiu44/TTS-Cube' class="btn btn-primary">Browse the code</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id='sub-hero-wrapper'>
+            <div class="row">
+                <div class='col-sm-4 feature-item'>
+                    <span class="fa fa-universal-access"></span>
+                    <h3>Language independent</h3>
+                    <p>TTSCube can be trained on raw text, making it somewhat language-independent. We hope to provide as many pretrained models as possible, but we are limited by hardware availability</p>
+                </div>
+                <div class='col-sm-4 feature-item'>
+                    <span class="fa fa-user-secret"></span>
+                    <h3>Minimal effort</h3>
+                    <p> TTSCube does not require pre aligned data or any text-processing. It learns prosody and accoustic models just by looking at text. It is only recommended that the input data is normalized, numbers, abbreviations and achronyms being expanded into their spoken form.</p>
+                </div>
+                <div class='col-sm-4 feature-item'>
+                    <span class="fa fa-unlock-alt"></span>
+                    <h3>Open source</h3>
+                    <p>TTSCube is opensource and we are actively looking for contributors and developers. If you want to join, just contact us on github and we will gladly add you to the repository</p>
+                </div>
+            </div>
+        </div>
+
+        <div id='content-wrapper'>
+            
+            <br/><br/>
+            <h3>Encoder outputs:</h3>
+
+            <p><i>"Arată că interesul utilizatorilor de internet față de acțiuni ecologiste de genul Earth Hour este unul extrem de ridicat."</i></p>
+            <p><img src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/encoder/anca_dcnews_0023.png'></p>
+            <p><i>"Pentru a contracara proiectul, Rusia a demarat un proiect concurent, South Stream, în care a încercat să atragă inclusiv o parte dintre partenerii Nabucco."</i></p>
+            <p><img src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/encoder/anca_dcnews_0439.png'></p>
+
+
+            <h3>Vocoder output (conditioned on gold-standard data)</h3>
+
+            <p><b>Note</b>: The mel-spectrum is computed with a frame-shift of 12.5ms. This means that Griffin-Lim reconstruction produces sloppy results at most (regardless on the number of iterations)</p>
+
+
+            <table border='0'>
+                <tr>
+                    <td>Original</td>
+                    <td>Vocoder</td>
+                </tr>
+                <tr>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.orig.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0127.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0439.orig.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0439.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0925.orig.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/vocoder/anca_dcnews_0925.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                </tr>
+            </table>
+
+
+            <h3>End to end decoding</h3>
+            <p>The encoder model is still converging, so right now the examples are still of low quality. We will update the files as soon as we have a stable Encoder model. </p>
+            <table border='0'>
+                <tr>
+                    <td>Original</td>
+                    <td>Synthesized</td>
+                </tr>
+                <tr>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0023.orig.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples//e2e/anca_dcnews_0023.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0810.orig.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples//e2e/anca_dcnews_0810.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0852.orig.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples//e2e/anca_dcnews_0852.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/e2e/anca_dcnews_0001.orig.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                    <td>
+                        <audio controls>
+                            <source src='https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples//e2e/anca_dcnews_0001.mp3' type='audio/mp3'>
+                        </audio>
+                    </td>
+                </tr>
+
+            </table>
+
+            <br/><br/>
+        </div>
+        <div id='sub-hero-wrapper'>
+            <div class='row'><glyph class="fa fa-laptop"></glyph><h2>Technical details</h2></div>
+            <p>TTS-Cube is based on concepts described in Tacotron (1 and 2), Char2Wav and WaveRNN, but it's architecture does not stick to the exact recipes:</p>
+            <ul>
+                <li>It has a dual-architecture, composed of (a) a module (Encoder) that converts sequences of characters or phonemes into mel-log spectrogram and (b) a RNN-based Vocoder that is conditioned on the spectrogram to produce audio </li>
+                <li>The Encoder is similar to those proposed in Tacotron (Wang et al., 2017) and Char2Wav (Sotelo et al., 2017), but</li>
+
+                <ul>
+                    <li>has a lightweight architecture with just a two-layer BDLSTM encoder and a two-layer LSTM decoder</li>
+                    <li>uses the guided attention trick (Tachibana et al., 2017), which provides incredibly fast convergence of the attention module (in our experiments we were unable to reach an acceptable model without this trick)</li>
+                    <li>does not employ any CNN/pre-net or post-net</li>
+                    <li>uses a simple highway connection from the attention to the output of the decoder (which we observed that forces the encoder to actually learn how to produce the mean-values of the mel-log spectrum for particular phones/characters)</li>
+                </ul>
+
+                <li>
+                    The Vocoder is similar to WaveRNN(Kalchbrenner et al., 2018), but instead of modifying the RNN cells (as proposed in their paper), we used two coupled neural networks
+                </li>
+                </div>
+
+
+
+
+            <!-- Bootstrap core JavaScript -->
+            <script src="vendor/jquery/jquery.min.js"></script>
+            <script src="vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+            </body>
+
+        </html>
