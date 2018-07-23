@@ -4,6 +4,8 @@ TTS-Cube is an end-2-end speech synthesis system that provides a full processing
    
 It is entirely based on neural networks, requires no pre-aligned data and can be trained to produce audio just by using character or phoneme sequences.
 
+Markdown does not allow embedding of audio files. For a better experience [check-out the project's website](https://tiberiu44.github.io/TTS-Cube/).
+
 ## Output examples
 
 **Encoder outputs:**
