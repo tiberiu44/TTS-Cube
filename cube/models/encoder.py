@@ -93,7 +93,7 @@ class Encoder:
         x_list.append(self.phone_lookup[len(self.phone2int) + 1])
         return x_list
 
-    def _predict(self, characters, gold_mgc=None):
+    def _predict(self, characters, gold_mgc=None, max_size=-1):
         if gold_mgc is None:
             runtime = True
         else:
@@ -140,11 +140,11 @@ class Encoder:
             output_stop.append(dy.tanh(self.stop_w.expr() * decoder.output() + self.stop_b.expr()))
 
             if runtime:
-                if mgc_index > 1000:
+                if max_size != -1 and mgc_index > max_size:
                     break
                 last_mgc = dy.inputVector(output.value())
-                # if output_stop[-1].value > 0.5:
-                #    break
+                if max_size == -1 and output_stop[-1].value > 0.5:
+                    break
             else:
                 last_mgc = dy.inputVector(gold_mgc[min(mgc_index + 2, len(gold_mgc) - 1)])
 
@@ -170,7 +170,7 @@ class Encoder:
     def _compute_binary_divergence(self, pred, target):
         return dy.binary_log_loss(pred, target)
 
-    def learn(self, characters, target_mgc):
+    def learn(self, characters, target_mgc, guided_att=True):
         num_mgc = target_mgc.shape[0]
         # print num_mgc
         dy.renew_cg()
@@ -184,8 +184,9 @@ class Encoder:
 
             if index % 3 == 0:
                 # attention loss
-                att = output_attention[index / 3]
-                losses.append(self._compute_guided_attention(att, index / 3, len(characters) + 2, num_mgc / 3))
+                if guided_att:
+                    att = output_attention[index / 3]
+                    losses.append(self._compute_guided_attention(att, index / 3, len(characters) + 2, num_mgc / 3))
                 # EOS loss
                 stop = output_stop[index / 3]
                 if index >= num_mgc:
@@ -199,9 +200,9 @@ class Encoder:
         self.trainer.update()
         return loss_val
 
-    def generate(self, characters):
+    def generate(self, characters, max_size=-1):
         dy.renew_cg()
-        output_mgc, ignore1, att = self._predict(characters)
+        output_mgc, ignore1, att = self._predict(characters, max_size=max_size)
         mgc_output = [mgc.npvalue() for mgc in output_mgc]
         import numpy as np
         mgc_final = np.zeros((len(mgc_output), mgc_output[-1].shape[0]))

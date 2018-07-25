@@ -30,7 +30,7 @@ class Trainer:
     def array2file(self, a, filename):
         np.save(filename, a)
 
-    def synth_devset(self, batch_size):
+    def synth_devset(self, max_size=-1):
         if self.mean is None:
             self.mean = np.load('data/models/mean.npy')
             self.stdev = np.load('data/models/stdev.npy')
@@ -47,7 +47,7 @@ class Trainer:
             phones = [entry.phoneme for entry in lab]
             import time
             start = time.time()
-            mgc, att = self.vocoder.generate(phones)
+            mgc, att = self.vocoder.generate(phones, max_size=max_size)
             mgc = self._denormalize(mgc, mean=self.mean, stdev=self.stdev)
 
             self.array2file(self._denormalize(mgc, mean=self.mean, stdev=self.stdev),
@@ -121,7 +121,7 @@ class Trainer:
             img = smp.toimage(bitmap)
             img.save(output_file)
 
-    def start_training(self, itt_no_improve, batch_size):
+    def start_training(self, itt_no_improve, batch_size, params):
         epoch = 1
         left_itt = itt_no_improve
         dio = DatasetIO()
@@ -176,7 +176,11 @@ class Trainer:
         print 'stdev =', stdev
         print 'min_db =', min_db
         print 'max_db =', max_db
-        self.synth_devset(batch_size)
+        if params.no_bounds:
+            max_mgc = 1000
+        else:
+            max_mgc = -1
+        self.synth_devset(max_size=max_mgc)
         np.save('data/models/mean_encoder', self.mean)
         np.save('data/models/stdev_encoder', self.stdev)
         with open('data/models/min_max_encoder', 'w') as f:
@@ -209,7 +213,7 @@ class Trainer:
                 import time
                 start = time.time()
                 if len(mgc) < 2000:
-                    loss = self.vocoder.learn(phones, mgc)
+                    loss = self.vocoder.learn(phones, mgc, guided_att=not params.no_guided_attention)
                 else:
                     sys.stdout.write(' too long, skipping')
                     loss = 0

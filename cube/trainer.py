@@ -34,6 +34,10 @@ if __name__ == '__main__':
                       help='turn on/off dynet autobatching')
     parser.add_option("--resume", action='store_true', dest='resume',
                       help='resume from last checkpoint')
+    parser.add_option("--no-guided-attention", action='store_true', dest='no_guided_attention',
+                      help='disable guided attention')
+    parser.add_option("--no-bounds", action='store_true', dest='no_bounds',
+                      help='disable fixed synthesis length')
     parser.add_option("--use-gpu", action='store_true', dest='gpu',
                       help='turn on/off GPU support')
     parser.add_option('--train-folder', action='store', dest='train_folder',
@@ -44,6 +48,7 @@ if __name__ == '__main__':
                       help='Resample input files at this rate (default=16000)', type='int', default=16000)
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
                       help='Order of MGC parameters (default=80)', default=60)
+
 
     (params, _) = parser.parse_args(sys.argv)
 
@@ -208,8 +213,12 @@ if __name__ == '__main__':
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             encoder.load('data/models/rnn_encoder')
+        if params.no_guided_attention:
+            sys.stdout.write('Disabling guided attention\n')
+        if params.no_bounds:
+            sys.stdout.write('Using internal stopping condition for synthesis\n')
         trainer = Trainer(encoder, trainset, devset)
-        trainer.start_training(10, 1000)
+        trainer.start_training(10, 1000, params)
 
 
     def phase_5_test_vocoder(params):
