@@ -50,7 +50,7 @@ class Encoder:
             self.encoder_bw.append(
                 orthonormal_VanillaLSTMBuilder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
 
-        self.decoder = dy.VanillaLSTMBuilder(self.DECODER_LAYERS, self.ENCODER_SIZE * 2 + 100,
+        self.decoder = orthonormal_VanillaLSTMBuilder(self.DECODER_LAYERS, self.ENCODER_SIZE * 2 + 100,
                                              self.DECODER_SIZE, self.model)
 
         # self.aux_hid_w = self.model.add_parameters((500, self.ENCODER_SIZE * 2))
@@ -144,6 +144,9 @@ class Encoder:
                     break
                 last_mgc = dy.inputVector(output.value())
                 if max_size == -1 and output_stop[-1].value > 0.5:
+                    break
+
+                if mgc_index>=len(characters)*10:#safeguard
                     break
             else:
                 last_mgc = dy.inputVector(gold_mgc[min(mgc_index + 2, len(gold_mgc) - 1)])
