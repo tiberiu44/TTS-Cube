@@ -143,7 +143,7 @@ class Encoder:
                 if max_size != -1 and mgc_index > max_size:
                     break
                 last_mgc = dy.inputVector(output.value())
-                if max_size == -1 and output_stop[-1].value > 0.5:
+                if max_size == -1 and output_stop[-1].value < -0.5:
                     break
 
                 if mgc_index>=len(characters)*10:#safeguard

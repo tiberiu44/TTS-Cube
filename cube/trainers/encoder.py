@@ -177,9 +177,9 @@ class Trainer:
         print 'min_db =', min_db
         print 'max_db =', max_db
         if params.no_bounds:
-            max_mgc = 1000
-        else:
             max_mgc = -1
+        else:
+            max_mgc = 1000
         self.synth_devset(max_size=max_mgc)
         np.save('data/models/mean_encoder', self.mean)
         np.save('data/models/stdev_encoder', self.stdev)
@@ -223,10 +223,20 @@ class Trainer:
                 sys.stdout.write('\n')
                 sys.stdout.flush()
                 if file_index % 200 == 0:
-                    self.synth_devset(batch_size)
+                    print 'max_db =', max_db
+                    if params.no_bounds:
+                        max_mgc = -1
+                    else:
+                        max_mgc = 1000
+                    self.synth_devset(max_size=max_mgc)
                     self.vocoder.store('data/models/rnn_encoder')
 
-            self.synth_devset(batch_size)
+            print 'max_db =', max_db
+            if params.no_bounds:
+                max_mgc = -1
+            else:
+                max_mgc = 1000
+            self.synth_devset(max_size=max_mgc)
             self.vocoder.store('data/models/rnn_encoder')
 
             epoch += 1
