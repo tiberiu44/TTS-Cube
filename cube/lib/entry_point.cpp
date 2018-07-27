@@ -3,7 +3,7 @@
 #include <string>
 #include "vocoder.h"
 
-dynet::ParameterCollection vocoder;
+Vocoder *vocoder;
 
 void c_print_version(){
     printf("TTS-Cube Runtime version 0.9beta\n");
@@ -11,11 +11,10 @@ void c_print_version(){
 
 
 int c_load_vocoder(char* path){
-    printf("\tLoading vocoder from '%s'\n", path);
     char *fn=new char[1024];
     snprintf(fn,1024, "%s.network", path);
-    printf("\t\t setting path to %s\n", fn);
-    vocoder = load_vocoder_from_file(fn);
+    vocoder = new Vocoder((unsigned int)16000, (unsigned int)60);
+    vocoder->   load_from_file(fn);
     delete []fn;
     return 0;
 }
