@@ -14,7 +14,11 @@ int c_load_vocoder(char* path){
     char *fn=new char[1024];
     snprintf(fn,1024, "%s.network", path);
     vocoder = new Vocoder((unsigned int)16000, (unsigned int)60);
-    vocoder->   load_from_file(fn);
+    vocoder->load_from_file(fn);
     delete []fn;
     return 0;
+}
+
+int* c_vocode(double *spectrogram, double *mean, double *stdev, int num_frames, float temperature){
+    return vocoder->vocode(spectrogram, mean, stdev, num_frames, temperature);
 }

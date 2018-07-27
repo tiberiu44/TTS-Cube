@@ -41,3 +41,5 @@ int Vocoder::load_from_file(char *fn){
     l.populate(this->model);
     return 0;
 }
+int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_frames, float temperature){
+}
