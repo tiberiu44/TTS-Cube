@@ -17,17 +17,20 @@ Vocoder::Vocoder(unsigned int sample_rate, unsigned int mgc_order){
     int upsample_count = int(12.5 * this->sample_rate / 1000);
 
     for (int i=0;i<upsample_count;i++){
-        this->upsample_w.push_back(this->model.add_parameters({UPSAMPLE_PROJ, this->mgc_order}));
+        this->upsample_w.push_back(this->model.add_parameters({UPSAMPLE_PROJ, this->mgc_order * 2}));
         this->upsample_b.push_back(this->model.add_parameters({UPSAMPLE_PROJ}));
     }
+
+    this->model.add_lookup_parameters(256,{1});
+    this->model.add_lookup_parameters(256,{1});
 
     this->rnn_coarse=dynet::VanillaLSTMBuilder(RNN_LAYERS, 2 + UPSAMPLE_PROJ, RNN_SIZE, this->model);
     this->rnn_fine=dynet::VanillaLSTMBuilder(RNN_LAYERS, 3 + UPSAMPLE_PROJ, RNN_SIZE, this->model);
 
     this->mlp_coarse_w=this->model.add_parameters({RNN_SIZE, RNN_SIZE});
-    this->mlp_coarse_b=this->model.add_parameters({RNN_SIZE, RNN_SIZE});
+    this->mlp_coarse_b=this->model.add_parameters({RNN_SIZE});
     this->mlp_fine_w=this->model.add_parameters({RNN_SIZE, RNN_SIZE});
-    this->mlp_fine_b=this->model.add_parameters({RNN_SIZE, RNN_SIZE});
+    this->mlp_fine_b=this->model.add_parameters({RNN_SIZE});
 
     this->softmax_coarse_w=this->model.add_parameters({256, RNN_SIZE});
     this->softmax_coarse_b=this->model.add_parameters({256});
