@@ -20,8 +20,5 @@ int c_load_vocoder(char* path){
 }
 
 int* c_vocode(double* spectogram, double* mean, double* stdev, int num_frames, int frame_size, float temperature){
-    for (int i=0;i<20;i++){
-        printf("%f\n", spectogram[i]);
-    }
     return vocoder->vocode(spectogram, mean, stdev, num_frames, temperature);
 }

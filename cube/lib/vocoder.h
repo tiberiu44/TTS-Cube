@@ -1,25 +1,29 @@
-#include <dynet/io.h>
-#include <dynet/lstm.h>
 #include <vector>
+#include "ml.h"
+
 
 class Vocoder{
     private:
-        dynet::ParameterCollection model;
         unsigned int sample_rate;
         unsigned int mgc_order;
-        std::vector<dynet::Parameter> upsample_w;
-        std::vector<dynet::Parameter> upsample_b;
-        dynet::VanillaLSTMBuilder rnn_fine;
-        dynet::VanillaLSTMBuilder rnn_coarse;
-        dynet::Parameter mlp_coarse_w;
-        dynet::Parameter mlp_coarse_b;
-        dynet::Parameter mlp_fine_w;
-        dynet::Parameter mlp_fine_b;
+        std::vector<Matrix> upsample_w;
+        std::vector<Matrix> upsample_b;
+        //dynet::VanillaLSTMBuilder rnn_fine;
+        //dynet::VanillaLSTMBuilder rnn_coarse;
+        Matrix mlp_coarse_w;
+        Matrix mlp_coarse_b;
+        Matrix mlp_fine_w;
+        Matrix mlp_fine_b;
 
-        dynet::Parameter softmax_coarse_w;
-        dynet::Parameter softmax_coarse_b;
-        dynet::Parameter softmax_fine_w;
-        dynet::Parameter softmax_fine_b;
+        Matrix softmax_coarse_w;
+        Matrix softmax_coarse_b;
+        Matrix softmax_fine_w;
+        Matrix softmax_fine_b;
+
+        std::vector<Matrix> upsample(float *spec, int num_frames);
+        std::vector<int> synthesize(std::vector<Matrix> &upsampled, float temp);
+        int upsample_count;
+        int sample(Matrix softmax, float temp);
     public:
         Vocoder(unsigned int sample_rate, unsigned int mgc_order);
         ~Vocoder();
