@@ -1,6 +1,7 @@
 #include <vector>
 #include "ml.h"
 
+class Matrix;
 
 class Vocoder{
     private:
@@ -29,5 +30,4 @@ class Vocoder{
         ~Vocoder();
         int load_from_file(char *filename);
         int *vocode(double *spectrogram, double *mean, double *stdev, int num_frames, float temperature);
-
 };
