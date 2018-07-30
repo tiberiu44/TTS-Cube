@@ -67,7 +67,10 @@ void Matrix::apply_sigmoid(){
 void Matrix::apply_rectify(){
     int total=cols*rows;
     for (int i=0;i<total;i++){
-        data[i]=fmax(data[i],0);
+        if (data[i]<0){
+            data[i]=0;
+        }
+        //data[i]=fmax(data[i],0);
     }
 }
 
@@ -83,8 +86,11 @@ void Matrix::load_from_file (std::ifstream &f){
     std::getline(f, line);
     std::istringstream in(line.c_str());
     int total=cols*rows;
-    for (int i=0;i<total;i++){
-        in>>data[i];
+    for (int col=0;col<cols;col++){
+        for (int row=0;row<rows;row++){
+            int i=row*cols+col;
+            in>>data[i];
+        }
     }
 }
 
@@ -170,6 +176,7 @@ void LSTM::add_input(Matrix &input){
     this->p_x2i.multiply(input, tmp);
     this->p_h2i.multiply(this->ht,tmp2);
     tmp.add(tmp2, tmp);
+    tmp.add(this->p_bi, tmp);
 
 
     this->i_ait.apply_sigmoid();
