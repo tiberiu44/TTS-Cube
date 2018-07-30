@@ -17,10 +17,11 @@ if __name__ == '__main__':
     import numpy as np
 
     cube_runtime.print_version()
-    cube_runtime.load_vocoder('../data/models/rnn')
+    cube_runtime.load_vocoder('../data/models/rnn_vocoder')
     mean = np.load('../data/models/mean.npy')
     stdev = np.load('../data/models/stdev.npy')
-    mgc = np.load('../data/processed/dev/anca_dcnews_0952.mgc.npy')
+    mgc = np.load('../data/processed/dev/anca_dcnews_0127.orig.mgc.npy')
+    #mgc=np.zeros((390, 60), dtype=np.double)
     mgc = _normalize(mgc, mean, stdev)
     mgc = mgc.copy(order='C')
     cube_runtime.vocode(mgc, stdev, mean, 0.8)

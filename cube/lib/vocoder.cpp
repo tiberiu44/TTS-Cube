@@ -1,6 +1,8 @@
 #include <stdio.h>
+#include <time.h>
 #include "vocoder.h"
 #include "ml.h"
+#include <math.h>
 
 
 Vocoder::Vocoder(unsigned int sample_rate, unsigned int mgc_order){
@@ -18,24 +20,33 @@ Vocoder::Vocoder(unsigned int sample_rate, unsigned int mgc_order){
 
     this->upsample_count = int(12.5 * this->sample_rate / 1000);
 
+    this->upsample_w=new Matrix[upsample_count];
+    this->upsample_b=new Matrix[upsample_count];
     for (int i=0;i<upsample_count;i++){
-        this->upsample_w.push_back(Matrix(UPSAMPLE_PROJ, this->mgc_order * 2));//(this->model.add_parameters({UPSAMPLE_PROJ, this->mgc_order * 2}));
-        this->upsample_b.push_back(Matrix(UPSAMPLE_PROJ));//(this->model.add_parameters({UPSAMPLE_PROJ}));
+        this->upsample_w[i]=Matrix(UPSAMPLE_PROJ, this->mgc_order*2);
+        this->upsample_b[i]=Matrix(UPSAMPLE_PROJ);
     }
-//    this->model.add_lookup_parameters(256,{1});//    this->model.add_lookup_parameters(256,{1});
-//
-//    this->rnn_coarse=dynet::VanillaLSTMBuilder(RNN_LAYERS, 2 + UPSAMPLE_PROJ, RNN_SIZE, this->model);
-//    this->rnn_fine=dynet::VanillaLSTMBuilder(RNN_LAYERS, 3 + UPSAMPLE_PROJ, RNN_SIZE, this->model);
-//
-    this->mlp_coarse_w=Matrix(RNN_SIZE, RNN_SIZE);//this->model.add_parameters({RNN_SIZE, RNN_SIZE});
-    this->mlp_coarse_b=Matrix(RNN_SIZE);//this->model.add_parameters({RNN_SIZE});
-    this->mlp_fine_w=Matrix(RNN_SIZE, RNN_SIZE);//this->model.add_parameters({RNN_SIZE, RNN_SIZE});
-    this->mlp_fine_b=Matrix(RNN_SIZE);//this->model.add_parameters({RNN_SIZE});
-//
-    this->softmax_coarse_w=Matrix(256, RNN_SIZE);//this->model.add_parameters({256, RNN_SIZE});
-    this->softmax_coarse_b=Matrix(256);//this->model.add_parameters({256});
-    this->softmax_fine_w=Matrix(256, RNN_SIZE);//this->model.add_parameters({256, RNN_SIZE});
-    this->softmax_fine_b=Matrix(256);//this->model.add_parameters({256});
+
+    this->rnn_coarse=LSTM(2 + UPSAMPLE_PROJ, RNN_SIZE);
+    this->rnn_fine=LSTM(3 + UPSAMPLE_PROJ, RNN_SIZE);
+
+    this->mlp_coarse_w=Matrix(RNN_SIZE, RNN_SIZE);
+    this->mlp_coarse_b=Matrix(RNN_SIZE);
+    this->mlp_fine_w=Matrix(RNN_SIZE, RNN_SIZE);
+    this->mlp_fine_b=Matrix(RNN_SIZE);
+
+    this->softmax_coarse_w=Matrix(256, RNN_SIZE);
+    this->softmax_coarse_b=Matrix(256);
+    this->softmax_fine_w=Matrix(256, RNN_SIZE);
+    this->softmax_fine_b=Matrix(256);
+
+    //prealocated matrices
+    this->hidden_coarse=Matrix(RNN_SIZE);
+    this->hidden_fine=Matrix(RNN_SIZE);
+    this->softmax_fine=Matrix(256);
+    this->softmax_coarse=Matrix(256);
+    this->upsample=Matrix(UPSAMPLE_PROJ+3);//+3 is a trick to avoid copying memory during synthesis
+
 }
 
 Vocoder::~Vocoder(){
@@ -44,97 +55,135 @@ Vocoder::~Vocoder(){
 int Vocoder::load_from_file(char *fn){
     printf("Loading %s\n", fn);
     std::ifstream f(fn);
-    for (int i=0;i<this->upsample_w.size();i++){
+    for (int i=0;i<this->upsample_count;i++){
         this->upsample_w[i].load_from_file(f);
         this->upsample_b[i].load_from_file(f);
     }
     //dynet::TextFileLoader l(fn);
     //l.populate(this->model);
-    Matrix ll(256,1);//older model compatibility
+    Matrix ll(1,256);//older model compatibility
+
+
+    this->rnn_coarse.load_from_file(f);
+    this->rnn_fine.load_from_file(f);
+    this->mlp_coarse_w.load_from_file(f);
+    this->mlp_coarse_b.load_from_file(f);
+    this->mlp_fine_w.load_from_file(f);
+    this->mlp_fine_b.load_from_file(f);
+    this->softmax_coarse_w.load_from_file(f);
+    this->softmax_coarse_b.load_from_file(f);
+    this->softmax_fine_w.load_from_file(f);
+    this->softmax_fine_b.load_from_file(f);
+
     ll.load_from_file(f);
     ll.load_from_file(f);
     f.close();
     return 0;
 }
 
-std::vector <Matrix> Vocoder::upsample(float *spec, int num_frames){
-    std::vector<Matrix> rez;
-    std::vector<Matrix> input_data;
-    for (int i=0;i<num_frames-1;i++){
-//        int index1=i*this->mgc_order;
-//        std::vector<dynet::real> x_values(this->mgc_order*2);
-//        for (int cp=0;cp<this->mgc_order*2;cp++){
-//            x_values[cp]=spec[index1+cp];
-//        }
-//        dynet::Expression x=input(cg, {this->mgc_order*2}, x_values);
-//        input_data.push_back(x);
+int Vocoder::sample(Matrix &softmax, float temp){
+    double sum=0;
+    double max=softmax.data[0];
+    for (int i=1;i<softmax.rows;i++){
+        if (softmax.data[i]>max){
+            max=softmax.data[i];
+        }
     }
 
-    for (int i=0;i<num_frames-1;i++){
-//        //printf("%f %f\n", dynet::as_vector(input_data[i].value())[0], dynet::as_vector(input_data[i].value())[this->mgc_order]);
-//        for (int ups_index=0;ups_index<this->upsample_count;ups_index++){
-//            rez.push_back(dynet::tanh(parameter(cg,this->upsample_w[ups_index])*input_data[i]+parameter(cg,this->upsample_b[ups_index])));
-//        }
+    for (int i=0;i<softmax.rows;i++){
+        softmax.data[i]=exp(softmax.data[i]-max);
+        sum+=softmax.data[i];
+    }
+    int max_index=0;
+    for (int i=0;i<softmax.rows;i++){
+        softmax.data[i]/=sum;
+        if (softmax.data[i]>softmax.data[max_index])
+            max_index=i;
     }
 
-    return rez;
+    return max_index;
 }
 
-int Vocoder::sample(Matrix softmax, float temp){
-    //std::vector<float> values=dynet::as_vector(softmax.value());
-    //printf (".");
-    //fflush(stdout);
-    return 0;
-}
+int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_frames, float temperature){
+    //exit(0);
+    clock_t start,end;
+    start=clock();
 
-std::vector<int> Vocoder::synthesize(std::vector<Matrix> &upsampled, float temp){
+    float audio_length_ms=(12.5*num_frames)/1000;
+    printf("\tEstimated audio size is %f seconds\n", audio_length_ms);
     std::vector<int> audio;
-    int total_audio_points=(int)(upsampled.size());
+    int total_audio_points=(int)(audio_length_ms*this->sample_rate);
     printf("\tEstimated raw audio points is %d\n", total_audio_points);
     printf("\tGenerating raw audio: ");
     fflush(stdout);
     int last_proc=0;
-//    this->rnn_coarse.new_graph(cg);
-//    this->rnn_fine.new_graph(cg);
-//    this->rnn_coarse.start_new_sequence();
-//    this->rnn_fine.start_new_sequence();
-//    float last_coarse_sample=0;
-//    float last_fine_sample=0;
-//    for (int i=0;i<total_audio_points;i++){
-//        int curr_proc=(int)((i+1)*100/total_audio_points);
-//        if (curr_proc % 5==0 && curr_proc!=last_proc){
-//            printf("%d ", curr_proc);
-//            last_proc=curr_proc;
-//            fflush(stdout);
-//        }
-//        std::vector<dynet::real> coarse_input(2);
-//        coarse_input[0]=last_coarse_sample/128.0-1.0;
-//        coarse_input[1]=last_fine_sample/128.0-1.0;
-//        dynet::Expression coarse_input_expr=input(cg, {2}, coarse_input);
-//        std::vector<dynet::Expression> concat_list;
-//        concat_list.push_back(coarse_input_expr);
-//        concat_list.push_back(upsampled[i]);
-//        dynet::Expression coarse_input_final=dynet::concatenate(concat_list);
-//        dynet::Expression rnn_coarse_output=this->rnn_coarse.add_input(coarse_input_final);
-//        dynet::Expression hidden_coarse=dynet::rectify(dynet::parameter(cg,this->mlp_coarse_w)*rnn_coarse_output+ dynet::parameter(cg,this->mlp_coarse_b));
-//
-//        dynet::Expression softmax_coarse=dynet::softmax(dynet::parameter(cg,this->softmax_coarse_w)*hidden_coarse+ dynet::parameter(cg,this->softmax_coarse_b));
-//        int coarse_output=this->sample(softmax_coarse, temp);
-//    }
-//    printf("done\n");
-    return audio;
-}
+    int index=0;
+    int last_coarse_sample=0;
+    int last_fine_sample=0;
 
-int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_frames, float temperature){
-//    dynet::ComputationGraph cg;
-//    float audio_length_ms=(12.5*num_frames)/1000;
-//    printf("\tEstimated audio size is %f seconds\n", audio_length_ms);
-//    float *f_spec=new float[this->mgc_order*num_frames];
-//    int total=this->mgc_order*num_frames;
-//    for (int i=0;i<total;i++){
-//        f_spec[i]=(float)spectrogram[i];
-//    }
-//    std::vector<dynet::Expression> upsampled_spec=this->upsample(f_spec, num_frames, cg);
-//    std::vector<int> audio=this->synthesize(upsampled_spec, temperature, cg);
-//    delete []f_spec;
+    Matrix input_cond(this->mgc_order*2);
+    int cnt=0;
+
+    this->rnn_fine.reset();
+    this->rnn_coarse.reset();
+
+    printf ("NUM FRAMES=%d\nupsample_count=%d\n", num_frames, upsample_count);
+    for (int i=0;i<num_frames-1;i++){
+        //printf("i=%d\n",i);
+        //create conditioning input matrix
+        memcpy(input_cond.data, spectrogram+i*this->mgc_order, sizeof(double)*this->mgc_order*2);
+        for (int j=0;j<this->upsample_count;j++){
+            //printf("\t\tj=%d\n",j);
+            index++;
+            int curr_proc=index*100/total_audio_points;
+            if (curr_proc%5==0 && curr_proc!=last_proc){
+                printf("%d ", curr_proc);
+                fflush(stdout);
+                last_proc=curr_proc;
+            }
+
+            upsample.data=upsample.data+3;//move the pointer to prepare for sampling
+            upsample_w[j].multiply(input_cond, upsample);
+            upsample.add(upsample_b[j], upsample);
+            upsample.apply_tanh();
+
+            //upsample.print();
+
+            upsample.data=upsample.data-2;//move back the pointer for coarse synthesis
+            upsample.data[0]=(float)last_coarse_sample/128.0-1.0;
+            upsample.data[1]=(float)last_fine_sample/128.0-1.0;
+
+            rnn_coarse.add_input(upsample);
+            mlp_coarse_w.multiply(rnn_coarse.ht, hidden_coarse);
+            hidden_coarse.add(mlp_coarse_b, hidden_coarse);
+            hidden_coarse.apply_rectify();
+            softmax_coarse_w.multiply(hidden_coarse, softmax_coarse);
+            softmax_coarse.add(softmax_coarse_b, softmax_coarse);
+
+
+            upsample.data=upsample.data-1;//move back the pointer for fine synthesis
+            int selected_coarse_sample=this->sample(softmax_coarse, temperature);
+            upsample.data[0]=(float)last_coarse_sample/128.0-1.0;
+            upsample.data[1]=(float)last_fine_sample/128.0-1.0;
+            upsample.data[2]=(float)selected_coarse_sample/128.0-1.0;
+
+            rnn_fine.add_input(upsample);
+            mlp_fine_w.multiply(rnn_fine.ht, hidden_fine);
+            hidden_fine.add(mlp_fine_b, hidden_fine);
+            hidden_fine.apply_rectify();
+            softmax_fine_w.multiply(hidden_coarse, softmax_fine);
+            softmax_fine.add(softmax_fine_b, softmax_fine);
+            int selected_fine_sample=this->sample(softmax_fine, temperature);
+
+            last_coarse_sample=selected_coarse_sample;
+            last_fine_sample=selected_fine_sample;
+
+            audio.push_back(((long)last_coarse_sample * 256 + last_fine_sample)-32768);
+            //printf("%d ", audio[audio.size()-1]);
+        }
+    }
+    end=clock();
+    double dif = difftime (end,start)*1.0/CLOCKS_PER_SEC;
+    printf("done in %f seconds with %d\n", dif, cnt);
+
 }
