@@ -12,7 +12,7 @@ cdef extern from "entry_point.h":
     cdef int c_load_vocoder(char *path)
 
 cdef extern from "entry_point.h":
-    cdef int c_vocode(double* spectrogram, double* mean, double* stdev,  int num_frames, int frame_size, float temperature)
+    cdef int* c_vocode(double* spectrogram, double* mean, double* stdev,  int num_frames, int frame_size, float temperature)
 
 def load_vocoder(path):
     import array
@@ -23,7 +23,10 @@ def load_vocoder(path):
 def vocode(np.ndarray[double, ndim=2, mode="c"] spec, np.ndarray[double, ndim=1, mode="c"] mean, np.ndarray[double, ndim=1, mode="c"] std, temperature=1.0):
     num_frames=spec.shape[0]
     frame_size=spec.shape[1]
-    c_vocode(&spec[0,0], &mean[0], &std[0], num_frames, frame_size, temperature)
+    dim=(int)((num_frames-1)*12.5*16)
+    #dim=int(12.5*16)
+    cdef int[::1] view = <int[:dim]> c_vocode(&spec[0,0], &mean[0], &std[0], num_frames, frame_size, temperature)
+    return np.asarray(view)
 
 
 

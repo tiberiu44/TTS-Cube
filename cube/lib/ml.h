@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory.h>
 
+
 class Matrix{
     private:
 
@@ -17,6 +18,7 @@ class Matrix{
     Matrix (int rows);
     ~Matrix();
     void multiply(Matrix &b, Matrix &rezult);
+    void affine(Matrix &b, Matrix &c);
     void cmultiply(Matrix &b, Matrix &rezult);
     void add(Matrix &b, Matrix &result);
     void copy(Matrix &b);

@@ -83,24 +83,24 @@ int Vocoder::load_from_file(char *fn){
 
 int Vocoder::sample(Matrix &layer, float temp){
     double sum=0;
-    double max=layer.data[0];
-    for (int i=1;i<layer.rows;i++){
-        if (layer.data[i]>max){
-            max=layer.data[i];
-        }
-    }
-    //printf ("max=%f\n", max);
-    //layer.print();
-    for (int i=0;i<layer.rows;i++){
-        layer.data[i]=exp(layer.data[i]-max);
-        sum+=layer.data[i];
-    }
-    //layer.print();
-    //printf("sum=%f\n", sum);
-    //softmax.print();
+//    double max=layer.data[0];
+//    for (int i=1;i<layer.rows;i++){
+//        if (layer.data[i]>max){
+//            max=layer.data[i];
+//        }
+//    }
+//    //printf ("max=%f\n", max);
+//    //layer.print();
+//    for (int i=0;i<layer.rows;i++){
+//        layer.data[i]=exp(layer.data[i]-max);
+//        sum+=layer.data[i];
+//    }
+//    //layer.print();
+//    //printf("sum=%f\n", sum);
+//    //softmax.print();
     int max_index=0;
     for (int i=0;i<layer.rows;i++){
-        layer.data[i]/=sum;
+        //layer.data[i]/=sum;
         if (layer.data[i]>layer.data[max_index])
             max_index=i;
     }
@@ -124,7 +124,7 @@ int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_f
     fflush(stdout);
     int last_proc=0;
     int index=0;
-    int last_coarse_sample=128;
+    int last_coarse_sample=0;
     int last_fine_sample=0;
 
     Matrix input_cond(this->mgc_order*2);
@@ -133,7 +133,7 @@ int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_f
     this->rnn_fine.reset();
     this->rnn_coarse.reset();
 
-    printf ("NUM FRAMES=%d\nupsample_count=%d\n", num_frames, upsample_count);
+    //printf ("NUM FRAMES=%d\nupsample_count=%d\n", num_frames, upsample_count);
     for (int i=0;i<num_frames-1;i++){
         //printf("i=%d\n",i);
         //create conditioning input matrix
@@ -152,7 +152,8 @@ int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_f
             upsample_w[j].multiply(input_cond, upsample);
             upsample.add(upsample_b[j], upsample);
             upsample.apply_tanh();
-
+            //upsample.print();
+            //exit(0);
             upsample.data=&upsample.data[-2];//move back the pointer for coarse synthesis
             upsample.data[0]=(float)last_coarse_sample/128.0-1.0;
             upsample.data[1]=(float)last_fine_sample/128.0-1.0;
@@ -163,7 +164,6 @@ int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_f
             hidden_coarse.apply_rectify();
             softmax_coarse_w.multiply(hidden_coarse, softmax_coarse);
             softmax_coarse.add(softmax_coarse_b, softmax_coarse);
-
 
             upsample.data=&upsample.data[-1];//move back the pointer for fine synthesis
             //printf ("coarse\n");
@@ -192,5 +192,11 @@ int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_f
     end=clock();
     double dif = difftime (end,start)*1.0/CLOCKS_PER_SEC;
     printf("done in %f seconds with %d\n", dif, cnt);
+    int *a =new int[audio.size()];
+    for (int i=0;i<audio.size();i++){
+        a[i]=audio[i];
+        //a[i]=i;
+    }
+    return a;
 
 }

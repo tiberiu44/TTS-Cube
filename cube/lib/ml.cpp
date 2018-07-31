@@ -4,6 +4,7 @@
 #include <sstream>
 #include <memory.h>
 #include <math.h>
+#include <mkl.h>
 
 #include "ml.h"
 
@@ -43,11 +44,22 @@ Matrix::Matrix(const Matrix &other){
         memcpy(this->data, other.data, cols*rows*sizeof(double));
 }
 
+void Matrix::affine(Matrix &b, Matrix &c){
+    //cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+    //            m, n, k, alpha, A, k, B, n, beta, C, n);
+    //A mxk
+    //B kxn
+
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                this->rows, b.cols, this->cols, 1, this->data, this->cols, b.data, b.cols, 0, c.data, b.cols);
+}
+
 void Matrix::apply_tanh(){
-    int total=cols*rows;
-    for (int i=0;i<total;i++){
-        data[i]=tanh(data[i]);
-    }
+    vdTanh(rows*cols, this->data, this->data);
+//    int total=cols*rows;
+//    for (int i=0;i<total;i++){
+//        data[i]=tanh(data[i]);
+//    }
 }
 
 void Matrix::add_scalar(double scalar){
@@ -85,7 +97,6 @@ void Matrix::load_from_file (std::ifstream &f){
     printf("%d %d\t%s\n",rows, cols, line.c_str());
     std::getline(f, line);
     std::istringstream in(line.c_str());
-    int total=cols*rows;
     for (int col=0;col<cols;col++){
         for (int row=0;row<rows;row++){
             int i=row*cols+col;
@@ -95,10 +106,11 @@ void Matrix::load_from_file (std::ifstream &f){
 }
 
 void Matrix::add(Matrix &b, Matrix &rezult){
-    int total=rows*cols;
-    for (int i=0;i<total;i++){
-        rezult.data[i]=this->data[i]+b.data[i];
-    }
+    MKL_Domatadd ('r', 'n', 'n', rows, cols, 1.0, b.data, cols, 1.0, this->data, cols, rezult.data, cols);
+//    int total=rows*cols;
+//    for (int i=0;i<total;i++){
+//        rezult.data[i]=this->data[i]+b.data[i];
+//    }
 }
 
 void Matrix::cmultiply(Matrix &b, Matrix &rezult){
@@ -112,19 +124,21 @@ void Matrix::copy(Matrix &b){
     memcpy(this->data, b.data, rows*cols*sizeof(double));
 }
 
-void Matrix::multiply(Matrix &b, Matrix &rezult){
-    rezult.reset();
-    int index_rez=0;
-    for (int row=0;row<this->rows;row++){
-        for (int col=0;col<b.cols;col++){
-            for (int ii=0;ii<b.rows;ii++){
-                int index_a=row*this->cols+ii;
-                int index_b=ii*b.cols+col;
-                rezult.data[index_rez]+=this->data[index_a]*b.data[index_b];
-            }
-            index_rez++;
-        }
-    }
+void Matrix::multiply(Matrix &b, Matrix &c){
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                this->rows, b.cols, this->cols, 1, this->data, this->cols, b.data, b.cols, 0, c.data, b.cols);
+//    rezult.reset();
+//    int index_rez=0;
+//    for (int row=0;row<this->rows;row++){
+//        for (int col=0;col<b.cols;col++){
+//            for (int ii=0;ii<b.rows;ii++){
+//                int index_a=row*this->cols+ii;
+//                int index_b=ii*b.cols+col;
+//                rezult.data[index_rez]+=this->data[index_a]*b.data[index_b];
+//            }
+//            index_rez++;
+//        }
+//    }
 }
 
 void Matrix::print(){
