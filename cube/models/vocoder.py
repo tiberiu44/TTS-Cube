@@ -53,9 +53,9 @@ class Vocoder:
         from utils import orthonormal_VanillaLSTMBuilder
         # self.rnn = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE + self.UPSAMPLE_PROJ, self.RNN_SIZE, self.model)
         self.rnnCoarse = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 2 + self.UPSAMPLE_PROJ,
-                                       self.RNN_SIZE, self.model)
+                                                        self.RNN_SIZE, self.model)
         self.rnnFine = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 3 + self.UPSAMPLE_PROJ,
-                                     self.RNN_SIZE, self.model)
+                                                      self.RNN_SIZE, self.model)
         # self.rnnCoarse = dy.GRUBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 2 + self.UPSAMPLE_PROJ,
         #                                self.RNN_SIZE, self.model)
         # self.rnnFine = dy.GRUBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 3 + self.UPSAMPLE_PROJ,
@@ -134,6 +134,13 @@ class Vocoder:
         # probs = probs / np.sum(probs)
         return np.random.choice(np.arange(256), p=scaled_prediction)
 
+    def _fast_sample(self, prob, temperature=1):
+        temperature = temperature / 2
+        bern = dy.random_bernoulli(256, 0.5, scale=temperature) + (1.0 - temperature)
+        prob = dy.cmult(prob, bern)
+        # print prob.npvalue().argmax()
+        return prob.npvalue().argmax()
+
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0):
         synth = []
         total_audio_len = mgc.shape[0] * len(self.upsample_w_t)
@@ -192,6 +199,7 @@ class Vocoder:
                 softmax_coarse_output = dy.softmax(self.softmax_coarse_w.expr() * hidden + self.softmax_coarse_b.expr())
 
                 selected_coarse_sample = self._pick_sample(softmax_coarse_output.npvalue(), temperature=temperature)
+                # selected_coarse_sample = self._fast_sample(softmax_coarse_output, temperature=temperature)
                 #####FINE
                 if self.OUTPUT_EMB_SIZE == 1:
                     rnn_fine_input = dy.concatenate(
@@ -212,6 +220,7 @@ class Vocoder:
 
                 # selected_fine_sample = np.argmax(softmax_fine_output.npvalue())
                 selected_fine_sample = self._pick_sample(softmax_fine_output.npvalue(), temperature=temperature)
+                # selected_fine_sample = self._fast_sample(softmax_fine_output, temperature=temperature)
 
                 last_coarse_sample = selected_coarse_sample
                 last_fine_sample = selected_fine_sample

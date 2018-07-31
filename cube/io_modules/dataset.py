@@ -64,6 +64,12 @@ class DatasetIO:
             out_disc.append(disc)
         return out_disc
 
+    def b16_to_float(self, data, discreete=True):
+        out = []
+        for zz in range(len(data)):
+            out.append(float(data[zz]) / 32768)
+        return out
+
     def b16_dec(self, data, discreete=True):
         out = []
         for zz in range(len(data)):
@@ -107,7 +113,7 @@ class Dataset:
         final_list = []
         for file in train_files_tmp:
             base_name = file[:-4]
-            if file[-4:] == '.lab' and base_name not in final_list:
+            if file[-4:] == '.txt' and base_name not in final_list:
                 final_list.append(join(folder, base_name))
                 # sys.stdout.write(base_name + '\n')
         self.files = final_list

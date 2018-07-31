@@ -51,7 +51,7 @@ class Encoder:
                 orthonormal_VanillaLSTMBuilder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
 
         self.decoder = orthonormal_VanillaLSTMBuilder(self.DECODER_LAYERS, self.ENCODER_SIZE * 2 + 100,
-                                             self.DECODER_SIZE, self.model)
+                                                      self.DECODER_SIZE, self.model)
 
         # self.aux_hid_w = self.model.add_parameters((500, self.ENCODER_SIZE * 2))
         # self.aux_hid_b = self.model.add_parameters((500))
@@ -143,10 +143,10 @@ class Encoder:
                 if max_size != -1 and mgc_index > max_size:
                     break
                 last_mgc = dy.inputVector(output.value())
-                if max_size == -1 and output_stop[-1].value < -0.5:
+                if max_size == -1 and output_stop[-1].value() < -0.5:
                     break
 
-                if mgc_index>=len(characters)*10:#safeguard
+                if mgc_index >= len(characters) * 10:  # safeguard
                     break
             else:
                 last_mgc = dy.inputVector(gold_mgc[min(mgc_index + 2, len(gold_mgc) - 1)])
@@ -192,7 +192,7 @@ class Encoder:
                     losses.append(self._compute_guided_attention(att, index / 3, len(characters) + 2, num_mgc / 3))
                 # EOS loss
                 stop = output_stop[index / 3]
-                if index >= num_mgc:
+                if index >= num_mgc - 3:
                     losses.append(dy.l1_distance(stop, dy.scalarInput(-1.0)))
                 else:
                     losses.append(dy.l1_distance(stop, dy.scalarInput(1.0)))

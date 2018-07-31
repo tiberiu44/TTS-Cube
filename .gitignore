@@ -11,7 +11,9 @@ cube/venv/*
 .idea/*
 venv/*
 *.txt
+*.so
 data/
+cube/lib/cube_runtime.cpp
 
 # CMake
 cmake-build-debug/
