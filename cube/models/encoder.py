@@ -19,7 +19,7 @@ import numpy as np
 
 
 class Encoder:
-    def __init__(self, params, num_phones, phone2int, model=None):
+    def __init__(self, params, encodings, model=None):
         self.model = model
         self.params = params
         self.PHONE_EMBEDDINGS_SIZE = 100
@@ -27,7 +27,7 @@ class Encoder:
         self.ENCODER_LAYERS = 2
         self.DECODER_SIZE = 200
         self.DECODER_LAYERS = 2
-        self.phone2int = phone2int
+        self.encodings = encodings
 
         if self.model is None:
             self.model = dy.Model()
@@ -35,7 +35,8 @@ class Encoder:
             self.trainer.set_sparse_updates(True)
             self.trainer.set_clip_threshold(5.0)
 
-        self.phone_lookup = self.model.add_lookup_parameters((num_phones + 2, self.PHONE_EMBEDDINGS_SIZE))
+        self.phone_lookup = self.model.add_lookup_parameters((len(encodings.char2int), self.PHONE_EMBEDDINGS_SIZE))
+        self.feature_lookup = self.model.add_lookup_parameters((len(encodings.context2int), self.PHONE_EMBEDDINGS_SIZE))
         from utils import orthonormal_VanillaLSTMBuilder
         self.encoder_fw = []
         self.encoder_bw = []
@@ -85,12 +86,19 @@ class Encoder:
         self.start_lookup = self.model.add_lookup_parameters((1, params.mgc_order))
         self.decoder_start_lookup = self.model.add_lookup_parameters((1, self.ENCODER_SIZE * 2 + 100))
 
-    def _make_input(self, characters):
-        x_list = [self.phone_lookup[len(self.phone2int)]]
-        for char in characters:
-            if char in self.phone2int:
-                x_list.append(self.phone_lookup[self.phone2int[char]])
-        x_list.append(self.phone_lookup[len(self.phone2int) + 1])
+    def _make_input(self, seq):
+        x_list = [self.phone_lookup[self.encodings.char2int['START']]]
+        for pi in seq:
+            char_emb = self.phone_lookup[self.encodings.char2int[pi.char]]
+            context = []
+            for feature in pi.context:
+                if feature in self.encodings.context2int:
+                    context.append(self.feature_lookup[self.encodings.context2int[feature]])
+            if len(context) == 0:
+                x_list.append(char_emb)
+            else:
+                x_list.append(char_emb + dy.esum(context) * dy.scalarInput(1.0 / len(context)))
+        x_list.append(self.phone_lookup[self.encodings.char2int['STOP']])
         return x_list
 
     def _predict(self, characters, gold_mgc=None, max_size=-1):
@@ -192,7 +200,7 @@ class Encoder:
                     losses.append(self._compute_guided_attention(att, index / 3, len(characters) + 2, num_mgc / 3))
                 # EOS loss
                 stop = output_stop[index / 3]
-                if index >= num_mgc - 3:
+                if index >= num_mgc - 6:
                     losses.append(dy.l1_distance(stop, dy.scalarInput(-1.0)))
                 else:
                     losses.append(dy.l1_distance(stop, dy.scalarInput(1.0)))

@@ -4,6 +4,42 @@ import numpy as np
 import sys
 
 
+class Encodings:
+    def __init__(self):
+        self.char2int = {}
+        self.context2int = {}
+
+    def update(self, pi):
+        if pi.char not in self.char2int:
+            self.char2int[pi.char] = len(self.char2int)
+        for feature in pi.context:
+            if feature not in self.context2int:
+                self.context2int[feature] = len(self.context2int)
+
+    def store(self, filename):
+        f = open(filename, 'w')
+        f.write('SYMBOLS\t' + str(len(self.char2int)) + '\n')
+        for char in self.char2int:
+            f.write(char.encode('utf-8') + '\t' + str(self.char2int[char]) + '\n')
+        f.write('FEATURES\t' + str(len(self.context2int)) + '\n')
+        for feature in self.context2int:
+            f.write(feature.encode('utf-8') + '\t' + str(self.context2int[feature]) + '\n')
+        f.close()
+
+    def load(self, filename):
+        f = open(filename)
+        num_symbols = int(f.readline().split('\t')[1])
+        for x in range(num_symbols):
+            parts = f.readline().encode('utf-8').split('\t')
+            self.char2int[parts[0]] = int(parts[1])
+
+        num_features = int(f.readline().split('\t')[1])
+        for x in range(num_features):
+            parts = f.readline().encode('utf-8').split('\t')
+            self.context2int[parts[0]] = int(parts[1])
+        f.close()
+
+
 class DatasetIO:
     def __init__(self):
         self._mel_basis = None
@@ -45,11 +81,18 @@ class DatasetIO:
     def read_lab(self, filename):
         out = []
         with open(filename) as f:
-            line = f.readline()
-            line = line.decode('utf-8').replace('\n', '').replace('\r', '').replace('\t', ' ').lower()
-            for char in line:
-                pi = PhoneInfo(char, '', 0, 0)
-                out.append(pi)
+            lines = f.readlines()
+            for line in lines:
+                line = line.replace('\r', '').replace('\n', '')
+                if line.strip() != '':
+                    line = line.decode('utf-8')
+                    parts = line.split('\t')
+                    if len(parts) == 1:
+                        pi = PhoneInfo(parts[0], [], 0, 0)
+                    else:
+                        pi = PhoneInfo(parts[0], parts[1:], 0, 0)
+                    out.append(pi)
+
             f.close()
         return out
 
@@ -122,9 +165,9 @@ class Dataset:
 class PhoneInfo:
     context2int = {}
 
-    def __init__(self, phoneme, context, start, stop):
-        self.phoneme = phoneme
-        self.context = context.split("/")
+    def __init__(self, char, context, start, stop):
+        self.char = char
+        self.context = context
         self.start = start
         self.stop = stop
         self.duration = (stop - start)

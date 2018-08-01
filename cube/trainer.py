@@ -49,7 +49,6 @@ if __name__ == '__main__':
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
                       help='Order of MGC parameters (default=80)', default=60)
 
-
     (params, _) = parser.parse_args(sys.argv)
 
     memory = int(params.memory)
@@ -86,6 +85,34 @@ if __name__ == '__main__':
 
         img = smp.toimage(bitmap)
         img.save(output_file)
+
+
+    def create_lab_file(txt_file, lab_file):
+        fin = open(txt_file, 'r')
+        fout = open(lab_file, 'w')
+        line = fin.readline().decode('utf-8').strip().replace('\t', ' ')
+        while True:
+            nl = line.replace('  ', ' ')
+            if nl == line:
+                break
+            line = nl
+
+        fout.write('START\n')
+        for char in line:
+            l_char = char.lower()
+            style = 'CASE:lower'
+            if l_char == l_char.upper():
+                style = 'CASE:symb'
+            elif l_char != char:
+                style = 'CASE:upper'
+            speaker = 'SPEAKER:' + txt_file.replace('\\','/').split('_')[0].split('/')[-1]
+            fout.write(l_char.encode('utf-8') + '\t' + speaker + '\t' + style + '\n')
+
+        fout.write('STOP\n')
+
+        fin.close()
+        fout.close()
+        return ""
 
 
     def phase_1_prepare_corpus(params):
@@ -133,12 +160,18 @@ if __name__ == '__main__':
             sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(train_files)))
             sys.stdout.flush()
             base_name = train_files[index]
-            lab_name = base_name + '.txt'
+            txt_name = base_name + '.txt'
             wav_name = base_name + '.wav'
             spc_name = base_name + '.png'
+            lab_name = base_name + '.lab'
 
-            copyfile(join(base_folder, lab_name), join('data/processed/train', lab_name))
-
+            # LAB - copy or create
+            if exists(join(base_folder, lab_name)):
+                copyfile(join(base_folder, lab_name), join('data/processed/train', lab_name))
+            else:
+                create_lab_file(join(base_folder, txt_name), join('data/processed/train', lab_name))
+            # TXT
+            copyfile(join(base_folder, txt_name), join('data/processed/train', txt_name))
             # WAVE
             data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
             mgc = vocoder.melspectrogram(data, sample_rate=params.target_sample_rate, num_mels=params.mgc_order)
@@ -153,11 +186,18 @@ if __name__ == '__main__':
             sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(dev_files)))
             sys.stdout.flush()
             base_name = dev_files[index]
-            lab_name = base_name + '.txt'
+            txt_name = base_name + '.txt'
             wav_name = base_name + '.wav'
             spc_name = base_name + '.png'
+            lab_name = base_name + '.lab'
 
-            copyfile(join(base_folder, lab_name), join('data/processed/dev/', lab_name))
+            # LAB - copy or create
+            if exists(join(base_folder, lab_name)):
+                copyfile(join(base_folder, lab_name), join('data/processed/dev', lab_name))
+            else:
+                create_lab_file(join(base_folder, txt_name), join('data/processed/dev', lab_name))
+            # TXT
+            copyfile(join(base_folder, txt_name), join('data/processed/dev/', txt_name))
             # WAVE
             data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
             mgc = vocoder.melspectrogram(data, sample_rate=params.target_sample_rate, num_mels=params.mgc_order)
@@ -187,6 +227,7 @@ if __name__ == '__main__':
 
     def phase_3_train_encoder(params):
         from io_modules.dataset import Dataset
+        from io_modules.dataset import Encodings
         from models.encoder import Encoder
         from trainers.encoder import Trainer
         trainset = Dataset("data/processed/train")
@@ -194,22 +235,24 @@ if __name__ == '__main__':
         sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
             len(devset.files)) + ' development files\n')
 
-        character2int = {}
+        encodings=Encodings()
+        count=0
         for train_file in trainset.files:
+            count+=1
+            if count%100==0:
+                sys.stdout.write('\r'+str(count)+'/'+str(len(trainset.files))+' processed files')
+                sys.stdout.flush()
             from io_modules.dataset import DatasetIO
             dio = DatasetIO()
-            lab_list = dio.read_lab(train_file + ".txt")
+            lab_list = dio.read_lab(train_file + ".lab")
             for entry in lab_list:
-                if entry.phoneme not in character2int:
-                    character2int[entry.phoneme] = len(character2int)
-        sys.stdout.write('Found ' + str(len(character2int)) + ' unique phonemes\n')
+                encodings.update(entry)
+        sys.stdout.write('\r' + str(count) + '/' + str(len(trainset.files)) + ' processed files\n')
+        sys.stdout.write('Found ' + str(len(encodings.char2int)) + ' unique symbols and '+str(len(encodings.context2int))+' unique features\n')
+        encodings.store('data/models/encoder.encodings')
 
-        f = open('data/models/encoder.chars', 'w')
-        for char in character2int:
-            f.write(char.encode('utf-8') + '\t' + str(character2int[char]) + '\n')
-        f.close()
 
-        encoder = Encoder(params, len(character2int), character2int)
+        encoder = Encoder(params, encodings)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             encoder.load('data/models/rnn_encoder')
@@ -242,5 +285,7 @@ if __name__ == '__main__':
         phase_2_train_vocoder(params)
     if params.phase and params.phase == '3':
         phase_3_train_encoder(params)
+    if params.phase and params.phase == '4':
+        print ("Not yet implemented. Still wondering if this is really required")
     if params.phase and params.phase == '5':
         phase_5_test_vocoder(params)

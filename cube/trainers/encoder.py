@@ -24,16 +24,11 @@ class Trainer:
         self.vocoder = vocoder
         self.trainset = trainset
         self.devset = devset
-        self.mean = None
-        self.stdev = None
 
     def array2file(self, a, filename):
         np.save(filename, a)
 
     def synth_devset(self, max_size=-1):
-        if self.mean is None:
-            self.mean = np.load('data/models/mean.npy')
-            self.stdev = np.load('data/models/stdev.npy')
         sys.stdout.write('\tSynthesizing devset\n')
         file_index = 1
         for file in self.devset.files[:5]:
@@ -41,18 +36,17 @@ class Trainer:
                 "\t\t" + str(file_index) + "/" + str(len(self.devset.files)) + " processing file " + file)
             sys.stdout.flush()
             file_index += 1
-            lab_file = file + ".txt"
+            lab_file = file + ".lab"
             dio = DatasetIO()
             lab = dio.read_lab(lab_file)
-            phones = [entry.phoneme for entry in lab]
+            phones = lab  # [entry.phoneme for entry in lab]
             import time
             start = time.time()
             mgc, att = self.vocoder.generate(phones, max_size=max_size)
-            mgc = self._denormalize(mgc, mean=self.mean, stdev=self.stdev)
+            # mgc = self._denormalize(mgc, mean=self.mean, stdev=self.stdev)
 
-            self.array2file(self._denormalize(mgc, mean=self.mean, stdev=self.stdev),
-                            'data/output/' + file[file.rfind('/') + 1:] + '.mgc')
-            mgc = self._normalize(mgc, mean=self.mean, stdev=self.stdev)
+            self.array2file(mgc, 'data/output/' + file[file.rfind('/') + 1:] + '.mgc')
+            # mgc = self._normalize(mgc, mean=self.mean, stdev=self.stdev)
             att = [a.value() for a in att]
             new_att = np.zeros((len(att), len(phones) + 2, 3), dtype=np.uint8)
 
@@ -82,16 +76,6 @@ class Trainer:
             sys.stdout.write('\n')
             sys.stdout.flush()
 
-    def _normalize(self, mgc, mean, stdev):
-        for x in xrange(mgc.shape[0]):
-            mgc[x] = np.clip((mgc[x] - self.min_db) / (self.max_db - self.min_db), 1e-8, 1.0)
-        return mgc
-
-    def _denormalize(self, mgc, mean, stdev):
-        for x in xrange(mgc.shape[0]):
-            mgc[x] = mgc[x] * (self.max_db - self.min_db) + self.min_db
-        return mgc
-
     def _render_devset(self):
         sys.stdout.write('\tRendering devset\n')
         file_index = 1
@@ -102,7 +86,7 @@ class Trainer:
             file_index += 1
             mgc_file = file + ".mgc.npy"
             mgc = np.load(mgc_file)
-            mgc = self._normalize(mgc, self.mean, self.stdev)
+            # mgc = self._normalize(mgc, self.mean, self.stdev)
             print mgc.shape
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
@@ -126,66 +110,11 @@ class Trainer:
         left_itt = itt_no_improve
         dio = DatasetIO()
 
-        sys.stdout.write("Computing mean and standard deviation for spectral parameters\n")
-        file_index = 1
-        mean = None
-        stdev = None
-        count = 0
-        min_db = None
-        max_db = None
-        for file in self.trainset.files:
-            sys.stdout.write("\r\tFile " + str(file_index) + "/" + str(len(self.trainset.files)))
-            sys.stdout.flush()
-            mgc_file = file + ".mgc.npy"
-            mgc = np.load(mgc_file)
-            if mean is None:
-                mean = np.zeros((mgc.shape[1]))
-                stdev = np.zeros((mgc.shape[1]))
-            for frame in mgc:
-                mean += frame
-                max_val = frame[np.argmax(frame)]
-                min_val = frame[np.argmin(frame)]
-
-                if min_db is None or min_val < min_db:
-                    min_db = min_val
-                if max_db is None or max_val > max_db:
-                    max_db = max_val
-            count += mgc.shape[0]
-            file_index += 1
-        mean /= count
-        file_index = 1
-
-        for file in self.trainset.files:
-            sys.stdout.write("\r\tFile " + str(file_index) + "/" + str(len(self.trainset.files)))
-            sys.stdout.flush()
-            mgc_file = file + ".mgc.npy"
-            mgc = np.load(mgc_file)
-            for frame in mgc:
-                stdev += np.power((frame - mean), 2)
-            file_index += 1
-
-        stdev /= count
-        stdev = np.sqrt(stdev)
-        self.mean = mean
-        self.stdev = stdev
-        self.min_db = min_db
-        self.max_db = max_db
-        self._render_devset()
-        sys.stdout.write("\n")
-        print 'mean =', mean
-        print 'stdev =', stdev
-        print 'min_db =', min_db
-        print 'max_db =', max_db
         if params.no_bounds:
             max_mgc = -1
         else:
             max_mgc = 1000
         self.synth_devset(max_size=max_mgc)
-        np.save('data/models/mean_encoder', self.mean)
-        np.save('data/models/stdev_encoder', self.stdev)
-        with open('data/models/min_max_encoder', 'w') as f:
-            f.write(str(min_db) + ' ' + str(max_db) + '\n')
-            f.close()
         self.vocoder.store('data/models/rnn_encoder')
         # self.synth_devset(batch_size, target_sample_rate)
         while left_itt > 0:
@@ -203,11 +132,10 @@ class Trainer:
                 mgc_file = file + ".mgc.npy"
                 mgc = np.load(mgc_file)
 
-                lab_file = file + ".txt"
+                lab_file = file + ".lab"
                 lab = dio.read_lab(lab_file)
-                phones = [entry.phoneme for entry in lab]
-                # custom normalization - we are now using binary divergence
-                mgc = self._normalize(mgc, mean, stdev)
+                phones = lab
+
                 file_index += 1
 
                 import time
@@ -223,19 +151,9 @@ class Trainer:
                 sys.stdout.write('\n')
                 sys.stdout.flush()
                 if file_index % 200 == 0:
-                    print 'max_db =', max_db
-                    if params.no_bounds:
-                        max_mgc = -1
-                    else:
-                        max_mgc = 1000
                     self.synth_devset(max_size=max_mgc)
                     self.vocoder.store('data/models/rnn_encoder')
 
-            print 'max_db =', max_db
-            if params.no_bounds:
-                max_mgc = -1
-            else:
-                max_mgc = 1000
             self.synth_devset(max_size=max_mgc)
             self.vocoder.store('data/models/rnn_encoder')
 
