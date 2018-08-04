@@ -8,13 +8,18 @@ class Encodings:
     def __init__(self):
         self.char2int = {}
         self.context2int = {}
+        self.speaker2int = {}
 
     def update(self, pi):
         if pi.char not in self.char2int:
             self.char2int[pi.char] = len(self.char2int)
         for feature in pi.context:
-            if feature not in self.context2int:
-                self.context2int[feature] = len(self.context2int)
+            if not feature.startswith("SPEAKER:"):
+                if feature not in self.context2int:
+                    self.context2int[feature] = len(self.context2int)
+            else:
+                if feature not in self.speaker2int:
+                    self.speaker2int[feature] = len(self.speaker2int)
 
     def store(self, filename):
         f = open(filename, 'w')
@@ -24,19 +29,27 @@ class Encodings:
         f.write('FEATURES\t' + str(len(self.context2int)) + '\n')
         for feature in self.context2int:
             f.write(feature.encode('utf-8') + '\t' + str(self.context2int[feature]) + '\n')
+        f.write('SPEAKERS\t' + str(len(self.speaker2int)) + '\n')
+        for feature in self.speaker2int:
+            f.write(feature.encode('utf-8') + '\t' + str(self.speaker2int[feature]) + '\n')
         f.close()
 
     def load(self, filename):
         f = open(filename)
         num_symbols = int(f.readline().split('\t')[1])
         for x in range(num_symbols):
-            parts = f.readline().encode('utf-8').split('\t')
+            parts = f.readline().decode('utf-8').split('\t')
             self.char2int[parts[0]] = int(parts[1])
 
         num_features = int(f.readline().split('\t')[1])
         for x in range(num_features):
-            parts = f.readline().encode('utf-8').split('\t')
+            parts = f.readline().decode('utf-8').split('\t')
             self.context2int[parts[0]] = int(parts[1])
+
+        num_speakers = int(f.readline().split('\t')[1])
+        for x in range(num_speakers):
+            parts = f.readline().decode('utf-8').split('\t')
+            self.speaker2int[parts[0]] = int(parts[1])
         f.close()
 
 

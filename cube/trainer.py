@@ -237,20 +237,22 @@ if __name__ == '__main__':
 
         encodings=Encodings()
         count=0
-        for train_file in trainset.files:
-            count+=1
-            if count%100==0:
-                sys.stdout.write('\r'+str(count)+'/'+str(len(trainset.files))+' processed files')
-                sys.stdout.flush()
-            from io_modules.dataset import DatasetIO
-            dio = DatasetIO()
-            lab_list = dio.read_lab(train_file + ".lab")
-            for entry in lab_list:
-                encodings.update(entry)
-        sys.stdout.write('\r' + str(count) + '/' + str(len(trainset.files)) + ' processed files\n')
-        sys.stdout.write('Found ' + str(len(encodings.char2int)) + ' unique symbols and '+str(len(encodings.context2int))+' unique features\n')
-        encodings.store('data/models/encoder.encodings')
-
+        if not params.resume:
+            for train_file in trainset.files:
+                count+=1
+                if count%100==0:
+                    sys.stdout.write('\r'+str(count)+'/'+str(len(trainset.files))+' processed files')
+                    sys.stdout.flush()
+                from io_modules.dataset import DatasetIO
+                dio = DatasetIO()
+                lab_list = dio.read_lab(train_file + ".lab")
+                for entry in lab_list:
+                    encodings.update(entry)
+            sys.stdout.write('\r' + str(count) + '/' + str(len(trainset.files)) + ' processed files\n')
+            sys.stdout.write('Found ' + str(len(encodings.char2int)) + ' unique symbols, '+str(len(encodings.context2int))+' unique features and '+str(len(encodings.speaker2int))+' unique speakers\n')
+            encodings.store('data/models/encoder.encodings')
+        else:
+            encodings.load('data/models/encoder.encodings')
 
         encoder = Encoder(params, encodings)
         if params.resume:

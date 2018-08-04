@@ -23,10 +23,12 @@ class Encoder:
         self.model = model
         self.params = params
         self.PHONE_EMBEDDINGS_SIZE = 100
+        self.SPEAKER_EMBEDDINGS_SIZE = 200
         self.ENCODER_SIZE = 200
         self.ENCODER_LAYERS = 2
-        self.DECODER_SIZE = 200
+        self.DECODER_SIZE = 400
         self.DECODER_LAYERS = 2
+        self.MGC_PROJ_SIZE = 100
         self.encodings = encodings
 
         if self.model is None:
@@ -37,6 +39,8 @@ class Encoder:
 
         self.phone_lookup = self.model.add_lookup_parameters((len(encodings.char2int), self.PHONE_EMBEDDINGS_SIZE))
         self.feature_lookup = self.model.add_lookup_parameters((len(encodings.context2int), self.PHONE_EMBEDDINGS_SIZE))
+        self.speaker_lookup = self.model.add_lookup_parameters(
+            (len(encodings.speaker2int), self.SPEAKER_EMBEDDINGS_SIZE))
         from utils import orthonormal_VanillaLSTMBuilder
         self.encoder_fw = []
         self.encoder_bw = []
@@ -51,7 +55,8 @@ class Encoder:
             self.encoder_bw.append(
                 orthonormal_VanillaLSTMBuilder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
 
-        self.decoder = orthonormal_VanillaLSTMBuilder(self.DECODER_LAYERS, self.ENCODER_SIZE * 2 + 100,
+        self.decoder = orthonormal_VanillaLSTMBuilder(self.DECODER_LAYERS,
+                                                      self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE,
                                                       self.DECODER_SIZE, self.model)
 
         # self.aux_hid_w = self.model.add_parameters((500, self.ENCODER_SIZE * 2))
@@ -69,22 +74,24 @@ class Encoder:
         self.proj_w_3 = self.model.add_parameters((params.mgc_order, 500))
         self.proj_b_3 = self.model.add_parameters((params.mgc_order))
 
-        self.highway_w = self.model.add_parameters((params.mgc_order, self.ENCODER_SIZE * 2))
+        self.highway_w = self.model.add_parameters(
+            (params.mgc_order, self.ENCODER_SIZE * 2 + self.SPEAKER_EMBEDDINGS_SIZE))
 
-        self.last_mgc_proj_w = self.model.add_parameters((100, self.params.mgc_order))
-        self.last_mgc_proj_b = self.model.add_parameters((100))
+        self.last_mgc_proj_w = self.model.add_parameters((self.MGC_PROJ_SIZE, self.params.mgc_order))
+        self.last_mgc_proj_b = self.model.add_parameters((self.MGC_PROJ_SIZE))
         # self.last_att_proj_w = self.model.add_parameters((200, self.ENCODER_SIZE * 2))
         # self.last_att_proj_b = self.model.add_parameters((200))
 
         self.stop_w = self.model.add_parameters((1, self.DECODER_SIZE))
         self.stop_b = self.model.add_parameters((1))
 
-        self.att_w1 = self.model.add_parameters((100, self.ENCODER_SIZE * 2))
+        self.att_w1 = self.model.add_parameters((100, self.ENCODER_SIZE * 2 + self.SPEAKER_EMBEDDINGS_SIZE))
         self.att_w2 = self.model.add_parameters((100, self.DECODER_SIZE))
         self.att_v = self.model.add_parameters((1, 100))
 
         self.start_lookup = self.model.add_lookup_parameters((1, params.mgc_order))
-        self.decoder_start_lookup = self.model.add_lookup_parameters((1, self.ENCODER_SIZE * 2 + 100))
+        self.decoder_start_lookup = self.model.add_lookup_parameters(
+            (1, self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE))
 
     def _make_input(self, seq):
         x_list = [self.phone_lookup[self.encodings.char2int['START']]]
@@ -100,6 +107,13 @@ class Encoder:
                 x_list.append(char_emb + dy.esum(context) * dy.scalarInput(1.0 / len(context)))
         x_list.append(self.phone_lookup[self.encodings.char2int['STOP']])
         return x_list
+
+    def _get_speaker_embedding(self, seq):
+        for entry in seq:
+            for feature in entry.context:
+                if feature.startswith('SPEAKER:'):
+                    return self.speaker_lookup[self.encodings.speaker2int[feature]]
+        return None
 
     def _predict(self, characters, gold_mgc=None, max_size=-1):
         if gold_mgc is None:
@@ -121,7 +135,11 @@ class Encoder:
             x_bw = lstm_bw.initial_state().transduce(reversed(x_input))
             x_input = [dy.concatenate([fw, bw]) for fw, bw in zip(x_fw, reversed(x_bw))]
 
-        encoder = x_input
+        x_speaker = self._get_speaker_embedding(characters)
+        final_input = []
+        for x in x_input:
+            final_input.append(dy.concatenate([x, x_speaker]))
+        encoder = final_input
 
         decoder = self.decoder.initial_state().add_input(self.decoder_start_lookup[0])
         last_att_pos = None
@@ -201,9 +219,9 @@ class Encoder:
                 # EOS loss
                 stop = output_stop[index / 3]
                 if index >= num_mgc - 6:
-                    losses.append(dy.l1_distance(stop, dy.scalarInput(-1.0)))
+                    losses.append(dy.l1_distance(stop, dy.scalarInput(-0.8)))
                 else:
-                    losses.append(dy.l1_distance(stop, dy.scalarInput(1.0)))
+                    losses.append(dy.l1_distance(stop, dy.scalarInput(0.8)))
             index += 1
         loss = dy.esum(losses)
         loss_val = loss.value() / num_mgc
