@@ -19,7 +19,7 @@ import numpy as np
 
 
 class Encoder:
-    def __init__(self, params, encodings, model=None):
+    def __init__(self, params, encodings, model=None, runtime=False):
         self.model = model
         self.params = params
         self.PHONE_EMBEDDINGS_SIZE = 100
@@ -30,6 +30,10 @@ class Encoder:
         self.DECODER_LAYERS = 2
         self.MGC_PROJ_SIZE = 100
         self.encodings = encodings
+        from utils import orthonormal_VanillaLSTMBuilder
+        lstm_builder = orthonormal_VanillaLSTMBuilder
+        if runtime:
+            lstm_builder = dy.VanillaLSTMBuilder
 
         if self.model is None:
             self.model = dy.Model()
@@ -41,23 +45,23 @@ class Encoder:
         self.feature_lookup = self.model.add_lookup_parameters((len(encodings.context2int), self.PHONE_EMBEDDINGS_SIZE))
         self.speaker_lookup = self.model.add_lookup_parameters(
             (len(encodings.speaker2int), self.SPEAKER_EMBEDDINGS_SIZE))
-        from utils import orthonormal_VanillaLSTMBuilder
         self.encoder_fw = []
         self.encoder_bw = []
+
         self.encoder_fw.append(
-            orthonormal_VanillaLSTMBuilder(1, self.PHONE_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
+            lstm_builder(1, self.PHONE_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
         self.encoder_bw.append(
-            orthonormal_VanillaLSTMBuilder(1, self.PHONE_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
+            lstm_builder(1, self.PHONE_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
 
         for zz in xrange(1, self.ENCODER_LAYERS):
             self.encoder_fw.append(
-                orthonormal_VanillaLSTMBuilder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
+                lstm_builder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
             self.encoder_bw.append(
-                orthonormal_VanillaLSTMBuilder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
+                lstm_builder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
 
-        self.decoder = orthonormal_VanillaLSTMBuilder(self.DECODER_LAYERS,
-                                                      self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE,
-                                                      self.DECODER_SIZE, self.model)
+        self.decoder = lstm_builder(self.DECODER_LAYERS,
+                                    self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE,
+                                    self.DECODER_SIZE, self.model)
 
         # self.aux_hid_w = self.model.add_parameters((500, self.ENCODER_SIZE * 2))
         # self.aux_hid_b = self.model.add_parameters((500))
@@ -145,11 +149,24 @@ class Encoder:
         last_att_pos = None
         if gold_mgc is None:
             last_att_pos = 0
+
+        # stationed_count = 0
+        # stationed_index = 0
         while True:
             att, align = self._attend(encoder, decoder, last_att_pos)
-
             if gold_mgc is None:
                 last_att_pos = np.argmax(align.value())
+            # if runtime:
+            #     if last_att_pos <= 1:
+            #         stationed_count += 1
+            #         if stationed_count > 5:  # approx 200 ms on the same phone
+            #             last_att_pos += 1
+            #             stationed_count = 0
+            #             stationed_index += 1
+            #     else:
+            #         stationed_count = 0
+            #         stationed_index = last_att_pos
+
             output_att.append(align)
             # main output
             mgc_proj = dy.tanh(self.last_mgc_proj_w.expr() * last_mgc + self.last_mgc_proj_b.expr())
@@ -172,7 +189,7 @@ class Encoder:
                 if max_size == -1 and output_stop[-1].value() < -0.5:
                     break
 
-                if mgc_index >= len(characters) * 10:  # safeguard
+                if mgc_index >= len(characters) * 7:  # safeguard
                     break
             else:
                 last_mgc = dy.inputVector(gold_mgc[min(mgc_index + 2, len(gold_mgc) - 1)])

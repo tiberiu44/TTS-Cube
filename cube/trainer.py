@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser.add_option('--target-sample-rate', action='store', dest='target_sample_rate',
                       help='Resample input files at this rate (default=16000)', type='int', default=16000)
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
-                      help='Order of MGC parameters (default=80)', default=60)
+                      help='Order of MGC parameters (default=60)', default=60)
 
     (params, _) = parser.parse_args(sys.argv)
 
@@ -105,7 +105,7 @@ if __name__ == '__main__':
                 style = 'CASE:symb'
             elif l_char != char:
                 style = 'CASE:upper'
-            speaker = 'SPEAKER:' + txt_file.replace('\\','/').split('_')[0].split('/')[-1]
+            speaker = 'SPEAKER:' + txt_file.replace('\\', '/').split('_')[0].split('/')[-1]
             fout.write(l_char.encode('utf-8') + '\t' + speaker + '\t' + style + '\n')
 
         fout.write('STOP\n')
@@ -235,13 +235,13 @@ if __name__ == '__main__':
         sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
             len(devset.files)) + ' development files\n')
 
-        encodings=Encodings()
-        count=0
+        encodings = Encodings()
+        count = 0
         if not params.resume:
             for train_file in trainset.files:
-                count+=1
-                if count%100==0:
-                    sys.stdout.write('\r'+str(count)+'/'+str(len(trainset.files))+' processed files')
+                count += 1
+                if count % 100 == 0:
+                    sys.stdout.write('\r' + str(count) + '/' + str(len(trainset.files)) + ' processed files')
                     sys.stdout.flush()
                 from io_modules.dataset import DatasetIO
                 dio = DatasetIO()
@@ -249,7 +249,9 @@ if __name__ == '__main__':
                 for entry in lab_list:
                     encodings.update(entry)
             sys.stdout.write('\r' + str(count) + '/' + str(len(trainset.files)) + ' processed files\n')
-            sys.stdout.write('Found ' + str(len(encodings.char2int)) + ' unique symbols, '+str(len(encodings.context2int))+' unique features and '+str(len(encodings.speaker2int))+' unique speakers\n')
+            sys.stdout.write('Found ' + str(len(encodings.char2int)) + ' unique symbols, ' + str(
+                len(encodings.context2int)) + ' unique features and ' + str(
+                len(encodings.speaker2int)) + ' unique speakers\n')
             encodings.store('data/models/encoder.encodings')
         else:
             encodings.load('data/models/encoder.encodings')

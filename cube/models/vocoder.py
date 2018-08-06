@@ -20,7 +20,7 @@ import sys
 
 
 class Vocoder:
-    def __init__(self, params, model=None):
+    def __init__(self, params, model=None, runtime=False):
         self.UPSAMPLE_PROJ = 200
         self.RNN_SIZE = 448
         self.RNN_LAYERS = 1
@@ -36,6 +36,10 @@ class Vocoder:
         self.trainer.set_clip_threshold(5.0)
         # self.trainer = dy.AdamTrainer(self.model)
         # MGCs are extracted at 12.5 ms
+        from utils import orthonormal_VanillaLSTMBuilder
+        lstm_builder = orthonormal_VanillaLSTMBuilder
+        if runtime:
+            lstm_builder = dy.VanillaLSTMBuilder
 
         upsample_count = int(12.5 * self.params.target_sample_rate / 1000)
         # self.upsample_w_s = []
@@ -50,12 +54,11 @@ class Vocoder:
 
         self.output_coarse_lookup = self.model.add_lookup_parameters((256, self.OUTPUT_EMB_SIZE))
         self.output_fine_lookup = self.model.add_lookup_parameters((256, self.OUTPUT_EMB_SIZE))
-        from utils import orthonormal_VanillaLSTMBuilder
         # self.rnn = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE + self.UPSAMPLE_PROJ, self.RNN_SIZE, self.model)
-        self.rnnCoarse = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 2 + self.UPSAMPLE_PROJ,
-                                                        self.RNN_SIZE, self.model)
-        self.rnnFine = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 3 + self.UPSAMPLE_PROJ,
-                                                      self.RNN_SIZE, self.model)
+        self.rnnCoarse = lstm_builder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 2 + self.UPSAMPLE_PROJ,
+                                      self.RNN_SIZE, self.model)
+        self.rnnFine = lstm_builder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 3 + self.UPSAMPLE_PROJ,
+                                    self.RNN_SIZE, self.model)
         # self.rnnCoarse = dy.GRUBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 2 + self.UPSAMPLE_PROJ,
         #                                self.RNN_SIZE, self.model)
         # self.rnnFine = dy.GRUBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 3 + self.UPSAMPLE_PROJ,
