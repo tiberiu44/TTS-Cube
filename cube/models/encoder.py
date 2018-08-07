@@ -150,22 +150,16 @@ class Encoder:
         if gold_mgc is None:
             last_att_pos = 0
 
-        # stationed_count = 0
+        stationed_count = 0
         # stationed_index = 0
         while True:
             att, align = self._attend(encoder, decoder, last_att_pos)
             if gold_mgc is None:
                 last_att_pos = np.argmax(align.value())
-            # if runtime:
-            #     if last_att_pos <= 1:
-            #         stationed_count += 1
-            #         if stationed_count > 5:  # approx 200 ms on the same phone
-            #             last_att_pos += 1
-            #             stationed_count = 0
-            #             stationed_index += 1
-            #     else:
-            #         stationed_count = 0
-            #         stationed_index = last_att_pos
+            if runtime and last_att_pos == len(characters) - 1:
+                stationed_count += 1
+                if stationed_count > 5:
+                    break
 
             output_att.append(align)
             # main output
@@ -186,6 +180,7 @@ class Encoder:
                 if max_size != -1 and mgc_index > max_size:
                     break
                 last_mgc = dy.inputVector(output.value())
+                # print output_stop[-1].value()
                 if max_size == -1 and output_stop[-1].value() < -0.5:
                     break
 

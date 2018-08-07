@@ -255,8 +255,11 @@ if __name__ == '__main__':
             encodings.store('data/models/encoder.encodings')
         else:
             encodings.load('data/models/encoder.encodings')
-
-        encoder = Encoder(params, encodings)
+        if params.resume:
+            runtime = True  # avoid ortonormal initialization
+        else:
+            runtime = False
+        encoder = Encoder(params, encodings, runtime=runtime)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             encoder.load('data/models/rnn_encoder')
@@ -272,7 +275,7 @@ if __name__ == '__main__':
         from io_modules.dataset import Dataset
         from models.vocoder import Vocoder
         from trainers.vocoder import Trainer
-        vocoder = Vocoder(params)
+        vocoder = Vocoder(params, runtime=True)
         vocoder.load('data/models/rnn')
         trainset = Dataset("data/processed/train")
         devset = Dataset("data/processed/dev")
