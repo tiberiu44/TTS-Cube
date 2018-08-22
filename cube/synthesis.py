@@ -102,7 +102,7 @@ def synthesize(speaker, input_file, output_file, params):
     mgc = _normalize(mgc, mean, stdev)
     import time
     start = time.time()
-    signal = vocoder.synthesize(mgc, batch_size=1000, temperature=0.8)
+    signal = vocoder.synthesize(mgc, batch_size=1000, temperature=params.temperature)
     stop = time.time()
     sys.stdout.write(" execution time=" + str(stop - start))
     sys.stdout.write('\n')
@@ -129,6 +129,8 @@ if __name__ == '__main__':
                       help='turn on/off GPU support')
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
                       help='Order of MGC parameters (default=60)', default=60)
+    parser.add_option('--temperature', action='store', dest='temperature', type='float',
+                      help='Exploration parameter (max 1.0, default 0.8)', default=0.8)
     parser.add_option('--target-sample-rate', action='store', dest='target_sample_rate',
                       help='Resample input files at this rate (default=16000)', type='int', default=16000)
 
