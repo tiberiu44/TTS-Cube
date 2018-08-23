@@ -88,8 +88,8 @@ class Vocoder:
             mgc_index_next -= 1
         mgc_vect = dy.concatenate([dy.inputVector(mgc[mgc_index]), dy.inputVector(mgc[mgc_index_next])])
         for x in xrange(stop - start):
-            # sigm = dy.logistic(self.upsample_w_s[ups_index].expr() * mgc_vect + self.upsample_b_s[ups_index].expr())
-            tnh = dy.tanh(self.upsample_w_t[ups_index].expr() * mgc_vect + self.upsample_b_t[ups_index].expr())
+            # sigm = dy.logistic(self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(update=True))
+            tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(update=True))
             # r = dy.cmult(sigm, tnh)
             upsampled.append(tnh)
             ups_index += 1
@@ -112,8 +112,8 @@ class Vocoder:
         upsampled = []
         mgc_vect = dy.inputVector(mgc[mgc_index])
         for x in xrange(stop - start):
-            # sigm = dy.logistic(self.upsample_w_s[ups_index].expr() * mgc_vect + self.upsample_b_s[ups_index].expr())
-            tnh = dy.tanh(self.upsample_w_t[ups_index].expr() * mgc_vect + self.upsample_b_t[ups_index].expr())
+            # sigm = dy.logistic(self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(update=True))
+            tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(update=True))
             # r = dy.cmult(sigm, tnh)
             upsampled.append(tnh)
             ups_index += 1
@@ -198,8 +198,8 @@ class Vocoder:
                 rnn_coarse_output = rnnCoarse.output()
                 hidden = rnn_coarse_output
                 for w, b in zip(self.mlp_coarse_w, self.mlp_coarse_b):
-                    hidden = dy.rectify(w.expr() * hidden + b.expr())
-                softmax_coarse_output = dy.softmax(self.softmax_coarse_w.expr() * hidden + self.softmax_coarse_b.expr())
+                    hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
+                softmax_coarse_output = dy.softmax(self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
 
                 selected_coarse_sample = self._pick_sample(softmax_coarse_output.npvalue(), temperature=temperature)
                 # selected_coarse_sample = self._fast_sample(softmax_coarse_output, temperature=temperature)
@@ -218,8 +218,8 @@ class Vocoder:
                 rnn_fine_output = rnnFine.output()
                 hidden = rnn_fine_output
                 for w, b in zip(self.mlp_fine_w, self.mlp_fine_b):
-                    hidden = dy.rectify(w.expr() * hidden + b.expr())
-                softmax_fine_output = dy.softmax(self.softmax_coarse_w.expr() * hidden + self.softmax_coarse_b.expr())
+                    hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
+                softmax_fine_output = dy.softmax(self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
 
                 # selected_fine_sample = np.argmax(softmax_fine_output.npvalue())
                 selected_fine_sample = self._pick_sample(softmax_fine_output.npvalue(), temperature=temperature)
@@ -295,8 +295,8 @@ class Vocoder:
                 rnn_coarse_output = rnnCoarse.output()
                 hidden = rnn_coarse_output
                 for w, b in zip(self.mlp_coarse_w, self.mlp_coarse_b):
-                    hidden = dy.rectify(w.expr() * hidden + b.expr())
-                softmax_coarse_output = self.softmax_coarse_w.expr() * hidden + self.softmax_coarse_b.expr()  # dy.softmax(self.softmax_coarse_w.expr() * hidden + self.softmax_coarse_b.expr())
+                    hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
+                softmax_coarse_output = self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True)  # dy.softmax(self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
 
                 real_sample = wave[start + index]
                 real_coarse_sample = int(real_sample / 256)
@@ -318,8 +318,8 @@ class Vocoder:
                 rnn_fine_output = rnnFine.output()
                 hidden = rnn_fine_output
                 for w, b in zip(self.mlp_fine_w, self.mlp_fine_b):
-                    hidden = dy.rectify(w.expr() * hidden + b.expr())
-                softmax_fine_output = self.softmax_coarse_w.expr() * hidden + self.softmax_coarse_b.expr()  # dy.softmax(self.softmax_coarse_w.expr() * hidden + self.softmax_coarse_b.expr())
+                    hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
+                softmax_fine_output = self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True)  # dy.softmax(self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
                 losses.append(dy.pickneglogsoftmax(softmax_fine_output, real_fine_sample) * 0.5)
 
                 last_coarse_sample = real_coarse_sample
@@ -388,8 +388,8 @@ class VocoderOld:
         upsampled = []
         mgc_vect = dy.inputVector(mgc[mgc_index])
         for x in xrange(stop - start):
-            sigm = dy.logistic(self.upsample_w_s[ups_index].expr() * mgc_vect + self.upsample_b_s[ups_index].expr())
-            tnh = dy.tanh(self.upsample_w_t[ups_index].expr() * mgc_vect + self.upsample_b_t[ups_index].expr())
+            sigm = dy.logistic(self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(update=True))
+            tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(update=True))
             r = dy.cmult(sigm, tnh)
             upsampled.append(r)
             ups_index += 1
@@ -454,8 +454,8 @@ class VocoderOld:
                 rnn_output = rnn.output()  # dy.layer_norm(rnn.output(), gain, bias)
                 hidden = rnn_output
                 for w, b in zip(self.mlp_w, self.mlp_b):
-                    hidden = dy.tanh(w.expr() * hidden + b.expr())
-                softmax_output = dy.softmax(self.softmax_w.expr() * hidden + self.softmax_b.expr())
+                    hidden = dy.tanh(w.expr(update=True) * hidden + b.expr(update=True))
+                softmax_output = dy.softmax(self.softmax_w.expr(update=True) * hidden + self.softmax_b.expr(update=True))
                 out_list.append(softmax_output)
 
                 if sample:
@@ -534,8 +534,8 @@ class VocoderOld:
                 rnn_output = rnn.output()  # dy.layer_norm(rnn.output(), gain, bias)
                 hidden = rnn_output
                 for w, b in zip(self.mlp_w, self.mlp_b):
-                    hidden = dy.tanh(w.expr() * hidden + b.expr())
-                softmax_output = dy.softmax(self.softmax_w.expr() * hidden + self.softmax_b.expr())
+                    hidden = dy.tanh(w.expr(update=True) * hidden + b.expr(update=True))
+                softmax_output = dy.softmax(self.softmax_w.expr(update=True) * hidden + self.softmax_b.expr(update=True))
                 out_list.append(softmax_output)
                 target_output = ulaw_wave[start + index]
                 losses.append(-dy.log(dy.pick(softmax_output, target_output)))

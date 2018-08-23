@@ -163,18 +163,18 @@ class Encoder:
 
             output_att.append(align)
             # main output
-            mgc_proj = dy.tanh(self.last_mgc_proj_w.expr() * last_mgc + self.last_mgc_proj_b.expr())
+            mgc_proj = dy.tanh(self.last_mgc_proj_w.expr(update=True) * last_mgc + self.last_mgc_proj_b.expr(update=True))
             decoder = decoder.add_input(dy.concatenate([mgc_proj, att]))
-            hidden = dy.tanh(self.hid_w.expr() * decoder.output() + self.hid_b.expr())
+            hidden = dy.tanh(self.hid_w.expr(update=True) * decoder.output() + self.hid_b.expr(update=True))
 
-            output = dy.logistic(self.highway_w.expr() * att + self.proj_w_1.expr() * hidden + self.proj_b_1.expr())
+            output = dy.logistic(self.highway_w.expr(update=True) * att + self.proj_w_1.expr(update=True) * hidden + self.proj_b_1.expr(update=True))
             output_mgc.append(output)
-            output = dy.logistic(self.highway_w.expr() * att + self.proj_w_2.expr() * hidden + self.proj_b_2.expr())
+            output = dy.logistic(self.highway_w.expr(update=True) * att + self.proj_w_2.expr(update=True) * hidden + self.proj_b_2.expr(update=True))
             output_mgc.append(output)
-            output = dy.logistic(self.highway_w.expr() * att + self.proj_w_3.expr() * hidden + self.proj_b_3.expr())
+            output = dy.logistic(self.highway_w.expr(update=True) * att + self.proj_w_3.expr(update=True) * hidden + self.proj_b_3.expr(update=True))
             output_mgc.append(output)
 
-            output_stop.append(dy.tanh(self.stop_w.expr() * decoder.output() + self.stop_b.expr()))
+            output_stop.append(dy.tanh(self.stop_w.expr(update=True) * decoder.output() + self.stop_b.expr(update=True)))
 
             if runtime:
                 if max_size != -1 and mgc_index > max_size:
@@ -259,9 +259,9 @@ class Encoder:
         self.model.populate(output_base + ".network")
 
     def _attend(self, input_list, decoder_state, last_pos=None):
-        w1 = self.att_w1.expr()
-        w2 = self.att_w2.expr()
-        v = self.att_v.expr()
+        w1 = self.att_w1.expr(update=True)
+        w2 = self.att_w2.expr(update=True)
+        v = self.att_v.expr(update=True)
         attention_weights = []
 
         w2dt = w2 * dy.concatenate([decoder_state.s()[-1]])
