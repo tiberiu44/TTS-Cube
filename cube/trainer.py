@@ -105,7 +105,10 @@ if __name__ == '__main__':
                 style = 'CASE:symb'
             elif l_char != char:
                 style = 'CASE:upper'
-            speaker = 'SPEAKER:' + txt_file.replace('\\', '/').split('_')[0].split('/')[-1]
+            if len(txt_file.replace('\\', '/').split('/')[-1].split('_')) != 1:
+                speaker = 'SPEAKER:' + txt_file.replace('\\', '/').split('_')[0].split('/')[-1]
+            else:
+                speaker = 'SPEAKER:none'
             fout.write(l_char.encode('utf-8') + '\t' + speaker + '\t' + style + '\n')
 
         fout.write('STOP\n')

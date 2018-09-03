@@ -52,13 +52,6 @@ def create_lab_input(txt_file, speaker_ident):
     fin.close()
     return seq
 
-
-def _normalize(mgc, mean, stdev):
-    for x in xrange(mgc.shape[0]):
-        mgc[x] = (mgc[x] - mean) / stdev
-    return mgc
-
-
 def _render_spectrogram(mgc, output_file):
     bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
     mgc_min = mgc.min()
@@ -95,11 +88,8 @@ def synthesize(speaker, input_file, output_file, params):
     from models.vocoder import Vocoder
     from trainers.vocoder import Trainer
     vocoder = Vocoder(params, runtime=True)
-    vocoder.load('data/models/rnn')
-    mean = np.load('data/models/mean.npy')
-    stdev = np.load('data/models/stdev.npy')
+    vocoder.load('data/models/rnn_vocoder')
 
-    mgc = _normalize(mgc, mean, stdev)
     import time
     start = time.time()
     signal = vocoder.synthesize(mgc, batch_size=1000, temperature=params.temperature)

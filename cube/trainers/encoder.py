@@ -43,10 +43,8 @@ class Trainer:
             import time
             start = time.time()
             mgc, att = self.vocoder.generate(phones, max_size=max_size)
-            # mgc = self._denormalize(mgc, mean=self.mean, stdev=self.stdev)
 
             self.array2file(mgc, 'data/output/' + file[file.rfind('/') + 1:] + '.mgc')
-            # mgc = self._normalize(mgc, mean=self.mean, stdev=self.stdev)
             att = [a.value() for a in att]
             new_att = np.zeros((len(att), len(phones) + 2, 3), dtype=np.uint8)
 
@@ -86,7 +84,6 @@ class Trainer:
             file_index += 1
             mgc_file = file + ".mgc.npy"
             mgc = np.load(mgc_file)
-            # mgc = self._normalize(mgc, self.mean, self.stdev)
             print mgc.shape
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
@@ -116,7 +113,6 @@ class Trainer:
             max_mgc = 1000
         self.synth_devset(max_size=max_mgc)
         self.vocoder.store('data/models/rnn_encoder')
-        # self.synth_devset(batch_size, target_sample_rate)
         while left_itt > 0:
             sys.stdout.write("Starting epoch " + str(epoch) + "\n")
             sys.stdout.write("Shuffling training data\n")
