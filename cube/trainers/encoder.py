@@ -61,8 +61,8 @@ class Trainer:
 
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
-            for x in xrange(mgc.shape[0]):
-                for y in xrange(mgc.shape[1]):
+            for x in range(mgc.shape[0]):
+                for y in range(mgc.shape[1]):
                     val = mgc[x, y]
                     color = np.clip(val * 255, 0, 255)
                     bitmap[y, x] = [color, color, color]
@@ -84,11 +84,11 @@ class Trainer:
             file_index += 1
             mgc_file = file + ".mgc.npy"
             mgc = np.load(mgc_file)
-            print mgc.shape
+            #print mgc.shape
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
-            for x in xrange(mgc.shape[0]):
-                for y in xrange(mgc.shape[1]):
+            for x in range(mgc.shape[0]):
+                for y in range(mgc.shape[1]):
                     val = mgc[x, y]
                     val = val + 2 * self.stdev[y]
                     val = val / 4

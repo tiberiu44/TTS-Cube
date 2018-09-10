@@ -75,8 +75,8 @@ if __name__ == '__main__':
         mgc_min = mgc.min()
         mgc_max = mgc.max()
 
-        for x in xrange(mgc.shape[0]):
-            for y in xrange(mgc.shape[1]):
+        for x in range(mgc.shape[0]):
+            for y in range(mgc.shape[1]):
                 val = (mgc[x, y] - mgc_min) / (mgc_max - mgc_min)
 
                 color = val * 255
@@ -90,7 +90,7 @@ if __name__ == '__main__':
     def create_lab_file(txt_file, lab_file):
         fin = open(txt_file, 'r')
         fout = open(lab_file, 'w')
-        line = fin.readline().decode('utf-8').strip().replace('\t', ' ')
+        line = fin.readline().strip().replace('\t', ' ')
         while True:
             nl = line.replace('  ', ' ')
             if nl == line:
@@ -109,7 +109,7 @@ if __name__ == '__main__':
                 speaker = 'SPEAKER:' + txt_file.replace('\\', '/').split('_')[0].split('/')[-1]
             else:
                 speaker = 'SPEAKER:none'
-            fout.write(l_char.encode('utf-8') + '\t' + speaker + '\t' + style + '\n')
+            fout.write(l_char + '\t' + speaker + '\t' + style + '\n')
 
         fout.write('STOP\n')
 
@@ -159,7 +159,7 @@ if __name__ == '__main__':
         dio = DatasetIO()
         vocoder = MelVocoder()
         base_folder = params.train_folder
-        for index in xrange(len(train_files)):
+        for index in range(len(train_files)):
             sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(train_files)))
             sys.stdout.flush()
             base_name = train_files[index]
@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
         sys.stdout.write('\n')
         base_folder = params.dev_folder
-        for index in xrange(len(dev_files)):
+        for index in range(len(dev_files)):
             sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(dev_files)))
             sys.stdout.flush()
             base_name = dev_files[index]

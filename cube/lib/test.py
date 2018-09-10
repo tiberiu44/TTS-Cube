@@ -25,9 +25,9 @@ if __name__ == '__main__':
     mgc = _normalize(mgc, mean, stdev)
     mgc = mgc.copy(order='C')
     x=cube_runtime.vocode(mgc, stdev, mean, 0.8)
-    from io_modules.dataset import DatasetIO
+    from cube.io_modules.dataset import DatasetIO
     dio = DatasetIO()
     enc = dio.b16_to_float(x, discreete=True)
     output_file = 'test.wav'
     dio.write_wave(output_file, enc, 16000)
-    print x;
+    print (x);
