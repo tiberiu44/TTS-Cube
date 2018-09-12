@@ -219,7 +219,7 @@ if __name__ == '__main__':
         vocoder = Vocoder(params)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
-            vocoder.load('data/models/rnn')
+            vocoder.load('data/models/rnn_vocoder')
         trainset = Dataset("data/processed/train")
         devset = Dataset("data/processed/dev")
         sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
