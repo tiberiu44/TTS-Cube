@@ -36,6 +36,8 @@ def med(l1, l2):
             m = min([mat[ii - 1, jj - 1], mat[ii - 1, jj], mat[ii, jj - 1]])
             mat[ii, jj] = m + cost
 
+    return mat[len(l1), len(l2)]
+
 
 class G2PTrainer:
 
@@ -46,12 +48,13 @@ class G2PTrainer:
         for entry in dataset.entries:
             gold_phon = entry.transcription
             pred_phon = model.transcribe(entry.word)
-
-            total_edit_distance += med(gold_phon, pred_phon)
-            if total_edit_distance != 0:
+            ed = med(gold_phon, pred_phon)
+            total_edit_distance += ed
+            if ed != 0:
                 errors += 1
+                # print (entry.word, gold_phon, pred_phon)
 
-            total_chars += len(gold_phon)
+            total_chars += max([len(gold_phon), len(pred_phon)])
 
         return 1.0 - float(errors) / len(dataset.entries), total_edit_distance / total_chars
 
@@ -96,6 +99,7 @@ class G2PTrainer:
 
             sys.stdout.write(' avg loss=' + str(total_loss / len(trainset.entries)) + '\n')
             sys.stdout.write('\tevaluating...')
+            sys.stdout.flush()
             w_acc, p_acc = self.evaluate(model, devset)
             sys.stdout.write(' word accuracy=' + str(w_acc) + ' and phone edit distance=' + str(p_acc) + '\n')
             if w_acc > best_w_acc:

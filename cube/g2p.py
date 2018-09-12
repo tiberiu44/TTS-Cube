@@ -27,6 +27,8 @@ def train(params):
     sys.stdout.write('Loading datasets...\n')
     trainset = LTSDataset(params.train_file)
     devset = LTSDataset(params.dev_file)
+    sys.stdout.write('Trainset has ' + str(len(trainset.entries)) + ' entries\n')
+    sys.stdout.write('Devset has ' + str(len(devset.entries)) + ' entries\n')
     encodings = Encodings()
     encodings.update_encodings(trainset)
     sys.stdout.write('Found ' + str(len(encodings.char2int)) + ' characters\n')
