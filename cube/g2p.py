@@ -44,8 +44,8 @@ def train(params):
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()
-    parser.add_option("--batch-size", action='store', dest='batch_size', default='1000', type='int',
-                      help='number of samples in a single batch (default=1000)')
+    parser.add_option("--batch-size", action='store', dest='batch_size', default='100', type='int',
+                      help='number of samples in a single batch (default=100)')
     parser.add_option("--set-mem", action='store', dest='memory', default='2048', type='int',
                       help='preallocate memory for batch training (default 2048)')
     parser.add_option("--autobatch", action='store_true', dest='autobatch',

@@ -23,40 +23,43 @@ class G2P:
     def __init__(self, encodings):
         self.losses = []
         self.model = dy.Model()
-        self.trainer = dy.AdamTrainer(self.model)
+        self.trainer = dy.AdamTrainer(self.model, alpha=2e-3, beta_1=0.9, beta_2=0.9)
         self.encodings = encodings
 
-        DECODER_SIZE = 100
-        ENCODER_SIZE = 100
-        CHAR_EMB_SIZE = 100
-        HIDDEN_SIZE = 100
+        self.DECODER_SIZE = 100
+        self.ENCODER_SIZE = 100
+        self.CHAR_EMB_SIZE = 100
+        self.HIDDEN_SIZE = 100
 
-        self.char_lookup = self.model.add_lookup_parameters((len(self.encodings.char2int), CHAR_EMB_SIZE))
+        self.char_lookup = self.model.add_lookup_parameters((len(self.encodings.char2int), self.CHAR_EMB_SIZE))
         self.phoneme_lookup = self.model.add_lookup_parameters(
-            (len(self.encodings.phoneme2int) + 1, CHAR_EMB_SIZE))  # +1 is for special START
+            (len(self.encodings.phoneme2int) + 1, self.CHAR_EMB_SIZE))  # +1 is for special START
 
-        self.start_lookup = self.model.add_lookup_parameters((1, CHAR_EMB_SIZE + ENCODER_SIZE * 2))  # START SYMBOL
+        self.start_lookup = self.model.add_lookup_parameters(
+            (1, self.CHAR_EMB_SIZE + self.ENCODER_SIZE * 2))  # START SYMBOL
 
         self.encoder_fw = []
         self.encoder_bw = []
 
-        input_layer_size = CHAR_EMB_SIZE
+        input_layer_size = self.CHAR_EMB_SIZE
         for ii in range(2):
-            self.encoder_fw.append(dy.VanillaLSTMBuilder(1, input_layer_size, ENCODER_SIZE, self.model))
-            self.encoder_bw.append(dy.VanillaLSTMBuilder(1, input_layer_size, ENCODER_SIZE, self.model))
+            self.encoder_fw.append(dy.VanillaLSTMBuilder(1, input_layer_size, self.ENCODER_SIZE, self.model))
+            self.encoder_bw.append(dy.VanillaLSTMBuilder(1, input_layer_size, self.ENCODER_SIZE, self.model))
 
-            input_layer_size = ENCODER_SIZE * 2
+            input_layer_size = self.ENCODER_SIZE * 2
 
-        self.decoder = dy.VanillaLSTMBuilder(2, ENCODER_SIZE * 2 + CHAR_EMB_SIZE, DECODER_SIZE, self.model)
+        self.decoder = dy.VanillaLSTMBuilder(2, self.ENCODER_SIZE * 2 + self.CHAR_EMB_SIZE, self.DECODER_SIZE,
+                                             self.model)
 
-        self.att_w1 = self.model.add_parameters((100, ENCODER_SIZE * 2))
-        self.att_w2 = self.model.add_parameters((100, DECODER_SIZE))
+        self.att_w1 = self.model.add_parameters((100, self.ENCODER_SIZE * 2))
+        self.att_w2 = self.model.add_parameters((100, self.DECODER_SIZE))
         self.att_v = self.model.add_parameters((1, 100))
 
-        self.hidden_w = self.model.add_parameters((HIDDEN_SIZE, DECODER_SIZE))
-        self.hidden_b = self.model.add_parameters((HIDDEN_SIZE))
+        self.hidden_w = self.model.add_parameters((self.HIDDEN_SIZE, self.DECODER_SIZE))
+        self.hidden_b = self.model.add_parameters((self.HIDDEN_SIZE))
 
-        self.softmax_w = self.model.add_parameters((len(self.encodings.phoneme2int) + 1, HIDDEN_SIZE))  # +1 is for EOS
+        self.softmax_w = self.model.add_parameters(
+            (len(self.encodings.phoneme2int) + 1, self.HIDDEN_SIZE))  # +1 is for EOS
         self.softmax_b = self.model.add_parameters((len(self.encodings.phoneme2int) + 1))
 
     def _attend(self, input_vectors, decoder):
@@ -75,7 +78,7 @@ class G2P:
         output_vectors = dy.esum(
             [vector * attention_weight for vector, attention_weight in zip(input_vectors, attention_weights)])
 
-        return output_vectors
+        return output_vectors, attention_weights
 
     def _make_input(self, word):
         emb_list = []
@@ -86,6 +89,26 @@ class G2P:
                 emb_list.append(self.char_lookup[self.encodings.char2int['<UNK>']])
 
         return emb_list
+
+    def _compute_guided_attention(self, att_vect, decoder_step, input_size, output_size):
+        if output_size <= 1 or input_size <= 1:
+            return dy.scalarInput(0)
+
+        target_probs = []
+
+        t1 = float(decoder_step) / output_size
+
+        for encoder_step in range(input_size):
+            target_probs.append(1.0 - np.exp(-((float(encoder_step) / input_size - t1) ** 2) / 0.08))
+
+        # print target_probs
+        target_probs = dy.inputVector(target_probs)
+        # print (target_probs.npvalue().shape, att_vect.npvalue().shape)
+
+        return dy.transpose(target_probs) * att_vect
+
+    def _compute_binary_divergence(self, pred, target):
+        return dy.binary_log_loss(pred, target)
 
     def _predict(self, word, gs_phones=None):
         if gs_phones is None:
@@ -107,11 +130,30 @@ class G2P:
 
         decoder_state = self.decoder.initial_state().add_input(self.start_lookup[0])
         output_list = []
+        attention_list = []
         last_output = self.phoneme_lookup[len(self.encodings.phoneme2int)]
         phon_index = 0
+        if not runtime:  # some nice dropouts
+            zero_att = dy.inputVector([0 for ii in range(self.ENCODER_SIZE * 2)])
+            zero_prev = dy.inputVector([0 for ii in range(self.CHAR_EMB_SIZE)])
+
         while True:
-            att = self._attend(encoder_vectors, decoder_state)
-            decoder_state = decoder_state.add_input(dy.concatenate([att, last_output]))
+            att, att_weights = self._attend(encoder_vectors, decoder_state)
+            attention_list.append(att_weights)
+
+            s1 = 1
+            s2 = 1
+            if not runtime:
+                r1 = np.random.random()
+                r2 = np.random.random()
+                if r1 < 0.34:
+                    s2 = 2
+                    att = zero_att
+                if r2 < 0.34:
+                    last_output = zero_prev
+                    s1 = 1
+
+            decoder_state = decoder_state.add_input(dy.concatenate([att * s1, last_output * s2]))
             hidden = dy.tanh(
                 self.hidden_w.expr(update=True) * decoder_state.output() + self.hidden_b.expr(update=True))
             softmax = self.softmax_w.expr(update=True) * hidden + self.softmax_b.expr(update=True)
@@ -133,7 +175,7 @@ class G2P:
 
             phon_index += 1
             output_list.append(softmax)
-        return output_list
+        return output_list, attention_list
 
     def start_batch(self):
         self.losses = []
@@ -150,17 +192,19 @@ class G2P:
         return total_loss
 
     def learn(self, word, transcription):
-        output_list = self._predict(word, gs_phones=transcription)
-        for tp, pp in zip(transcription, output_list):
-            self.losses.append(dy.pickneglogsoftmax(pp, self.encodings.phoneme2int[tp]))
+        output_list, att_list = self._predict(word, gs_phones=transcription)
 
-        self.losses.append(dy.pickneglogsoftmax(pp, len(self.encodings.phoneme2int)))
+        for tp, pp, att, pos in zip(transcription, output_list, att_list, range(len(att_list))):
+            self.losses.append(dy.pickneglogsoftmax(pp, self.encodings.phoneme2int[tp]))
+            self.losses.append(self._compute_guided_attention(att, pos, len(word), len(transcription) + 1))
+
+        self.losses.append(dy.pickneglogsoftmax(output_list[-1], len(self.encodings.phoneme2int)))
 
     def transcribe(self, word):
         dy.renew_cg()
-        output = self._predict(word)
+        output, ignore = self._predict(word)
         transcription = [self.encodings.phoneme_list[np.argmax(value.npvalue())] for value in output]
-        #print (word, transcription)
+        # print (word, transcription)
         return transcription
 
     def save(self, output_base):

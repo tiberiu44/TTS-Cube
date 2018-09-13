@@ -186,22 +186,6 @@ class PhoneInfo:
         self.duration = (stop - start)
 
 
-class Dataset:
-    def __init__(self, folder):
-        from os import listdir
-        from os.path import isfile, join
-        from os.path import exists
-        train_files_tmp = [f for f in listdir(folder) if isfile(join(folder, f))]
-
-        final_list = []
-        for file in train_files_tmp:
-            base_name = file[:-4]
-            if file[-4:] == '.txt' and base_name not in final_list:
-                final_list.append(join(folder, base_name))
-                # sys.stdout.write(base_name + '\n')
-        self.files = final_list
-
-
 class LTSDataset:
     def __init__(self, filename):
         f = open(filename)

@@ -16,6 +16,7 @@
 
 import sys
 import numpy as np
+import time
 
 
 def med(l1, l2):
@@ -45,7 +46,17 @@ class G2PTrainer:
         total_edit_distance = 0
         total_chars = 0
         errors = 0
+        index = 0
+        last_proc = 0
         for entry in dataset.entries:
+            index += 1
+            curr_proc = int(index * 100 / len(dataset.entries))
+            if curr_proc % 5 == 0 and curr_proc != last_proc:
+                while last_proc < curr_proc:
+                    last_proc += 5
+                    sys.stdout.write(' ' + str(last_proc))
+                    sys.stdout.flush()
+
             gold_phon = entry.transcription
             pred_phon = model.transcribe(entry.word)
             ed = med(gold_phon, pred_phon)
@@ -78,7 +89,7 @@ class G2PTrainer:
             total_loss = 0
             index = 0
             last_proc = 0
-
+            start = time.time()
             for entry in trainset.entries:
                 index += 1
                 curr_proc = int(index * 100 / len(trainset.entries))
@@ -93,11 +104,15 @@ class G2PTrainer:
                 if current_batch_size == batch_size:
                     total_loss += model.end_batch()
                     current_batch_size = 0
+                    model.start_batch()
 
             if current_batch_size != 0:
                 total_loss += model.end_batch()
 
-            sys.stdout.write(' avg loss=' + str(total_loss / len(trainset.entries)) + '\n')
+            stop = time.time()
+
+            sys.stdout.write(
+                ' avg loss=' + str(total_loss / len(trainset.entries)) + ' execution time ' + str(stop - start) + '\n')
             sys.stdout.write('\tevaluating...')
             sys.stdout.flush()
             w_acc, p_acc = self.evaluate(model, devset)
