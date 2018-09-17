@@ -42,8 +42,55 @@ def train(params):
     trainer.start_training(model, encodings, trainset, devset, params.model_base, params.batch_size, params.patience)
 
 
+def test(params):
+    from io_modules.encodings import Encodings
+    from io_modules.dataset import LTSDataset
+
+    encodings = Encodings()
+    encodings.load(params.model + '.encodings')
+    testset = LTSDataset(params.input)
+    from models.g2p import G2P
+    model = G2P(encodings)
+    model.load(params.model + '-bestAcc.network')
+    f = open(params.output, 'w')
+    correct = 0
+    last_proc = 0
+    index = 0
+    for entry in testset.entries:
+        index += 1
+        curr_proc = int(index * 100 / len(testset.entries))
+        if curr_proc % 5 == 0:
+            while last_proc < curr_proc:
+                last_proc += 5
+                sys.stdout.write(str(last_proc) + ' ')
+                sys.stdout.flush()
+        p_transcription = model.transcribe(entry.word)
+        ok = False
+        if p_transcription == entry.transcription:
+            correct += 1
+            ok = True
+        f.write(entry.word + '\t')
+        for phon in entry.transcription:
+            f.write(phon + ' ')
+        f.write('\t')
+        for phon in p_transcription:
+            f.write(phon + ' ')
+        if not ok:
+            f.write('***')
+        f.write('\n')
+    f.close()
+    sys.stdout.write('done\n')
+    sys.stdout.write('Word level accuracy is ' + str(float(correct) / len(testset.entries)) + '\n')
+
+
 if __name__ == '__main__':
     parser = optparse.OptionParser()
+    parser.add_option('--train', action='store_true', dest='train', help='Train a new model')
+    parser.add_option('--test', action='store_true', dest='test', help='Test the pretrained model')
+    parser.add_option('--input-file', action='store', dest='input', help='Input File')
+    parser.add_option('--output-file', action='store', dest='output', help='Output file')
+    parser.add_option('--model', action='store', dest='model', help='Pretrained model file')
+
     parser.add_option("--batch-size", action='store', dest='batch_size', default='100', type='int',
                       help='number of samples in a single batch (default=100)')
     parser.add_option("--set-mem", action='store', dest='memory', default='2048', type='int',
@@ -74,4 +121,9 @@ if __name__ == '__main__':
 
     import dynet as dy
 
-    train(params)
+    if params.train:
+        train(params)
+    elif params.test:
+        test(params)
+    else:
+        print ("Invalid parameters. Use '--help' for help")
