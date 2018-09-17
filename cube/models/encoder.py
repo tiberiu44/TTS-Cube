@@ -30,7 +30,7 @@ class Encoder:
         self.DECODER_LAYERS = 2
         self.MGC_PROJ_SIZE = 100
         self.encodings = encodings
-        from utils import orthonormal_VanillaLSTMBuilder
+        from models.utils import orthonormal_VanillaLSTMBuilder
         lstm_builder = orthonormal_VanillaLSTMBuilder
         if runtime:
             lstm_builder = dy.VanillaLSTMBuilder
