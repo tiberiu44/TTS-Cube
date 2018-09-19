@@ -135,7 +135,7 @@ Once you have prepared the corpus, just run the following command (in the `TTS-C
 python3 cube/trainer.py --phase=1 --train-folder=<path to your training folder> --dev-folder=<path to your development folder>
 ```
 
-##Step 2 - Train the Vocoder
+## Step 2 - Train the Vocoder
 
 The following step is much easier than the corpus preparation and import process. Once you have finished with 'step 1', just type:
 
@@ -183,7 +183,7 @@ After every 50 files in the training set, we synthesize the development set and 
 
 Just listen to the samples produced and stop the process when you are satisfied. The model is stored in `data/models/rnn_vocoder.network`
 
-##Step 3 - Train the Encoder
+## Step 3 - Train the Encoder
 
 Once you have a viable Vocoder (step 2) you need to train the text-encoder:
 
@@ -195,7 +195,7 @@ python3 cube/trainer.py --phase=3 --use-gpu --set-mem 8192 --autobatch
 
 **Note 2:** Modify `--set-mem` parameter to fit in the actual memory of you Video Card. For training the encoder you should have at least 8GB. For lower video card memory, you will need to decrease the `--batch-size` parameter for the vocoder and remove longer sentences from the Encoder training. Right now the Encoder trains of full utterances only, while the Vocoder segments them into slices. It is probable that you will obtain worse results if you have to decrease the maximum length of the utterances and the batch-size.  
 
-##Step 4 - Ready to go
+## Step 4 - Ready to go
 
 To synthesize text just type:
 ```bash
