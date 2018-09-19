@@ -6,7 +6,7 @@ It is entirely based on neural networks, requires no pre-aligned data and can be
 
 Markdown does not allow embedding of audio files. For a better experience [check-out the project's website](https://tiberiu44.github.io/TTS-Cube/).
 
-Training and usage examples can be found [here](TRAINING.md).
+For installation please follow [these instructions](GETTING_STARTED.md). Training and usage examples can be found [here](TRAINING.md).
 
 ## Output examples
 
