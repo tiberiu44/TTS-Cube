@@ -36,7 +36,7 @@ class Vocoder:
         self.trainer.set_clip_threshold(5.0)
         # self.trainer = dy.AdamTrainer(self.model)
         # MGCs are extracted at 12.5 ms
-        from utils import orthonormal_VanillaLSTMBuilder
+        from models.utils import orthonormal_VanillaLSTMBuilder
         lstm_builder = orthonormal_VanillaLSTMBuilder
         if runtime:
             lstm_builder = dy.VanillaLSTMBuilder
@@ -46,7 +46,7 @@ class Vocoder:
         self.upsample_w_t = []
         # self.upsample_b_s = []
         self.upsample_b_t = []
-        for _ in xrange(upsample_count):
+        for _ in range(upsample_count):
             # self.upsample_w_s.append(self.model.add_parameters((self.UPSAMPLE_PROJ, self.params.mgc_order)))
             self.upsample_w_t.append(self.model.add_parameters((self.UPSAMPLE_PROJ, self.params.mgc_order * 2)))
             # self.upsample_b_s.append(self.model.add_parameters((self.UPSAMPLE_PROJ)))
@@ -80,14 +80,14 @@ class Vocoder:
         self.softmax_fine_b = self.model.add_parameters((256))
 
     def _upsample(self, mgc, start, stop):
-        mgc_index = start / len(self.upsample_w_t)
+        mgc_index = int(start / len(self.upsample_w_t))
         ups_index = start % len(self.upsample_w_t)
         upsampled = []
         mgc_index_next = mgc_index + 1
         if mgc_index_next == len(mgc):
             mgc_index_next -= 1
         mgc_vect = dy.concatenate([dy.inputVector(mgc[mgc_index]), dy.inputVector(mgc[mgc_index_next])])
-        for x in xrange(stop - start):
+        for x in range(stop - start):
             # sigm = dy.logistic(self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(update=True))
             tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(update=True))
             # r = dy.cmult(sigm, tnh)
@@ -111,7 +111,7 @@ class Vocoder:
         ups_index = start % len(self.upsample_w_t)
         upsampled = []
         mgc_vect = dy.inputVector(mgc[mgc_index])
-        for x in xrange(stop - start):
+        for x in range(stop - start):
             # sigm = dy.logistic(self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(update=True))
             tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(update=True))
             # r = dy.cmult(sigm, tnh)
@@ -147,7 +147,7 @@ class Vocoder:
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0):
         synth = []
         total_audio_len = mgc.shape[0] * len(self.upsample_w_t)
-        num_batches = total_audio_len / batch_size
+        num_batches = int(total_audio_len / batch_size)
         if total_audio_len % batch_size != 0:
             num_batches + 1
         last_rnn_coarse_state = None
@@ -156,7 +156,7 @@ class Vocoder:
         last_fine_sample = 0
         w_index = 0
         last_proc = 0
-        for iBatch in xrange(num_batches):
+        for iBatch in range(num_batches):
             dy.renew_cg()
             # bias=dy.inputVector([0]*self.RNN_SIZE)
             # gain=dy.inputVector([1.0]*self.RNN_SIZE)
@@ -174,10 +174,10 @@ class Vocoder:
                 rnnFine = rnnFine.set_s(rnn_state)
 
             out_list = []
-            for index in xrange(stop - start):
+            for index in range(stop - start):
                 w_index += 1
 
-                curr_proc = w_index * 100 / total_audio_len
+                curr_proc = int(w_index * 100 / total_audio_len)
                 if curr_proc % 5 == 0 and curr_proc != last_proc:
                     last_proc = curr_proc
                     sys.stdout.write(' ' + str(curr_proc))
@@ -255,7 +255,7 @@ class Vocoder:
 
         w_index = 0
         last_proc = 0
-        for iBatch in xrange(num_batches):
+        for iBatch in range(num_batches):
             losses = []
             dy.renew_cg()
             start = batch_size * iBatch
@@ -271,10 +271,10 @@ class Vocoder:
                 rnn_state = [dy.inputVector(s) for s in last_rnn_fine_state]
                 rnnFine = rnnFine.set_s(rnn_state)
 
-            for index in xrange(stop - start):
+            for index in range(stop - start):
                 w_index += 1
 
-                curr_proc = w_index * 100 / len(wave)
+                curr_proc = int(w_index * 100 / len(wave))
                 if curr_proc % 5 == 0 and curr_proc != last_proc:
                     last_proc = curr_proc
                     sys.stdout.write(' ' + str(curr_proc))
@@ -363,14 +363,14 @@ class VocoderOld:
         self.upsample_w_t = []
         self.upsample_b_s = []
         self.upsample_b_t = []
-        for _ in xrange(upsample_count):
+        for _ in range(upsample_count):
             self.upsample_w_s.append(self.model.add_parameters((self.UPSAMPLE_PROJ, self.params.mgc_order)))
             self.upsample_w_t.append(self.model.add_parameters((self.UPSAMPLE_PROJ, self.params.mgc_order)))
             self.upsample_b_s.append(self.model.add_parameters((self.UPSAMPLE_PROJ)))
             self.upsample_b_t.append(self.model.add_parameters((self.UPSAMPLE_PROJ)))
 
         self.output_lookup = self.model.add_lookup_parameters((256, self.OUTPUT_EMB_SIZE))
-        from utils import orthonormal_VanillaLSTMBuilder
+        from models.utils import orthonormal_VanillaLSTMBuilder
         # self.rnn = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE + self.UPSAMPLE_PROJ, self.RNN_SIZE, self.model)
         self.rnn = dy.VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE + self.UPSAMPLE_PROJ,
                                          self.RNN_SIZE, self.model)
@@ -387,7 +387,7 @@ class VocoderOld:
         ups_index = start % len(self.upsample_w_s)
         upsampled = []
         mgc_vect = dy.inputVector(mgc[mgc_index])
-        for x in xrange(stop - start):
+        for x in range(stop - start):
             sigm = dy.logistic(self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(update=True))
             tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(update=True))
             r = dy.cmult(sigm, tnh)
@@ -423,7 +423,7 @@ class VocoderOld:
         last_sample = 127
         w_index = 0
         last_proc = 0
-        for iBatch in xrange(num_batches):
+        for iBatch in range(num_batches):
             dy.renew_cg()
             # bias=dy.inputVector([0]*self.RNN_SIZE)
             # gain=dy.inputVector([1.0]*self.RNN_SIZE)
@@ -438,7 +438,7 @@ class VocoderOld:
                 rnn = rnn.set_s(rnn_state)
 
             out_list = []
-            for index in xrange(stop - start):
+            for index in range(stop - start):
                 w_index += 1
                 curr_proc = w_index * 100 / total_audio_len
                 if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -486,7 +486,7 @@ class VocoderOld:
         last_sample = 127
         w_index = 0
         last_proc = 0
-        for iBatch in xrange(num_batches):
+        for iBatch in range(num_batches):
             losses = []
             dy.renew_cg()
             # bias=dy.inputVector([0]*self.RNN_SIZE)
@@ -502,7 +502,7 @@ class VocoderOld:
                 rnn = rnn.set_s(rnn_state)
 
             out_list = []
-            for index in xrange(stop - start):
+            for index in range(stop - start):
                 w_index += 1
                 curr_proc = w_index * 100 / len(ulaw_wave)
                 if curr_proc % 5 == 0 and curr_proc != last_proc:

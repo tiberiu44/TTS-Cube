@@ -23,7 +23,7 @@ import numpy as np
 def create_lab_input(txt_file, speaker_ident):
     seq = []
     fin = open(txt_file, 'r')
-    line = fin.readline().decode('utf-8').strip().replace('\t', ' ')
+    line = fin.readline().strip().replace('\t', ' ')
     while True:
         nl = line.replace('  ', ' ')
         if nl == line:
@@ -44,7 +44,7 @@ def create_lab_input(txt_file, speaker_ident):
             style = 'CASE:upper'
         speaker = 'SPEAKER:' + speaker_ident
         seq.append(PhoneInfo(l_char, [speaker, style], 0, 0))
-        # sys.stdout.write(l_char.encode('utf-8') + '\t' + speaker + '\t' + style + '\n')
+        # sys.stdout.write(l_char + '\t' + speaker + '\t' + style + '\n')
 
     seq.append(PhoneInfo('STOP', [], 0, 0))
     # sys.stdout.write('STOP\n')
@@ -57,8 +57,8 @@ def _render_spectrogram(mgc, output_file):
     mgc_min = mgc.min()
     mgc_max = mgc.max()
 
-    for x in xrange(mgc.shape[0]):
-        for y in xrange(mgc.shape[1]):
+    for x in range(mgc.shape[0]):
+        for y in range(mgc.shape[1]):
             val = (mgc[x, y] - mgc_min) / (mgc_max - mgc_min)
 
             color = val * 255

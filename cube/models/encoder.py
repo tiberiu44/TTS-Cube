@@ -30,7 +30,7 @@ class Encoder:
         self.DECODER_LAYERS = 2
         self.MGC_PROJ_SIZE = 100
         self.encodings = encodings
-        from utils import orthonormal_VanillaLSTMBuilder
+        from models.utils import orthonormal_VanillaLSTMBuilder
         lstm_builder = orthonormal_VanillaLSTMBuilder
         if runtime:
             lstm_builder = dy.VanillaLSTMBuilder
@@ -53,7 +53,7 @@ class Encoder:
         self.encoder_bw.append(
             lstm_builder(1, self.PHONE_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
 
-        for zz in xrange(1, self.ENCODER_LAYERS):
+        for zz in range(1, self.ENCODER_LAYERS):
             self.encoder_fw.append(
                 lstm_builder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
             self.encoder_bw.append(
@@ -247,8 +247,8 @@ class Encoder:
         mgc_output = [mgc.npvalue() for mgc in output_mgc]
         import numpy as np
         mgc_final = np.zeros((len(mgc_output), mgc_output[-1].shape[0]))
-        for i in xrange(len(mgc_output)):
-            for j in xrange(mgc_output[-1].shape[0]):
+        for i in range(len(mgc_output)):
+            for j in range(mgc_output[-1].shape[0]):
                 mgc_final[i, j] = mgc_output[i][j]
         return mgc_final, att
 

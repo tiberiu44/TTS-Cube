@@ -25,30 +25,30 @@ class Encodings:
         f = open(filename, 'w')
         f.write('SYMBOLS\t' + str(len(self.char2int)) + '\n')
         for char in self.char2int:
-            f.write(char.encode('utf-8') + '\t' + str(self.char2int[char]) + '\n')
+            f.write(char + '\t' + str(self.char2int[char]) + '\n')
         f.write('FEATURES\t' + str(len(self.context2int)) + '\n')
         for feature in self.context2int:
-            f.write(feature.encode('utf-8') + '\t' + str(self.context2int[feature]) + '\n')
+            f.write(feature + '\t' + str(self.context2int[feature]) + '\n')
         f.write('SPEAKERS\t' + str(len(self.speaker2int)) + '\n')
         for feature in self.speaker2int:
-            f.write(feature.encode('utf-8') + '\t' + str(self.speaker2int[feature]) + '\n')
+            f.write(feature + '\t' + str(self.speaker2int[feature]) + '\n')
         f.close()
 
     def load(self, filename):
         f = open(filename)
         num_symbols = int(f.readline().split('\t')[1])
         for x in range(num_symbols):
-            parts = f.readline().decode('utf-8').split('\t')
+            parts = f.readline().split('\t')
             self.char2int[parts[0]] = int(parts[1])
 
         num_features = int(f.readline().split('\t')[1])
         for x in range(num_features):
-            parts = f.readline().decode('utf-8').split('\t')
+            parts = f.readline().split('\t')
             self.context2int[parts[0]] = int(parts[1])
 
         num_speakers = int(f.readline().split('\t')[1])
         for x in range(num_speakers):
-            parts = f.readline().decode('utf-8').split('\t')
+            parts = f.readline().split('\t')
             self.speaker2int[parts[0]] = int(parts[1])
         f.close()
 
@@ -98,7 +98,7 @@ class DatasetIO:
             for line in lines:
                 line = line.replace('\r', '').replace('\n', '')
                 if line.strip() != '':
-                    line = line.decode('utf-8')
+                    line = line
                     parts = line.split('\t')
                     if len(parts) == 1:
                         pi = PhoneInfo(parts[0], [], 0, 0)
@@ -184,3 +184,23 @@ class PhoneInfo:
         self.start = start
         self.stop = stop
         self.duration = (stop - start)
+
+
+class LTSDataset:
+    def __init__(self, filename):
+        f = open(filename)
+        lines = f.readlines()
+        self.entries = []
+        for line in lines:
+            line = ''.join([i for i in line if not i.isdigit()]).strip()
+            parts = line.replace('\t', ' ').split(' ')
+            word = parts[0]
+            transcription = parts[1:]
+            self.entries.append(LSTEntry(word, transcription))
+        f.close()
+
+
+class LSTEntry:
+    def __init__(self, word, transcription):
+        self.word = word
+        self.transcription = transcription
