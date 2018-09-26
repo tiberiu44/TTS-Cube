@@ -82,6 +82,7 @@ class Trainer:
         sys.stdout.write("\n")
 
         if self.vocoder.sparse:
+            print ("Setting sparsity at: "+str(sparsity))
             sparsity = params.sparsity_step
             self.vocoder.rnnFine.set_sparsity(float(sparsity) / 100)
             self.vocoder.rnnCoarse.set_sparsity(float(sparsity) / 100)
@@ -106,9 +107,12 @@ class Trainer:
                 if num_files == params.sparsity_increase:
                     sparsity += params.sparsity_step
                     num_files = 0
-                    if sparsity < params.sparsity_target:
+                    if sparsity <= params.sparsity_target:
+                        print ("Setting sparsity at "+str(sparsity))
                         self.vocoder.rnnFine.set_sparsity(float(sparsity) / 100)
                         self.vocoder.rnnCoarse.set_sparsity(float(sparsity) / 100)
+                    else:
+                        sparsity=params.sparsity_target
 
                 sys.stdout.write(
                     "\t" + str(file_index) + "/" + str(len(self.trainset.files)) + " processing file " + file)
