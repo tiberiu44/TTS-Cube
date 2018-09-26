@@ -62,7 +62,7 @@ class Trainer:
             file_index += 1
             mgc_file = file + ".mgc.npy"
             mgc = np.load(mgc_file)
-            #print mgc.shape
+            # print mgc.shape
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
             for x in range(mgc.shape[0]):
@@ -74,21 +74,46 @@ class Trainer:
             img = smp.toimage(bitmap)
             img.save(output_file)
 
-    def start_training(self, itt_no_improve, batch_size, target_sample_rate):
+    def start_training(self, itt_no_improve, batch_size, target_sample_rate, params=None):
         epoch = 1
         left_itt = itt_no_improve
         dio = DatasetIO()
         self._render_devset()
         sys.stdout.write("\n")
-        self.vocoder.store('data/models/rnn_vocoder')
+
+        if self.vocoder.sparse:
+            print ("Setting sparsity at: "+str(params.sparsity_step)+"%")
+            sparsity = params.sparsity_step
+            self.vocoder.rnnFine.set_sparsity(float(sparsity) / 100)
+            self.vocoder.rnnCoarse.set_sparsity(float(sparsity) / 100)
+
+        if self.vocoder.sparse:
+            self.vocoder.store('data/models/rnn_vocoder_sparse')
+        else:
+            self.vocoder.store('data/models/rnn_vocoder')
+
+        num_files = 0
+
         while left_itt > 0:
             sys.stdout.write("Starting epoch " + str(epoch) + "\n")
             sys.stdout.write("Shuffling training data\n")
             from random import shuffle
-            shuffle (self.trainset.files)
+            shuffle(self.trainset.files)
             file_index = 1
             total_loss = 0
             for file in self.trainset.files:
+                num_files += 1
+
+                if num_files == params.sparsity_increase:
+                    sparsity += params.sparsity_step
+                    num_files = 0
+                    if sparsity <= params.sparsity_target:
+                        print ("Setting sparsity at "+str(sparsity)+"%")
+                        self.vocoder.rnnFine.set_sparsity(float(sparsity) / 100)
+                        self.vocoder.rnnCoarse.set_sparsity(float(sparsity) / 100)
+                    else:
+                        sparsity=params.sparsity_target
+
                 sys.stdout.write(
                     "\t" + str(file_index) + "/" + str(len(self.trainset.files)) + " processing file " + file)
                 sys.stdout.flush()
@@ -111,9 +136,15 @@ class Trainer:
                 sys.stdout.flush()
                 if file_index % 50 == 0:
                     self.synth_devset(batch_size, target_sample_rate)
-                    self.vocoder.store('data/models/rnn_vocoder')
+                    if self.vocoder.sparse:
+                        self.vocoder.store('data/models/rnn_vocoder_sparse')
+                    else:
+                        self.vocoder.store('data/models/rnn_vocoder')
 
             self.synth_devset(batch_size, target_sample_rate)
-            self.vocoder.store('data/models/rnn_vocoder')
+            if self.vocoder.sparse:
+                self.vocoder.store('data/models/rnn_vocoder_sparse')
+            else:
+                self.vocoder.store('data/models/rnn_vocoder')
 
             epoch += 1
