@@ -42,7 +42,7 @@ class Vocoder:
             lstm_builder = dy.VanillaLSTMBuilder
         if use_sparse_lstm:
             lstm_builder = dy.SparseLSTMBuilder
-        self.sparse = True
+            self.sparse = True
 
         upsample_count = int(12.5 * self.params.target_sample_rate / 1000)
         # self.upsample_w_s = []
