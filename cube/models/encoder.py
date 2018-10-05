@@ -221,7 +221,7 @@ class Encoder:
         t1 = float(decoder_step) / num_mgcs
 
         for encoder_step in range(num_characters):
-            target_probs.append(1.0 - np.exp(-((float(encoder_step) / num_characters - t1) ** 2) / 0.08))
+            target_probs.append(1.0 - np.exp(-((float(encoder_step) // num_characters - t1) ** 2) / 0.08))
 
         # print target_probs
         target_probs = dy.inputVector(target_probs)
@@ -247,7 +247,7 @@ class Encoder:
                 # attention loss
                 if guided_att:
                     att = output_attention[index // 3]
-                    losses.append(self._compute_guided_attention(att, index // 3, len(feats[0]) + 2, num_mgc // 3))
+                    losses.append(self._compute_guided_attention(att, index // 3, len(feats[0]), num_mgc // 3))
                 # EOS loss
                 stop = output_stop[index // 3]
                 if index >= num_mgc - 6:
