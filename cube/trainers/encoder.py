@@ -20,10 +20,12 @@ from io_modules.dataset import DatasetIO
 
 
 class Trainer:
-    def __init__(self, vocoder, trainset, devset):
+    def __init__(self, vocoder, features, setup_trainer):
         self.vocoder = vocoder
-        self.trainset = trainset
-        self.devset = devset
+        self.features = features
+        self.setup_trainer = setup_trainer
+        self.trainset = self.setup_trainer.train_file_list
+        self.devset = self.setup_trainer.dev_file_list
 
     def array2file(self, a, filename):
         np.save(filename, a)
@@ -31,20 +33,22 @@ class Trainer:
     def synth_devset(self, max_size=-1):
         sys.stdout.write('\tSynthesizing devset\n')
         file_index = 1
-        for file in self.devset.files[:5]:
+        for file in self.devset[:5]:
             sys.stdout.write(
-                "\t\t" + str(file_index) + "/" + str(len(self.devset.files)) + " processing file " + file)
+                "\t\t" + str(file_index) + "/" + str(len(self.devset)) + " processing file " + file)
             sys.stdout.flush()
             file_index += 1
             lab_file = file + ".lab"
-            dio = DatasetIO()
-            lab = dio.read_lab(lab_file)
+            dio = DatasetIO(self.features)
+            print ("\n"+self.setup_trainer.dev_data_folder)
+            lab = dio.read_input_feats(self.setup_trainer.dev_data_folder+'/'+lab_file, self.features)
             phones = lab  # [entry.phoneme for entry in lab]
+
             import time
             start = time.time()
             mgc, att = self.vocoder.generate(phones, max_size=max_size)
 
-            self.array2file(mgc, 'data/output/' + file[file.rfind('/') + 1:] + '.mgc')
+            self.array2file(mgc, self.setup_trainer.out_folder+'data/output/' + file[file.rfind('/') + 1:] + '.mgc')
             att = [a.value() for a in att]
             new_att = np.zeros((len(att), len(phones) + 2, 3), dtype=np.uint8)
 
@@ -57,9 +61,9 @@ class Trainer:
 
             from PIL import Image
             img = Image.fromarray(new_att, 'RGB')
-            img.save('data/output/' + file[file.rfind('/') + 1:] + 'att.png')
+            img.save(self.setup_trainer.out_folder+'data/output/' + file[file.rfind('/') + 1:] + 'att.png')
 
-            output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
+            output_file = self.setup_trainer.out_folder+'data/output/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
             for x in range(mgc.shape[0]):
                 for y in range(mgc.shape[1]):
@@ -102,42 +106,48 @@ class Trainer:
             img = smp.toimage(bitmap)
             img.save(output_file)
 
+
+
+
     def start_training(self, itt_no_improve, batch_size, params):
         epoch = 1
         left_itt = itt_no_improve
-        dio = DatasetIO()
+        dio = DatasetIO(self.features)
 
         if params.no_bounds:
             max_mgc = -1
         else:
             max_mgc = 1000
+
         self.synth_devset(max_size=max_mgc)
-        self.vocoder.store('data/models/rnn_encoder')
+        self.vocoder.store(params.out_folder+'data/models/rnn_encoder')
+
         while left_itt > 0:
             sys.stdout.write("Starting epoch " + str(epoch) + "\n")
             sys.stdout.write("Shuffling training data\n")
             from random import shuffle
-            shuffle(self.trainset.files)
+
+            shuffle(self.trainset)
             file_index = 1
             total_loss = 0
-            for file in self.trainset.files:
+            for file in self.trainset:
                 sys.stdout.write(
-                    "\t" + str(file_index) + "/" + str(len(self.trainset.files)) + " processing file " + file)
+                    "\t" + str(file_index) + "/" + str(len(self.trainset)) + " processing file " + file)
                 sys.stdout.flush()
 
                 mgc_file = file + ".mgc.npy"
                 mgc = np.load(mgc_file)
 
                 lab_file = file + ".lab"
-                lab = dio.read_lab(lab_file)
-                phones = lab
+                feats = dio.read_input_feats(lab_file, self.features)
+                print (feats)
 
                 file_index += 1
 
                 import time
                 start = time.time()
                 if len(mgc) < 1400:
-                    loss = self.vocoder.learn(phones, mgc, guided_att=not params.no_guided_attention)
+                    loss = self.vocoder.learn(feats, mgc, guided_att=not params.no_guided_attention)
                 else:
                     sys.stdout.write(' too long, skipping')
                     loss = 0
@@ -148,9 +158,9 @@ class Trainer:
                 sys.stdout.flush()
                 if file_index % 200 == 0:
                     self.synth_devset(max_size=max_mgc)
-                    self.vocoder.store('data/models/rnn_encoder')
+                    self.vocoder.store(params.out_folder+'data/models/rnn_encoder')
 
             self.synth_devset(max_size=max_mgc)
-            self.vocoder.store('data/models/rnn_encoder')
+            self.vocoder.store(params.out_folder+'data/models/rnn_encoder')
 
             epoch += 1

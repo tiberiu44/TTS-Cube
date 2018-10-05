@@ -17,19 +17,23 @@
 import dynet as dy
 import numpy as np
 
-
 class Encoder:
-    def __init__(self, params, encodings, model=None, runtime=False):
+
+    def __init__(self, params, features, model=None, runtime=False):
         self.model = model
         self.params = params
-        self.PHONE_EMBEDDINGS_SIZE = 100
+        self.features = features
+        self.INPUT_EMBEDDINGS_SIZE = features.get_input_feature_size()
+
         self.SPEAKER_EMBEDDINGS_SIZE = 200
+
         self.ENCODER_SIZE = 200
         self.ENCODER_LAYERS = 2
         self.DECODER_SIZE = 400
         self.DECODER_LAYERS = 2
         self.MGC_PROJ_SIZE = 100
-        self.encodings = encodings
+
+
         from models.utils import orthonormal_VanillaLSTMBuilder
         lstm_builder = orthonormal_VanillaLSTMBuilder
         if runtime:
@@ -41,23 +45,31 @@ class Encoder:
             self.trainer.set_sparse_updates(True)
             self.trainer.set_clip_threshold(5.0)
 
-        self.phone_lookup = self.model.add_lookup_parameters((len(encodings.char2int), self.PHONE_EMBEDDINGS_SIZE))
-        self.feature_lookup = self.model.add_lookup_parameters((len(encodings.context2int), self.PHONE_EMBEDDINGS_SIZE))
-        self.speaker_lookup = self.model.add_lookup_parameters(
-            (len(encodings.speaker2int), self.SPEAKER_EMBEDDINGS_SIZE))
+
+        ###################
+        ## HERE
+        #self.phone_lookup = self.model.add_lookup_parameters((len(encodings.char2int), self.PHONE_EMBEDDINGS_SIZE))
+        #self.feature_lookup = self.model.add_lookup_parameters((len(encodings.context2int), self.PHONE_EMBEDDINGS_SIZE))
+        #self.speaker_lookup = self.model.add_lookup_parameters((len(encodings.speaker2int), self.SPEAKER_EMBEDDINGS_SIZE))
+
+
+
+
         self.encoder_fw = []
         self.encoder_bw = []
 
         self.encoder_fw.append(
-            lstm_builder(1, self.PHONE_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
+            lstm_builder(1, self.INPUT_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
+
         self.encoder_bw.append(
-            lstm_builder(1, self.PHONE_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
+            lstm_builder(1, self.INPUT_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
 
         for zz in range(1, self.ENCODER_LAYERS):
             self.encoder_fw.append(
                 lstm_builder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
             self.encoder_bw.append(
                 lstm_builder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
+
 
         self.decoder = lstm_builder(self.DECODER_LAYERS,
                                     self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE,
@@ -97,20 +109,20 @@ class Encoder:
         self.decoder_start_lookup = self.model.add_lookup_parameters(
             (1, self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE))
 
+
+
     def _make_input(self, seq):
-        x_list = [self.phone_lookup[self.encodings.char2int['START']]]
+        x_list = []
         for pi in seq:
-            char_emb = self.phone_lookup[self.encodings.char2int[pi.char]]
-            context = []
-            for feature in pi.context:
-                if feature in self.encodings.context2int:
-                    context.append(self.feature_lookup[self.encodings.context2int[feature]])
-            if len(context) == 0:
-                x_list.append(char_emb)
-            else:
-                x_list.append(char_emb + dy.esum(context) * dy.scalarInput(1.0 / len(context)))
-        x_list.append(self.phone_lookup[self.encodings.char2int['STOP']])
+            v = dy.vecInput(len(pi))
+            v.set(pi)
+            x_list.append(v)
+        print (v)
+        print (self.INPUT_EMBEDDINGS_SIZE)
         return x_list
+
+
+
 
     def _get_speaker_embedding(self, seq):
         for entry in seq:
@@ -118,6 +130,9 @@ class Encoder:
                 if feature.startswith('SPEAKER:'):
                     return self.speaker_lookup[self.encodings.speaker2int[feature]]
         return None
+
+
+
 
     def _predict(self, characters, gold_mgc=None, max_size=-1):
         if gold_mgc is None:
@@ -134,15 +149,13 @@ class Encoder:
 
         # encoder
         x_input = self._make_input(characters)
+        print(x_input)
         for lstm_fw, lstm_bw in zip(self.encoder_fw, self.encoder_bw):
             x_fw = lstm_fw.initial_state().transduce(x_input)
             x_bw = lstm_bw.initial_state().transduce(reversed(x_input))
             x_input = [dy.concatenate([fw, bw]) for fw, bw in zip(x_fw, reversed(x_bw))]
 
-        x_speaker = self._get_speaker_embedding(characters)
-        final_input = []
-        for x in x_input:
-            final_input.append(dy.concatenate([x, x_speaker]))
+        final_input = x_input
         encoder = final_input
 
         decoder = self.decoder.initial_state().add_input(self.decoder_start_lookup[0])
@@ -195,9 +208,7 @@ class Encoder:
         return output_mgc, output_stop, output_att
 
     def _compute_guided_attention(self, att_vect, decoder_step, num_characters, num_mgcs):
-
         target_probs = []
-
         t1 = float(decoder_step) / num_mgcs
 
         for encoder_step in range(num_characters):
@@ -205,7 +216,6 @@ class Encoder:
 
         # print target_probs
         target_probs = dy.inputVector(target_probs)
-
         return dy.transpose(target_probs) * att_vect
 
     def _compute_binary_divergence(self, pred, target):
@@ -241,6 +251,9 @@ class Encoder:
         self.trainer.update()
         return loss_val
 
+
+
+
     def generate(self, characters, max_size=-1):
         dy.renew_cg()
         output_mgc, ignore1, att = self._predict(characters, max_size=max_size)
@@ -252,11 +265,16 @@ class Encoder:
                 mgc_final[i, j] = mgc_output[i][j]
         return mgc_final, att
 
+
+
     def store(self, output_base):
         self.model.save(output_base + ".network")
 
+
+
     def load(self, output_base):
         self.model.populate(output_base + ".network")
+
 
     def _attend(self, input_list, decoder_state, last_pos=None):
         w1 = self.att_w1.expr(update=True)

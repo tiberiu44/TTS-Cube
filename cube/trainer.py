@@ -17,7 +17,7 @@
 import dynet_config
 import optparse
 import sys
-import numpy as np
+
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()
@@ -45,6 +45,8 @@ if __name__ == '__main__':
                       help='Location of the training files')
     parser.add_option('--dev-folder', action='store', dest='dev_folder',
                       help='Location of the development files')
+    parser.add_option('--out-folder', action='store', dest='out_folder',
+                      help='Location of the output files')                      
     parser.add_option('--target-sample-rate', action='store', dest='target_sample_rate',
                       help='Resample input files at this rate (default=16000)', type='int', default=16000)
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
@@ -68,157 +70,29 @@ if __name__ == '__main__':
         dynet_config.set_gpu()
 
 
-    def array2file(a, filename):
-        np.save(filename, a)
 
 
-    def file2array(filename):
-        a = np.load(filename)
-        return a
-
-
-    def render_spectrogram(mgc, output_file):
-        bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
-        mgc_min = mgc.min()
-        mgc_max = mgc.max()
-
-        for x in range(mgc.shape[0]):
-            for y in range(mgc.shape[1]):
-                val = (mgc[x, y] - mgc_min) / (mgc_max - mgc_min)
-
-                color = val * 255
-                bitmap[mgc.shape[1] - y - 1, x] = [color, color, color]
-        import scipy.misc as smp
-
-        img = smp.toimage(bitmap)
-        img.save(output_file)
-
-
-    def create_lab_file(txt_file, lab_file):
-        fin = open(txt_file, 'r')
-        fout = open(lab_file, 'w')
-        line = fin.readline().strip().replace('\t', ' ')
-        while True:
-            nl = line.replace('  ', ' ')
-            if nl == line:
-                break
-            line = nl
-
-        fout.write('START\n')
-        for char in line:
-            l_char = char.lower()
-            style = 'CASE:lower'
-            if l_char == l_char.upper():
-                style = 'CASE:symb'
-            elif l_char != char:
-                style = 'CASE:upper'
-            if len(txt_file.replace('\\', '/').split('/')[-1].split('_')) != 1:
-                speaker = 'SPEAKER:' + txt_file.replace('\\', '/').split('_')[0].split('/')[-1]
-            else:
-                speaker = 'SPEAKER:none'
-            fout.write(l_char + '\t' + speaker + '\t' + style + '\n')
-
-        fout.write('STOP\n')
-
-        fin.close()
-        fout.close()
-        return ""
-
-
+    
+    ##############################        
+    ## PHASE 1) Prepare corpus
+    ##############################
+    
     def phase_1_prepare_corpus(params):
-        from os import listdir
-        from os.path import isfile, join
-        from os.path import exists
-        train_files_tmp = [f for f in listdir(params.train_folder) if isfile(join(params.train_folder, f))]
-        dev_files_tmp = [f for f in listdir(params.dev_folder) if isfile(join(params.dev_folder, f))]
+        from io_modules.setup_training import Setup_Training
+        if not params.out_folder:
+            sys.stdout.write ("***\n\tWARNING! No OUTPUT folder set, using current location!\n***")
+            out_folder = './'
+        else:
+            out_folder = params.out_folder    
+        sys.stdout.write("Preparing the training and dev data! \n")
 
-        sys.stdout.write("Scanning training files...")
-        sys.stdout.flush()
-        final_list = []
-        for file in train_files_tmp:
-            base_name = file[:-4]
-            lab_name = base_name + '.txt'
-            wav_name = base_name + '.wav'
-            if exists(join(params.train_folder, lab_name)) and exists(join(params.train_folder, wav_name)):
-                if base_name not in final_list:
-                    final_list.append(base_name)
-
-        train_files = final_list
-        sys.stdout.write(" found " + str(len(train_files)) + " valid training files\n")
-        sys.stdout.write("Scanning development files...")
-        sys.stdout.flush()
-        final_list = []
-        for file in dev_files_tmp:
-            base_name = file[:-4]
-            lab_name = base_name + '.txt'
-            wav_name = base_name + '.wav'
-            if exists(join(params.dev_folder, lab_name)) and exists(join(params.dev_folder, wav_name)):
-                if base_name not in final_list:
-                    final_list.append(base_name)
-
-        dev_files = final_list
-        sys.stdout.write(" found " + str(len(dev_files)) + " valid development files\n")
-
-        from io_modules.dataset import DatasetIO
-        from io_modules.vocoder import MelVocoder
-        from shutil import copyfile
-        import pysptk
-        dio = DatasetIO()
-        vocoder = MelVocoder()
-        base_folder = params.train_folder
-        for index in range(len(train_files)):
-            sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(train_files)))
-            sys.stdout.flush()
-            base_name = train_files[index]
-            txt_name = base_name + '.txt'
-            wav_name = base_name + '.wav'
-            spc_name = base_name + '.png'
-            lab_name = base_name + '.lab'
-
-            # LAB - copy or create
-            if exists(join(base_folder, lab_name)):
-                copyfile(join(base_folder, lab_name), join('data/processed/train', lab_name))
-            else:
-                create_lab_file(join(base_folder, txt_name), join('data/processed/train', lab_name))
-            # TXT
-            copyfile(join(base_folder, txt_name), join('data/processed/train', txt_name))
-            # WAVE
-            data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
-            mgc = vocoder.melspectrogram(data, sample_rate=params.target_sample_rate, num_mels=params.mgc_order)
-            # SPECT
-            render_spectrogram(mgc, join('data/processed/train', spc_name))
-            dio.write_wave(join('data/processed/train', base_name + '.orig.wav'), data, sample_rate)
-            array2file(mgc, join('data/processed/train', base_name + '.mgc'))
-
-        sys.stdout.write('\n')
-        base_folder = params.dev_folder
-        for index in range(len(dev_files)):
-            sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(dev_files)))
-            sys.stdout.flush()
-            base_name = dev_files[index]
-            txt_name = base_name + '.txt'
-            wav_name = base_name + '.wav'
-            spc_name = base_name + '.png'
-            lab_name = base_name + '.lab'
-
-            # LAB - copy or create
-            if exists(join(base_folder, lab_name)):
-                copyfile(join(base_folder, lab_name), join('data/processed/dev', lab_name))
-            else:
-                create_lab_file(join(base_folder, txt_name), join('data/processed/dev', lab_name))
-            # TXT
-            copyfile(join(base_folder, txt_name), join('data/processed/dev/', txt_name))
-            # WAVE
-            data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
-            mgc = vocoder.melspectrogram(data, sample_rate=params.target_sample_rate, num_mels=params.mgc_order)
-            # SPECT
-            render_spectrogram(mgc, join('data/processed/dev', spc_name))
-            dio.write_wave(join('data/processed/dev', base_name + '.orig.wav'), data, sample_rate)
-            array2file(mgc, join('data/processed/dev', base_name + '.mgc'))
-
-        sys.stdout.write('\n')
+        st = Setup_Training(params.train_folder, params.dev_folder, out_folder)
+        st.setup()
 
 
+    ##############################        
+    ## PHASE 2) Train vocoder
+    ##############################
     def phase_2_train_vocoder(params):
         from io_modules.dataset import Dataset
         from models.vocoder import Vocoder
@@ -235,52 +109,65 @@ if __name__ == '__main__':
         trainer.start_training(20, params.batch_size, params.target_sample_rate)
 
 
+    ##############################        
+    ## PHASE 3) Train encoder
+    ##############################
     def phase_3_train_encoder(params):
-        from io_modules.dataset import Dataset
-        from io_modules.dataset import Encodings
+        from io_modules.setup_training import Setup_Training
+        from io_modules.features import Feature_Set
         from models.encoder import Encoder
         from trainers.encoder import Trainer
-        trainset = Dataset("data/processed/train")
-        devset = Dataset("data/processed/dev")
-        sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
-            len(devset.files)) + ' development files\n')
 
-        encodings = Encodings()
+        if not params.out_folder:
+            sys.stdout.write ("***\n\tWARNING! No OUTPUT folder set, using current location!\n***")
+            out_folder = './'
+        else:
+            out_folder = params.out_folder
+
+        st = Setup_Training(params.train_folder, params.dev_folder, out_folder)
+        trainset = st.train_file_list
+        devset = st.dev_file_list
+        sys.stdout.write('Found ' + str(len(trainset)) + ' training files and ' + str(
+            len(devset)) + ' development files\n')
+        features = Feature_Set('feat.config')
         count = 0
         if not params.resume:
-            for train_file in trainset.files:
+            for train_file in trainset:
                 count += 1
                 if count % 100 == 0:
                     sys.stdout.write('\r' + str(count) + '/' + str(len(trainset.files)) + ' processed files')
                     sys.stdout.flush()
                 from io_modules.dataset import DatasetIO
-                dio = DatasetIO()
-                lab_list = dio.read_lab(train_file + ".lab")
-                for entry in lab_list:
-                    encodings.update(entry)
-            sys.stdout.write('\r' + str(count) + '/' + str(len(trainset.files)) + ' processed files\n')
-            sys.stdout.write('Found ' + str(len(encodings.char2int)) + ' unique symbols, ' + str(
-                len(encodings.context2int)) + ' unique features and ' + str(
-                len(encodings.speaker2int)) + ' unique speakers\n')
-            encodings.store('data/models/encoder.encodings')
+                dio = DatasetIO(features)
+                lab_list = dio.read_input_feats(st.train_data_folder+'/'+ train_file + ".lab", features)
+            sys.stdout.write('\r' + str(count) + '/' + str(len(trainset)) + ' processed files\n')
+            features.store(st.model_folder+'/encoder.encodings')
         else:
-            encodings.load('data/models/encoder.encodings')
+            features.load(st.model_folder+'encoder.encodings')
+
         if params.resume:
             runtime = True  # avoid ortonormal initialization
         else:
             runtime = False
-        encoder = Encoder(params, encodings, runtime=runtime)
+
+
+        encoder = Encoder(params, features, runtime=runtime)
+
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
-            encoder.load('data/models/rnn_encoder')
+            encoder.load(st.model_folder+'/rnn_encoder')
+
         if params.no_guided_attention:
             sys.stdout.write('Disabling guided attention\n')
         if params.no_bounds:
             sys.stdout.write('Using internal stopping condition for synthesis\n')
-        trainer = Trainer(encoder, trainset, devset)
+
+        trainer = Trainer(encoder, features, st)
         trainer.start_training(10, 1000, params)
 
-
+    ##############################        
+    ## PHASE 5) Test vocoder
+    ##############################
     def phase_5_test_vocoder(params):
         from io_modules.dataset import Dataset
         from models.vocoder import Vocoder
@@ -296,6 +183,9 @@ if __name__ == '__main__':
                              temperature=0.8)
 
 
+    ##############################        
+    ## PHASE 6) Sparse LSTM
+    ##############################
     def phase_6_convert_to_sparse_lstm(params):
         sys.stdout.write('Converting existing vocoder to SparseLSTM...\n')
         sys.stdout.flush()
