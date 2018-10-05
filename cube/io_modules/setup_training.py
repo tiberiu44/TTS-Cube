@@ -24,7 +24,10 @@ class Setup_Training:
         self.train_folder = train_folder
         self.dev_folder = dev_folder
         self.out_folder = out_folder
-        self.train_data_folder, self.dev_data_folder, self.model_folder = self.create_folder_struct()
+        self.models_folder = self.out_folder + "/data/models/"
+        self.train_output_folder = self.out_folder + "/data/output/"
+
+        self.train_data_folder, self.dev_data_folder, self.model_folder, self.train_output_folder = self.create_folder_struct()
         self.train_file_list = self.read_file_list(self.train_folder)
         self.dev_file_list = self.read_file_list(self.dev_folder)
 
@@ -48,13 +51,16 @@ class Setup_Training:
         train_data_folder = self.out_folder + "/data/processed/train/"
         dev_data_folder = self.out_folder + "/data/processed/dev/"
         models_folder = self.out_folder + "/data/models/"
+        train_output_folder = self.out_folder + "/data/output/"
         if not exists(train_data_folder):
             makedirs(train_data_folder)
         if not exists(dev_data_folder):
             makedirs(dev_data_folder)
         if not exists(models_folder):
             makedirs(models_folder)
-        return train_data_folder, dev_data_folder, models_folder
+        if not exists(train_output_folder):
+            makedirs(train_output_folder)
+        return train_data_folder, dev_data_folder, models_folder, train_output_folder
 
 
     def read_file_list (self, folder):
@@ -94,7 +100,7 @@ class Setup_Training:
 
             # TXT
             copyfile(join(in_folder, txt_name), join(out_folder, txt_name))
-            copyfile(join(in_folder, txt_name), join(out_folder, lab_name))
+            #copyfile(join(in_folder, txt_name), join(out_folder, lab_name))
 
         sys.stdout.write('\n')
 

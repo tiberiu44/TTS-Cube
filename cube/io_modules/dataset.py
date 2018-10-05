@@ -14,8 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import scipy
-import scipy.io.wavfile
 import numpy as np
 
 class DatasetIO:
@@ -23,6 +21,11 @@ class DatasetIO:
     def __init__(self, features):
         self._mel_basis = None
         self.features = features
+
+    def one_hot (self, val, length):
+        vector = np.zeros(length)
+        vector[val] = 1
+        return vector
 
     def read_input_feats(self, filename, feature_set):
         input_feats = []

@@ -63,16 +63,15 @@ class Feature_Set:
     def get_input_feature_size(self):
         size = 0
         for feat in self._input_features:
-            if feat.get_category() != 'D':
+            if feat.get_category() != 'S':
+            #if feat.get_category() != 'D':
                 size += feat.get_size()
-            else:
-                size += len(feat.discrete2int)
+            #else:
+            #    size += len(feat.discrete2int)
         return size
 
     def get_number_of_speakers(self):
-        for feat in self._input_features:
-            if feat.get_name().lower() == 'speaker':
-                return len(feat.discrete2int)
+        return len(self.speaker2int)
 
     def store(self, filename):
         with open(filename, 'w') as f:

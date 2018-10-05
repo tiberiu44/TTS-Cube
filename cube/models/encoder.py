@@ -54,7 +54,9 @@ class Encoder:
 
         self.encoder_fw = []
         self.encoder_bw = []
-
+        #print (self.INPUT_EMBEDDINGS_SIZE)
+        #import sys
+        #sys.exit(1)
         self.encoder_fw.append(
             lstm_builder(1, self.INPUT_EMBEDDINGS_SIZE, self.ENCODER_SIZE, self.model))
 
@@ -111,17 +113,18 @@ class Encoder:
     def _make_input(self, seq):
 
         x_list = []
+        sp_list = []
 
         for i in range(len(seq[0])):
-            import sys
+            #print(seq[0], i, seq[0][i])
             v = dy.vecInput(len(seq[0][i]))
-            v.set(seq[0][i])
-            print (seq[1][i],self.features.speaker2int[seq[1][i]])
-            print (v, self.speaker_lookup[self.features.speaker2int[seq[1][i]]])
-            sys.exit(1)
-            x_list.append(dy.concatenate(v, self.speaker_lookup[self.features.speaker2int[seq[1][i]]]))
 
-        return x_list
+
+            v.set(seq[0][i])
+            x_list.append(v)
+            sp_list.append(self.speaker_lookup[self.features.speaker2int[seq[1][i]]])
+
+        return x_list, sp_list
 
 
 
@@ -136,7 +139,7 @@ class Encoder:
 
 
 
-    def _predict(self, characters, gold_mgc=None, max_size=-1):
+    def _predict(self, feats, gold_mgc=None, max_size=-1):
         if gold_mgc is None:
             runtime = True
         else:
@@ -150,14 +153,18 @@ class Encoder:
         last_mgc = self.start_lookup[0]
 
         # encoder
-        x_input = self._make_input(characters)
-        print(x_input)
+        x_input, sp_input = self._make_input(feats)
+
+
+
         for lstm_fw, lstm_bw in zip(self.encoder_fw, self.encoder_bw):
             x_fw = lstm_fw.initial_state().transduce(x_input)
             x_bw = lstm_bw.initial_state().transduce(reversed(x_input))
             x_input = [dy.concatenate([fw, bw]) for fw, bw in zip(x_fw, reversed(x_bw))]
 
-        final_input = x_input
+        final_input = []
+        for i in range(len(x_input)):
+            final_input.append(dy.concatenate([x_input[i], sp_input[i]]))
         encoder = final_input
 
         decoder = self.decoder.initial_state().add_input(self.decoder_start_lookup[0])
@@ -171,7 +178,7 @@ class Encoder:
             att, align = self._attend(encoder, decoder, last_att_pos)
             if gold_mgc is None:
                 last_att_pos = np.argmax(align.value())
-            if runtime and last_att_pos == len(characters) - 1:
+            if runtime and last_att_pos == len(feats[0]) - 1:
                 stationed_count += 1
                 if stationed_count > 5:
                     break
@@ -199,7 +206,7 @@ class Encoder:
                 if max_size == -1 and output_stop[-1].value() < -0.5:
                     break
 
-                if mgc_index >= len(characters) * 7:  # safeguard
+                if mgc_index >= len(feats[0]) * 7:  # safeguard
                     break
             else:
                 last_mgc = dy.inputVector(gold_mgc[min(mgc_index + 2, len(gold_mgc) - 1)])
@@ -223,11 +230,12 @@ class Encoder:
     def _compute_binary_divergence(self, pred, target):
         return dy.binary_log_loss(pred, target)
 
-    def learn(self, characters, target_mgc, guided_att=True):
+    def learn(self, feats, target_mgc, guided_att=True):
         num_mgc = target_mgc.shape[0]
         # print num_mgc
         dy.renew_cg()
-        output_mgc, output_stop, output_attention = self._predict(characters, target_mgc)
+
+        output_mgc, output_stop, output_attention = self._predict(feats, target_mgc)
         losses = []
         index = 0
         for mgc, real_mgc in zip(output_mgc, target_mgc):
@@ -238,10 +246,10 @@ class Encoder:
             if index % 3 == 0:
                 # attention loss
                 if guided_att:
-                    att = output_attention[index / 3]
-                    losses.append(self._compute_guided_attention(att, index / 3, len(characters) + 2, num_mgc / 3))
+                    att = output_attention[index // 3]
+                    losses.append(self._compute_guided_attention(att, index // 3, len(feats[0]) + 2, num_mgc // 3))
                 # EOS loss
-                stop = output_stop[index / 3]
+                stop = output_stop[index // 3]
                 if index >= num_mgc - 6:
                     losses.append(dy.l1_distance(stop, dy.scalarInput(-0.8)))
                 else:

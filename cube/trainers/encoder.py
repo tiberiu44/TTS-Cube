@@ -50,7 +50,7 @@ class Trainer:
             start = time.time()
             mgc, att = self.vocoder.generate(feats, max_size=max_size)
 
-            self.array2file(mgc, self.setup_trainer.out_folder+'data/output/' + file[file.rfind('/') + 1:] + '.mgc')
+            self.array2file(mgc, self.setup_trainer.train_output_folder+'/' + file[file.rfind('/') + 1:] + '.mgc')
             att = [a.value() for a in att]
             new_att = np.zeros((len(att), len(feats) + 2, 3), dtype=np.uint8)
 
@@ -63,9 +63,9 @@ class Trainer:
 
             from PIL import Image
             img = Image.fromarray(new_att, 'RGB')
-            img.save(self.setup_trainer.out_folder+'data/output/' + file[file.rfind('/') + 1:] + 'att.png')
+            img.save(self.setup_trainer.train_output_folder+'/' + file[file.rfind('/') + 1:] + 'att.png')
 
-            output_file = self.setup_trainer.out_folder+'data/output/' + file[file.rfind('/') + 1:] + '.png'
+            output_file = self.setup_trainer.train_output_folder+'/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
             for x in range(mgc.shape[0]):
                 for y in range(mgc.shape[1]):
@@ -91,7 +91,7 @@ class Trainer:
             mgc_file = file + ".mgc.npy"
             mgc = np.load(mgc_file)
             #print mgc.shape
-            output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
+            output_file = self.setup_trainer.train_output_folder+'/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
             for x in range(mgc.shape[0]):
                 for y in range(mgc.shape[1]):
@@ -122,7 +122,7 @@ class Trainer:
             max_mgc = 1000
 
         self.synth_devset(max_size=max_mgc)
-        self.vocoder.store(params.out_folder+'data/models/rnn_encoder')
+        self.vocoder.store(self.setup_trainer.models_folder+'/rnn_encoder')
 
         while left_itt > 0:
             sys.stdout.write("Starting epoch " + str(epoch) + "\n")
@@ -137,17 +137,18 @@ class Trainer:
                     "\t" + str(file_index) + "/" + str(len(self.trainset)) + " processing file " + file)
                 sys.stdout.flush()
 
-                mgc_file = file + ".mgc.npy"
+                mgc_file = self.setup_trainer.train_data_folder+'/'+file + ".mgc.npy"
                 mgc = np.load(mgc_file)
 
-                lab_file = file + ".lab"
-                feats, speakers = dio.read_input_feats(lab_file, self.features)
-                print (feats)
-                sys.exit(1)
+                lab_file = self.setup_trainer.train_data_folder+'/'+ file + ".lab"
+                feats = dio.read_input_feats(lab_file, self.features)
+                #print (feats)
+                #sys.exit(1)
                 file_index += 1
 
                 import time
                 start = time.time()
+
                 if len(mgc) < 1400:
                     loss = self.vocoder.learn(feats, mgc, guided_att=not params.no_guided_attention)
                 else:
@@ -160,9 +161,9 @@ class Trainer:
                 sys.stdout.flush()
                 if file_index % 200 == 0:
                     self.synth_devset(max_size=max_mgc)
-                    self.vocoder.store(params.out_folder+'data/models/rnn_encoder')
+                    self.vocoder.store(self.setup_trainer.models_folder+'/rnn_encoder')
 
             self.synth_devset(max_size=max_mgc)
-            self.vocoder.store(params.out_folder+'data/models/rnn_encoder')
+            self.vocoder.store(self.setup_trainer.models_folder+'/rnn_encoder')
 
             epoch += 1
