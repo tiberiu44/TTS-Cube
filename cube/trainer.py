@@ -41,6 +41,8 @@ if __name__ == '__main__':
                       help='disable fixed synthesis length')
     parser.add_option("--use-gpu", action='store_true', dest='gpu',
                       help='turn on/off GPU support')
+    parser.add_option("--learning-rate", action='store', dest='learning_rate', type='float',
+                      help='Set the learning rate (default: 0.0001)', default='0.0001')
     parser.add_option('--train-folder', action='store', dest='train_folder',
                       help='Location of the training files')
     parser.add_option('--dev-folder', action='store', dest='dev_folder',

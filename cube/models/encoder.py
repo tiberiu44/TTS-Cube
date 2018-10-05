@@ -37,7 +37,7 @@ class Encoder:
 
         if self.model is None:
             self.model = dy.Model()
-            self.trainer = dy.AdamTrainer(self.model)
+            self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
             self.trainer.set_sparse_updates(True)
             self.trainer.set_clip_threshold(5.0)
 

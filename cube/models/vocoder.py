@@ -31,7 +31,7 @@ class Vocoder:
         else:
             self.model = model
 
-        self.trainer = dy.AdamTrainer(self.model, alpha=1e-4)
+        self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
         self.trainer.set_sparse_updates(True)
         self.trainer.set_clip_threshold(5.0)
         # self.trainer = dy.AdamTrainer(self.model)

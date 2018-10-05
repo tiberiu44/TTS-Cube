@@ -52,6 +52,7 @@ def create_lab_input(txt_file, speaker_ident):
     fin.close()
     return seq
 
+
 def _render_spectrogram(mgc, output_file):
     bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
     mgc_min = mgc.min()
@@ -134,6 +135,8 @@ if __name__ == '__main__':
         print ("Output file is mandatory")
 
     memory = int(params.memory)
+    # for compatibility we have to add this paramater
+    params.learning_rate = 0.0001
     dynet_config.set(mem=memory, random_seed=9)
     if params.gpu:
         dynet_config.set_gpu()
