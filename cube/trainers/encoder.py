@@ -41,18 +41,20 @@ class Trainer:
             lab_file = file + ".lab"
             dio = DatasetIO(self.features)
             print ("\n"+self.setup_trainer.dev_data_folder)
-            lab = dio.read_input_feats(self.setup_trainer.dev_data_folder+'/'+lab_file, self.features)
-            phones = lab  # [entry.phoneme for entry in lab]
+            feats = dio.read_input_feats(self.setup_trainer.dev_data_folder+'/'+lab_file, self.features)
+
+
+
 
             import time
             start = time.time()
-            mgc, att = self.vocoder.generate(phones, max_size=max_size)
+            mgc, att = self.vocoder.generate(feats, max_size=max_size)
 
             self.array2file(mgc, self.setup_trainer.out_folder+'data/output/' + file[file.rfind('/') + 1:] + '.mgc')
             att = [a.value() for a in att]
-            new_att = np.zeros((len(att), len(phones) + 2, 3), dtype=np.uint8)
+            new_att = np.zeros((len(att), len(feats) + 2, 3), dtype=np.uint8)
 
-            for ii in range(len(phones) + 2):
+            for ii in range(len(feats) + 2):
                 for jj in range(len(att)):
                     val = np.clip(int(att[jj][ii] * 255), 0, 255)
                     new_att[jj, ii, 0] = val
@@ -139,9 +141,9 @@ class Trainer:
                 mgc = np.load(mgc_file)
 
                 lab_file = file + ".lab"
-                feats = dio.read_input_feats(lab_file, self.features)
+                feats, speakers = dio.read_input_feats(lab_file, self.features)
                 print (feats)
-
+                sys.exit(1)
                 file_index += 1
 
                 import time

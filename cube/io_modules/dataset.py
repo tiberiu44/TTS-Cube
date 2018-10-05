@@ -26,6 +26,7 @@ class DatasetIO:
 
     def read_input_feats(self, filename, feature_set):
         input_feats = []
+        speakers = []
         with open(filename) as f:
             for line in f.readlines():
                 tmp = []
@@ -35,11 +36,14 @@ class DatasetIO:
                     if feat.get_category() == 'D':
                         feat.update_discrete2int(data[index])
                         tmp.append(feat.discrete2int[data[index]])
-                    if feat.get_category()in ['B', 'R']:
+                    elif feat.get_category()in ['B', 'R']:
                         tmp.append(data[index])
-                    if feat.get_category()  == 'A':
+                    elif feat.get_category()  == 'A':
                         tmp.extend([float(x) for x in data[index:index+feat.get_size()]])
+                    elif feat.get_category() == 'S':
+                        feature_set.update_speaker2int(data[index])
+                        speakers.append(data[index])
                     index += feat.get_size()
                 input_feats.append(tmp)
-        return input_feats
+        return [input_feats, speakers]
 

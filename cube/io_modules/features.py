@@ -28,6 +28,9 @@ class Feature_Set:
         self.output_features_length = 0
         self._input_features= []
         self._output_features = []
+        self.speaker2int = {}
+        self.int2speaker = {}
+
         with open(config_file) as f:
             for line in f.readlines():
                 feat_type = line.strip().split(':')[0]
@@ -39,6 +42,11 @@ class Feature_Set:
                     self._output_features.append(Feature_Item(data[0], data[1], int(data[2])))
                     self.output_features_length += int(data[2])
 
+
+    def update_speaker2int(self, value):
+        if value not in self.speaker2int:
+            self.speaker2int[value] = len(self.speaker2int)
+            self.int2speaker[len(self.speaker2int)] = value
 
     def get_input_feature_number(self):
         return len(self._input_features)
@@ -61,6 +69,10 @@ class Feature_Set:
                 size += len(feat.discrete2int)
         return size
 
+    def get_number_of_speakers(self):
+        for feat in self._input_features:
+            if feat.get_name().lower() == 'speaker':
+                return len(feat.discrete2int)
 
     def store(self, filename):
         with open(filename, 'w') as f:
@@ -83,7 +95,7 @@ class Feature_Item:
         self._name = name
         self._category = self._norm_cat(category)
         self._size = size
-        if self._category == 'D':
+        if self._category == 'D' or self._category == 'S':
             self.discrete2int = {}
             self.int2discrete = {}
 
@@ -96,6 +108,8 @@ class Feature_Item:
             return 'R'
         elif category.lower().strip() =="array":
             return 'A'
+        elif category.lower().strip() == "speaker":
+            return 'S'
         else:
             return 'U'
 
@@ -103,6 +117,7 @@ class Feature_Item:
         if value not in self.discrete2int:
             self.discrete2int[value] = len(self.discrete2int)
             self.int2discrete[len(self.discrete2int)] = value
+
 
     def get_one_hot (self, value):
         from numpy import zeros
@@ -115,7 +130,7 @@ class Feature_Item:
 
 
     def get_name(self):
-        return self._name
+        return self._name.strip()
 
 
     def get_size(self):

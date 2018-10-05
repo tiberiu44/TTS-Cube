@@ -50,10 +50,7 @@ class Encoder:
         ## HERE
         #self.phone_lookup = self.model.add_lookup_parameters((len(encodings.char2int), self.PHONE_EMBEDDINGS_SIZE))
         #self.feature_lookup = self.model.add_lookup_parameters((len(encodings.context2int), self.PHONE_EMBEDDINGS_SIZE))
-        #self.speaker_lookup = self.model.add_lookup_parameters((len(encodings.speaker2int), self.SPEAKER_EMBEDDINGS_SIZE))
-
-
-
+        self.speaker_lookup = self.model.add_lookup_parameters((features.get_number_of_speakers(), self.SPEAKER_EMBEDDINGS_SIZE))
 
         self.encoder_fw = []
         self.encoder_bw = []
@@ -112,25 +109,30 @@ class Encoder:
 
 
     def _make_input(self, seq):
+
         x_list = []
-        for pi in seq:
-            v = dy.vecInput(len(pi))
-            v.set(pi)
-            x_list.append(v)
-        print (v)
-        print (self.INPUT_EMBEDDINGS_SIZE)
+
+        for i in range(len(seq[0])):
+            import sys
+            v = dy.vecInput(len(seq[0][i]))
+            v.set(seq[0][i])
+            print (seq[1][i],self.features.speaker2int[seq[1][i]])
+            print (v, self.speaker_lookup[self.features.speaker2int[seq[1][i]]])
+            sys.exit(1)
+            x_list.append(dy.concatenate(v, self.speaker_lookup[self.features.speaker2int[seq[1][i]]]))
+
         return x_list
 
 
 
-
+    '''
     def _get_speaker_embedding(self, seq):
         for entry in seq:
             for feature in entry.context:
                 if feature.startswith('SPEAKER:'):
                     return self.speaker_lookup[self.encodings.speaker2int[feature]]
         return None
-
+    '''
 
 
 

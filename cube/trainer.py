@@ -129,7 +129,8 @@ if __name__ == '__main__':
         devset = st.dev_file_list
         sys.stdout.write('Found ' + str(len(trainset)) + ' training files and ' + str(
             len(devset)) + ' development files\n')
-        features = Feature_Set('feat.config')
+        features = Feature_Set('../feat.config')
+
         count = 0
         if not params.resume:
             for train_file in trainset:
@@ -272,3 +273,11 @@ if __name__ == '__main__':
         phase_6_convert_to_sparse_lstm(params)
     if params.phase and params.phase == '7':
         phase_7_train_sparse(params)
+
+
+'''
+params.train_folder = 'INPUT_DATA/sam3/train'
+params.dev_folder = 'INPUT_DATA/sam3/dev'
+params.out_folder = 'OUTPUT_DATA'
+phase_3_train_encoder(params)
+'''
