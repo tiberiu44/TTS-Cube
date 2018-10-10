@@ -100,6 +100,7 @@ class Setup_Training:
 
             # TXT
             copyfile(join(in_folder, txt_name), join(out_folder, txt_name))
+            print ("Copying..."+join(in_folder, lab_name+" to " + join(out_folder, lab_name)))
             copyfile(join(in_folder, lab_name), join(out_folder, lab_name))
 
         sys.stdout.write('\n')

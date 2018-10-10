@@ -129,7 +129,7 @@ if __name__ == '__main__':
         devset = st.dev_file_list
         sys.stdout.write('Found ' + str(len(trainset)) + ' training files and ' + str(
             len(devset)) + ' development files\n')
-        features = Feature_Set('../feat.config')
+        features = Feature_Set('./feat.config')
 
         count = 0
         if not params.resume:

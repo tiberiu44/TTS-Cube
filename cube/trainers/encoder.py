@@ -52,9 +52,9 @@ class Trainer:
 
             self.array2file(mgc, self.setup_trainer.train_output_folder+'/' + file[file.rfind('/') + 1:] + '.mgc')
             att = [a.value() for a in att]
-            new_att = np.zeros((len(att), len(feats) + 2, 3), dtype=np.uint8)
+            new_att = np.zeros((len(att), len(feats[0]), 3), dtype=np.uint8)
 
-            for ii in range(len(feats) + 2):
+            for ii in range(len(feats[0]) ):
                 for jj in range(len(att)):
                     val = np.clip(int(att[jj][ii] * 255), 0, 255)
                     new_att[jj, ii, 0] = val
