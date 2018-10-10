@@ -119,7 +119,8 @@ class Encoder:
             #print(seq[0], i, seq[0][i])
             v = dy.vecInput(len(seq[0][i]))
 
-
+            print (seq[0])
+            print (seq[1])
             v.set(seq[0][i])
             x_list.append(v)
             sp_list.append(self.speaker_lookup[self.features.speaker2int[seq[1][i]]])
