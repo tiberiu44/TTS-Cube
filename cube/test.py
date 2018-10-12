@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     cube_runtime.print_version()
     cube_runtime.load_vocoder('../data/models/rnn_vocoder_sparse')
-    mgc = np.load('../data/processed/dev/LJ001-0009.mgc.npy')
+    mgc = np.load('../test.mgc.npy')
     #mgc=np.zeros((390, 60), dtype=np.double)
     mgc = mgc.copy(order='C')
     x=cube_runtime.vocode(mgc, 0.8)

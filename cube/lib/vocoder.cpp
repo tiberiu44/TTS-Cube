@@ -83,24 +83,24 @@ int Vocoder::load_from_file(char *fn){
 
 int Vocoder::sample(Matrix &layer, float temp){
     double sum=0;
-//    double max=layer.data[0];
-//    for (int i=1;i<layer.rows;i++){
-//        if (layer.data[i]>max){
-//            max=layer.data[i];
-//        }
-//    }
-//    //printf ("max=%f\n", max);
-//    //layer.print();
-//    for (int i=0;i<layer.rows;i++){
-//        layer.data[i]=exp(layer.data[i]-max);
-//        sum+=layer.data[i];
-//    }
-//    //layer.print();
-//    //printf("sum=%f\n", sum);
-//    //softmax.print();
+    double max=layer.data[0];
+    for (int i=1;i<layer.rows;i++){
+        if (layer.data[i]>max){
+            max=layer.data[i];
+        }
+    }
+////    //printf ("max=%f\n", max);
+////    //layer.print();
+    for (int i=0;i<layer.rows;i++){
+        layer.data[i]=exp(layer.data[i]-max);
+        sum+=layer.data[i];
+    }
+////    //layer.print();
+////    //printf("sum=%f\n", sum);
+////    //softmax.print();
     int max_index=0;
     for (int i=0;i<layer.rows;i++){
-        //layer.data[i]/=sum;
+        layer.data[i]/=sum;
         if (layer.data[i]>layer.data[max_index])
             max_index=i;
     }
@@ -147,14 +147,14 @@ int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
                 fflush(stdout);
                 last_proc=curr_proc;
             }
-
-            upsample.data=&upsample.data[3];//move the pointer to prepare for sampling
+            double *orig_ptr=upsample.data;
+            upsample.data=orig_ptr+3;//move the pointer to prepare for sampling
             upsample_w[j].multiply(input_cond, upsample);
             upsample.add(upsample_b[j], upsample);
             upsample.apply_tanh();
             //upsample.print();
             //exit(0);
-            upsample.data=&upsample.data[-2];//move back the pointer for coarse synthesis
+            upsample.data=orig_ptr+1;//move back the pointer for coarse synthesis
             upsample.data[0]=(float)last_coarse_sample/128.0-1.0;
             upsample.data[1]=(float)last_fine_sample/128.0-1.0;
 
@@ -165,7 +165,7 @@ int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
             softmax_coarse_w.multiply(hidden_coarse, softmax_coarse);
             softmax_coarse.add(softmax_coarse_b, softmax_coarse);
 
-            upsample.data=&upsample.data[-1];//move back the pointer for fine synthesis
+            upsample.data=orig_ptr;//move back the pointer for fine synthesis
             //printf ("coarse\n");
             int selected_coarse_sample=this->sample(softmax_coarse, temperature);
             upsample.data[0]=(float)last_coarse_sample/128.0-1.0;
