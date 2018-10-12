@@ -69,8 +69,8 @@ class DatasetIO:
             wav = np.asarray(wav, dtype=np.float)
         return wav, sr
 
-    def write_wave(self, filename, data, sample_rate):
-        wav_decoded = np.asarray(data, dtype=np.float)
+    def write_wave(self, filename, data, sample_rate, dtype=np.float):
+        wav_decoded = np.asarray(data, dtype=dtype)
         scipy.io.wavfile.write(filename, sample_rate, wav_decoded)
 
     def read_phs(self, filename):

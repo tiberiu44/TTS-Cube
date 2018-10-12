@@ -216,6 +216,8 @@ LSTM::LSTM(int input_size, int hidden_size){
     this->ht=Matrix(hidden_size);
     this->p_x2i=Matrix(hidden_size*4, input_size);
     this->p_h2i=Matrix(hidden_size*4, hidden_size);
+    this->m_x2i=Matrix(hidden_size*4, input_size);
+    this->m_h2i=Matrix(hidden_size*4, hidden_size);
     this->p_bi=Matrix(hidden_size*4);
 
     this->tmp=Matrix(hidden_size*4);
@@ -235,5 +237,10 @@ LSTM::LSTM(int input_size, int hidden_size){
 void LSTM::load_from_file(std::ifstream &f){
     p_x2i.load_from_file(f);
     p_h2i.load_from_file(f);
+    m_x2i.load_from_file(f);
+    m_h2i.load_from_file(f);
+    //apply the masks
+    m_x2i.cmultiply(p_x2i, p_x2i);
+    m_h2i.cmultiply(p_h2i, p_h2i);
     p_bi.load_from_file(f);
 }

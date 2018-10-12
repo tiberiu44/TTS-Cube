@@ -47,6 +47,8 @@ class LSTM{
         //i
         Matrix p_x2i;
         Matrix p_h2i;
+        Matrix m_x2i;
+        Matrix m_h2i;
         Matrix p_bi;
 
 

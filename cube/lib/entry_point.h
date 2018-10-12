@@ -6,4 +6,4 @@ extern void c_print_version();
 
 extern int c_load_vocoder(char* path);
 
-extern int* c_vocode(double* spectrogram, double* mean, double* stdev, int num_frames, int frame_size, float temperature);
+extern int* c_vocode(double* spectrogram, int num_frames, int frame_size, float temperature);

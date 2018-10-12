@@ -110,7 +110,7 @@ int Vocoder::sample(Matrix &layer, float temp){
     return max_index;
 }
 
-int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_frames, float temperature){
+int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
     //exit(0);
     clock_t start,end;
     start=clock();
