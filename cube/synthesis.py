@@ -93,7 +93,7 @@ def synthesize(speaker, input_file, output_file, params):
 
     import time
     start = time.time()
-    signal = vocoder.synthesize(mgc, batch_size=1000, temperature=params.temperature)
+    signal = vocoder.synthesize(mgc, batch_size=1000, temperature=params.temperature, sample=params.sample)
     stop = time.time()
     sys.stdout.write(" execution time=" + str(stop - start))
     sys.stdout.write('\n')
@@ -118,6 +118,8 @@ if __name__ == '__main__':
                       help='preallocate memory for batch training (default 2048)')
     parser.add_option("--use-gpu", action='store_true', dest='gpu',
                       help='turn on/off GPU support')
+    parser.add_option("--sample", action='store_true', dest='sample',
+                      help='Use random sampling')
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
                       help='Order of MGC parameters (default=60)', default=60)
     parser.add_option('--temperature', action='store', dest='temperature', type='float',

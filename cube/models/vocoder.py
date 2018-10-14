@@ -207,7 +207,10 @@ class Vocoder:
                 softmax_coarse_output = dy.softmax(
                     self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
 
-                selected_coarse_sample = self._pick_sample(softmax_coarse_output.npvalue(), temperature=temperature)
+                if sample:
+                    selected_coarse_sample = self._pick_sample(softmax_coarse_output.npvalue(), temperature=temperature)
+                else:
+                    selected_coarse_sample = np.argmax(softmax_coarse_output.npvalue())
                 # selected_coarse_sample = self._fast_sample(softmax_coarse_output, temperature=temperature)
                 #####FINE
                 if self.OUTPUT_EMB_SIZE == 1:
@@ -229,7 +232,10 @@ class Vocoder:
                     self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
 
                 # selected_fine_sample = np.argmax(softmax_fine_output.npvalue())
-                selected_fine_sample = self._pick_sample(softmax_fine_output.npvalue(), temperature=temperature)
+                if sample:
+                    selected_fine_sample = self._pick_sample(softmax_fine_output.npvalue(), temperature=temperature)
+                else:
+                    selected_fine_sample = np.argmax(softmax_fine_output.npvalue())
                 # selected_fine_sample = self._fast_sample(softmax_fine_output, temperature=temperature)
 
                 last_coarse_sample = selected_coarse_sample

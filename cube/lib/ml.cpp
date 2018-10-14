@@ -51,7 +51,7 @@ void Matrix::affine(Matrix &b, Matrix &c){
     //B kxn
 
     cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                this->rows, b.cols, this->cols, 1, this->data, this->cols, b.data, b.cols, 0, c.data, b.cols);
+                this->rows, b.cols, this->cols, 1, this->data, this->cols, b.data, b.cols, 1, c.data, b.cols);
 }
 
 void Matrix::apply_tanh(){
@@ -158,6 +158,58 @@ void Matrix::print(){
 void Matrix::reset(){
     memset(this->data, 0, rows*cols*sizeof(double));
 }
+
+SparseMatrix::SparseMatrix(Matrix &orig, Matrix &mask){
+    //count non-zero elements
+    int total_elem=orig.rows*orig.cols;
+    int n=0;
+    for (int i=0;i<total_elem;i++){
+        if (mask.data[i]>0.5){
+            n++;
+        }
+    }
+
+    this->vals=new double[n];
+    this->ptrB=new int[orig.rows*orig.cols+1];
+    this->ptrE=new int[n];
+    int *coord_row=new int[n];
+    int *coord_col=new int[n];
+    double *tmp_vals=new double[n];
+    this->num_elements=n;
+
+    int index=0;
+    for (int i=0;i<total_elem;i++){
+        if (mask.data[i]>0.5){
+            tmp_vals[index]=orig.data[i];
+            coord_row[index]=i/orig.rows;
+            coord_col[index]=i%orig.rows;
+            index++;
+        }
+    }
+    MKL_INT job[6]={1, 0, 0, n, 0};
+    MKL_INT nnz = n;
+    MKL_INT info;
+    int m=orig.rows*orig.cols;
+    mkl_dcsrcoo(job, &m, vals, ptrB, ptrE, &nnz, tmp_vals, coord_row, coord_col, &info);
+
+    delete []coord_row;
+    delete []coord_col;
+    delete []tmp_vals;
+}
+
+void SparseMatrix::affine(Matrix &b, Matrix &c){
+    //cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+    //            this->rows, b.cols, this->cols, 1, this->data, this->cols, b.data, b.cols, 0, c.data, b.cols);
+    char matdescra[6] = {'g', 'l', 'n', 'c', 'x', 'x'};
+    //mkl_dcsrmm('N', rows, c.cols, cols, 1, matdescra, vals, ptrB, ptrE, &(ptrE[1]), b.data, b.cols, 1, c.data, &b.cols );
+}
+
+SparseMatrix::~SparseMatrix(){
+    delete []vals;
+    delete []ptrB;
+    delete []ptrE;
+}
+
 
 LSTM::LSTM(const LSTM &copy){
     printf("\n\n\n\nHEEEEELPPP!!!!!!!\n\n\n\n\n");
