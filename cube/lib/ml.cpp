@@ -55,11 +55,11 @@ void Matrix::affine(Matrix &b, Matrix &c){
 }
 
 void Matrix::apply_tanh(){
-    vdTanh(rows*cols, this->data, this->data);
-//    int total=cols*rows;
-//    for (int i=0;i<total;i++){
-//        data[i]=tanh(data[i]);
-//    }
+    //vdTanh(rows*cols, this->data, this->data);
+    int total=cols*rows;
+    for (int i=0;i<total;i++){
+        data[i]=tanh(data[i]);
+    }
 }
 
 void Matrix::add_scalar(double scalar){

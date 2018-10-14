@@ -122,7 +122,7 @@ int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
     int last_coarse_sample=0;
     int last_fine_sample=0;
 
-    Matrix input_cond(this->mgc_order*2);
+    Matrix input_cond=Matrix(this->mgc_order*2);
     int cnt=0;
 
     this->rnn_fine.reset();
@@ -143,13 +143,16 @@ int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
                 last_proc=curr_proc;
             }
             double *orig_ptr=upsample.data;
+            int num_rows=upsample.rows;
             upsample.data=&orig_ptr[3];//move the pointer to prepare for sampling
+            upsample.rows=num_rows-3;
             upsample_w[j].multiply(input_cond, upsample);
             upsample.add(upsample_b[j], upsample);
             upsample.apply_tanh();
             //upsample.print();
             //exit(0);
             upsample.data=&orig_ptr[1];//move back the pointer for coarse synthesis
+            upsample.rows=num_rows-1;
             upsample.data[0]=(float)last_coarse_sample/128.0-1.0;
             upsample.data[1]=(float)last_fine_sample/128.0-1.0;
 
@@ -161,6 +164,7 @@ int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
             softmax_coarse.add(softmax_coarse_b, softmax_coarse);
 
             upsample.data=orig_ptr;//move back the pointer for fine synthesis
+            upsample.rows=num_rows;
             //printf(".\n");
             //printf ("coarse\n");
             int selected_coarse_sample=this->sample(softmax_coarse, temperature);
