@@ -19,6 +19,6 @@ int c_load_vocoder(char* path){
     return 0;
 }
 
-int* c_vocode(double* spectogram, double* mean, double* stdev, int num_frames, int frame_size, float temperature){
-    return vocoder->vocode(spectogram, mean, stdev, num_frames, temperature);
+int* c_vocode(double* spectogram, int num_frames, int frame_size, float temperature){
+    return vocoder->vocode(spectogram, num_frames, temperature);
 }

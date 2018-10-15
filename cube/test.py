@@ -14,20 +14,20 @@ def _normalize(mgc, mean, stdev):
 if __name__ == '__main__':
     # import dynet
     import cube_runtime
+    from io_modules.dataset import DatasetIO
     import numpy as np
 
     cube_runtime.print_version()
-    cube_runtime.load_vocoder('../data/models/rnn_vocoder')
-    mean = np.load('../data/models/mean.npy')
-    stdev = np.load('../data/models/stdev.npy')
-    mgc = np.load('../data/processed/dev/anca_dcnews_0127.orig.mgc.npy')
+    cube_runtime.load_vocoder('../data/models/rnn_vocoder_sparse')
+    mgc = np.load('../test.mgc.npy')
     #mgc=np.zeros((390, 60), dtype=np.double)
-    mgc = _normalize(mgc, mean, stdev)
     mgc = mgc.copy(order='C')
-    x=cube_runtime.vocode(mgc, stdev, mean, 0.8)
-    from cube.io_modules.dataset import DatasetIO
+    x=cube_runtime.vocode(mgc, 0.8)
     dio = DatasetIO()
-    enc = dio.b16_to_float(x, discreete=True)
+    #zz=
+    #enc = dio.b16_to_float(x, discreete=True)
+    enc=np.array(x, dtype='int16')
+
     output_file = 'test.wav'
-    dio.write_wave(output_file, enc, 16000)
+    dio.write_wave(output_file, enc, 16000, dtype=np.int16)
     print (x);

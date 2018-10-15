@@ -3,12 +3,41 @@
 #include <vector>
 #include <memory.h>
 
+class Matrix;
+class SparseMatrix{
+private:
+public:
+    double *vals;
+    int *ptrB;
+    int *ptrE;
+    int num_elements;
+    int rows;
+    int cols;
+    SparseMatrix(Matrix &source, Matrix &mask);
+    SparseMatrix(const SparseMatrix &copy);
+    ~SparseMatrix();
+    void affine(Matrix &b, Matrix &c);
+
+    SparseMatrix& operator=(const SparseMatrix &other){
+        this->cols=other.cols;
+        this->rows=other.rows;
+        this->vals=new double[other.num_elements];
+        this->ptrB=new int[other.rows*other.cols+1];
+        this->ptrE=new int[other.num_elements];
+        memcpy(this->vals, other.vals, other.num_elements*sizeof(double));
+        memcpy(this->ptrB, other.ptrB, (other.rows*other.cols+1)*sizeof(double));
+        memcpy(this->ptrE, other.ptrE, other.num_elements*sizeof(double));
+        //memcpy(this->data, other.data, cols*rows*sizeof(double));
+
+        return *this;
+    }
+};
 
 class Matrix{
-    private:
+private:
 
 
-    public:
+public:
     double *data;
     int cols;
     int rows;
@@ -47,6 +76,8 @@ class LSTM{
         //i
         Matrix p_x2i;
         Matrix p_h2i;
+        Matrix m_x2i;
+        Matrix m_h2i;
         Matrix p_bi;
 
 

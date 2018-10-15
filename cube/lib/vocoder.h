@@ -34,5 +34,5 @@ class Vocoder{
         Vocoder(unsigned int sample_rate, unsigned int mgc_order);
         ~Vocoder();
         int load_from_file(char *filename);
-        int *vocode(double *spectrogram, double *mean, double *stdev, int num_frames, float temperature);
+        int *vocode(double *spectrogram, int num_frames, float temperature);
 };

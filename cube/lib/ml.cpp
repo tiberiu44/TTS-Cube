@@ -51,15 +51,15 @@ void Matrix::affine(Matrix &b, Matrix &c){
     //B kxn
 
     cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                this->rows, b.cols, this->cols, 1, this->data, this->cols, b.data, b.cols, 0, c.data, b.cols);
+                this->rows, b.cols, this->cols, 1, this->data, this->cols, b.data, b.cols, 1, c.data, b.cols);
 }
 
 void Matrix::apply_tanh(){
-    vdTanh(rows*cols, this->data, this->data);
-//    int total=cols*rows;
-//    for (int i=0;i<total;i++){
-//        data[i]=tanh(data[i]);
-//    }
+    //vdTanh(rows*cols, this->data, this->data);
+    int total=cols*rows;
+    for (int i=0;i<total;i++){
+        data[i]=tanh(data[i]);
+    }
 }
 
 void Matrix::add_scalar(double scalar){
@@ -159,6 +159,58 @@ void Matrix::reset(){
     memset(this->data, 0, rows*cols*sizeof(double));
 }
 
+SparseMatrix::SparseMatrix(Matrix &orig, Matrix &mask){
+    //count non-zero elements
+    int total_elem=orig.rows*orig.cols;
+    int n=0;
+    for (int i=0;i<total_elem;i++){
+        if (mask.data[i]>0.5){
+            n++;
+        }
+    }
+
+    this->vals=new double[n];
+    this->ptrB=new int[orig.rows*orig.cols+1];
+    this->ptrE=new int[n];
+    int *coord_row=new int[n];
+    int *coord_col=new int[n];
+    double *tmp_vals=new double[n];
+    this->num_elements=n;
+
+    int index=0;
+    for (int i=0;i<total_elem;i++){
+        if (mask.data[i]>0.5){
+            tmp_vals[index]=orig.data[i];
+            coord_row[index]=i/orig.rows;
+            coord_col[index]=i%orig.rows;
+            index++;
+        }
+    }
+    MKL_INT job[6]={1, 0, 0, n, 0};
+    MKL_INT nnz = n;
+    MKL_INT info;
+    int m=orig.rows*orig.cols;
+    mkl_dcsrcoo(job, &m, vals, ptrB, ptrE, &nnz, tmp_vals, coord_row, coord_col, &info);
+
+    delete []coord_row;
+    delete []coord_col;
+    delete []tmp_vals;
+}
+
+void SparseMatrix::affine(Matrix &b, Matrix &c){
+    //cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+    //            this->rows, b.cols, this->cols, 1, this->data, this->cols, b.data, b.cols, 0, c.data, b.cols);
+    char matdescra[6] = {'g', 'l', 'n', 'c', 'x', 'x'};
+    //mkl_dcsrmm('N', rows, c.cols, cols, 1, matdescra, vals, ptrB, ptrE, &(ptrE[1]), b.data, b.cols, 1, c.data, &b.cols );
+}
+
+SparseMatrix::~SparseMatrix(){
+    delete []vals;
+    delete []ptrB;
+    delete []ptrE;
+}
+
+
 LSTM::LSTM(const LSTM &copy){
     printf("\n\n\n\nHEEEEELPPP!!!!!!!\n\n\n\n\n");
 }
@@ -216,6 +268,8 @@ LSTM::LSTM(int input_size, int hidden_size){
     this->ht=Matrix(hidden_size);
     this->p_x2i=Matrix(hidden_size*4, input_size);
     this->p_h2i=Matrix(hidden_size*4, hidden_size);
+    this->m_x2i=Matrix(hidden_size*4, input_size);
+    this->m_h2i=Matrix(hidden_size*4, hidden_size);
     this->p_bi=Matrix(hidden_size*4);
 
     this->tmp=Matrix(hidden_size*4);
@@ -235,5 +289,10 @@ LSTM::LSTM(int input_size, int hidden_size){
 void LSTM::load_from_file(std::ifstream &f){
     p_x2i.load_from_file(f);
     p_h2i.load_from_file(f);
+    m_x2i.load_from_file(f);
+    m_h2i.load_from_file(f);
+    //apply the masks
+    m_x2i.cmultiply(p_x2i, p_x2i);
+    m_h2i.cmultiply(p_h2i, p_h2i);
     p_bi.load_from_file(f);
 }

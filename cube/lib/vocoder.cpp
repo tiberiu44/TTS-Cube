@@ -82,22 +82,17 @@ int Vocoder::load_from_file(char *fn){
 }
 
 int Vocoder::sample(Matrix &layer, float temp){
-    double sum=0;
+//    double sum=0;
 //    double max=layer.data[0];
 //    for (int i=1;i<layer.rows;i++){
 //        if (layer.data[i]>max){
 //            max=layer.data[i];
 //        }
 //    }
-//    //printf ("max=%f\n", max);
-//    //layer.print();
 //    for (int i=0;i<layer.rows;i++){
 //        layer.data[i]=exp(layer.data[i]-max);
 //        sum+=layer.data[i];
 //    }
-//    //layer.print();
-//    //printf("sum=%f\n", sum);
-//    //softmax.print();
     int max_index=0;
     for (int i=0;i<layer.rows;i++){
         //layer.data[i]/=sum;
@@ -110,7 +105,7 @@ int Vocoder::sample(Matrix &layer, float temp){
     return max_index;
 }
 
-int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_frames, float temperature){
+int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
     //exit(0);
     clock_t start,end;
     start=clock();
@@ -127,7 +122,7 @@ int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_f
     int last_coarse_sample=0;
     int last_fine_sample=0;
 
-    Matrix input_cond(this->mgc_order*2);
+    Matrix input_cond=Matrix(this->mgc_order*2);
     int cnt=0;
 
     this->rnn_fine.reset();
@@ -147,14 +142,17 @@ int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_f
                 fflush(stdout);
                 last_proc=curr_proc;
             }
-
-            upsample.data=&upsample.data[3];//move the pointer to prepare for sampling
+            double *orig_ptr=upsample.data;
+            int num_rows=upsample.rows;
+            upsample.data=&orig_ptr[3];//move the pointer to prepare for sampling
+            upsample.rows=num_rows-3;
             upsample_w[j].multiply(input_cond, upsample);
             upsample.add(upsample_b[j], upsample);
             upsample.apply_tanh();
             //upsample.print();
             //exit(0);
-            upsample.data=&upsample.data[-2];//move back the pointer for coarse synthesis
+            upsample.data=&orig_ptr[1];//move back the pointer for coarse synthesis
+            upsample.rows=num_rows-1;
             upsample.data[0]=(float)last_coarse_sample/128.0-1.0;
             upsample.data[1]=(float)last_fine_sample/128.0-1.0;
 
@@ -162,10 +160,13 @@ int *Vocoder::vocode(double *spectrogram, double *mean, double *stdev, int num_f
             mlp_coarse_w.multiply(rnn_coarse.ht, hidden_coarse);
             hidden_coarse.add(mlp_coarse_b, hidden_coarse);
             hidden_coarse.apply_rectify();
+
             softmax_coarse_w.multiply(hidden_coarse, softmax_coarse);
             softmax_coarse.add(softmax_coarse_b, softmax_coarse);
 
-            upsample.data=&upsample.data[-1];//move back the pointer for fine synthesis
+            upsample.data=orig_ptr;//move back the pointer for fine synthesis
+            upsample.rows=num_rows;
+            //printf(".\n");
             //printf ("coarse\n");
             int selected_coarse_sample=this->sample(softmax_coarse, temperature);
             upsample.data[0]=(float)last_coarse_sample/128.0-1.0;

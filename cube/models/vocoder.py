@@ -179,6 +179,7 @@ class Vocoder:
                 rnnFine = rnnFine.set_s(rnn_state)
 
             out_list = []
+            cnt=0
             for index in range(stop - start):
                 w_index += 1
 
@@ -207,7 +208,10 @@ class Vocoder:
                 softmax_coarse_output = dy.softmax(
                     self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
 
-                selected_coarse_sample = self._pick_sample(softmax_coarse_output.npvalue(), temperature=temperature)
+                if sample:
+                    selected_coarse_sample = self._pick_sample(softmax_coarse_output.npvalue(), temperature=temperature)
+                else:
+                    selected_coarse_sample = np.argmax(softmax_coarse_output.npvalue())
                 # selected_coarse_sample = self._fast_sample(softmax_coarse_output, temperature=temperature)
                 #####FINE
                 if self.OUTPUT_EMB_SIZE == 1:
@@ -226,10 +230,13 @@ class Vocoder:
                 for w, b in zip(self.mlp_fine_w, self.mlp_fine_b):
                     hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
                 softmax_fine_output = dy.softmax(
-                    self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
+                    self.softmax_fine_w.expr(update=True) * hidden + self.softmax_fine_b.expr(update=True))
 
                 # selected_fine_sample = np.argmax(softmax_fine_output.npvalue())
-                selected_fine_sample = self._pick_sample(softmax_fine_output.npvalue(), temperature=temperature)
+                if sample:
+                    selected_fine_sample = self._pick_sample(softmax_fine_output.npvalue(), temperature=temperature)
+                else:
+                    selected_fine_sample = np.argmax(softmax_fine_output.npvalue())
                 # selected_fine_sample = self._fast_sample(softmax_fine_output, temperature=temperature)
 
                 last_coarse_sample = selected_coarse_sample
