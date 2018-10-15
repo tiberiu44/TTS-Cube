@@ -160,6 +160,7 @@ int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
             mlp_coarse_w.multiply(rnn_coarse.ht, hidden_coarse);
             hidden_coarse.add(mlp_coarse_b, hidden_coarse);
             hidden_coarse.apply_rectify();
+
             softmax_coarse_w.multiply(hidden_coarse, softmax_coarse);
             softmax_coarse.add(softmax_coarse_b, softmax_coarse);
 
