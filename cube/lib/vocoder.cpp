@@ -6,16 +6,13 @@
 
 
 Vocoder::Vocoder(unsigned int sample_rate, unsigned int mgc_order){
-    int count=0;
-    char **tmp=0x0;
-    //dynet::initialize(count, tmp);
     printf("SAMPLE_RATE=%d\nMGC_ORDER=%d\n", sample_rate, mgc_order);
     this->sample_rate=sample_rate;
     this->mgc_order=mgc_order;
 
     const unsigned int UPSAMPLE_PROJ = 200;
     const unsigned int RNN_SIZE = 448;
-    const unsigned int RNN_LAYERS = 1;
+    //const unsigned int RNN_LAYERS = 1;
 
 
     this->upsample_count = int(12.5 * this->sample_rate / 1000);
@@ -194,7 +191,7 @@ int *Vocoder::vocode(double *spectrogram, int num_frames, float temperature){
     double dif = difftime (end,start)*1.0/CLOCKS_PER_SEC;
     printf("done in %f seconds with %d\n", dif, cnt);
     int *a =new int[audio.size()];
-    for (int i=0;i<audio.size();i++){
+    for (unsigned int i=0;i<audio.size();i++){
         a[i]=audio[i];
         //a[i]=i;
     }
