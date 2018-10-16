@@ -104,7 +104,7 @@ class Trainer:
             for file in self.trainset.files:
                 num_files += 1
 
-                if num_files == params.sparsity_increase:
+                if self.vocoder.sparse and num_files == params.sparsity_increase:
                     sparsity += params.sparsity_step
                     num_files = 0
                     if sparsity <= params.sparsity_target:
