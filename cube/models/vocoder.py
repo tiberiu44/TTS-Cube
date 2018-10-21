@@ -17,6 +17,143 @@
 import dynet as dy
 import numpy as np
 import sys
+from io_modules.dataset import DatasetIO
+
+
+class BeeCoder:
+    def __init__(self, params, model=None, runtime=False):
+        self.params = params
+        self.HIDDEN_LAYERS = [64, 64]
+        self.HISTORY = 80
+        self.sparse = False
+        self.upsample_count = int(12.5 * self.params.target_sample_rate / 1000)
+        if model is None:
+            self.model = dy.Model()
+        else:
+            self.model = model
+
+        self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
+        input_size = params.mgc_order + self.HISTORY
+        self.layer_w = []
+        self.layer_b = []
+        for layer_size in self.HIDDEN_LAYERS:
+            w = []
+            b = []
+            for idx in range(self.upsample_count):
+                w.append(self.model.add_parameters((layer_size, input_size)))
+                b.append(self.model.add_parameters((layer_size)))
+            self.layer_w.append(w)
+            self.layer_b.append(b)
+            input_size = layer_size
+
+        self.softmax_w = []
+        self.softmax_b = []
+
+        for i in range(self.upsample_count):
+            self.softmax_w.append(self.model.add_parameters((256, input_size)))
+            self.softmax_b.append(self.model.add_parameters((256)))
+
+        self.dio = DatasetIO()
+
+    def _pick_sample(self, probs, temperature=1.0):
+        probs = probs / np.sum(probs)
+        scaled_prediction = np.log(probs) / temperature
+        scaled_prediction = (scaled_prediction -
+                             np.logaddexp.reduce(scaled_prediction))
+        scaled_prediction = np.exp(scaled_prediction)
+        # print np.sum(probs)
+        # probs = probs / np.sum(probs)
+        return np.random.choice(np.arange(256), p=scaled_prediction)
+
+    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0):
+        synth = []
+        dy.renew_cg()
+        history = dy.inputVector([127 for x in range(self.HISTORY)])
+        last_proc = 0
+        for mgc_index in range(len(mgc)):
+            curr_proc = int((mgc_index + 1) * 100 / len(mgc))
+            if curr_proc % 5 == 0 and curr_proc != last_proc:
+                while last_proc < curr_proc:
+                    last_proc += 5
+                    sys.stdout.write(' ' + str(last_proc))
+                    sys.stdout.flush()
+            pred_probs = self._predict_one(mgc[mgc_index], history, runtime=True)
+            for output in pred_probs:
+                synth.append(self._pick_sample(output.npvalue(), temperature=temperature))
+
+            hist = synth[-self.HISTORY:]
+            dy.renew_cg()
+            history = (dy.inputVector(hist) - 127.0) / 128.0
+
+
+        return synth
+
+    def store(self, output_base):
+        self.model.save(output_base + ".network")
+
+    def load(self, output_base):
+        self.model.populate(output_base + ".network")
+
+    def _predict_one(self, mgc, history, runtime=True):
+        input_vector = dy.concatenate([dy.inputVector(mgc), history])
+        output_hidden = []
+        for idx in range(self.upsample_count):
+            hidden = input_vector
+            for l_idx in range(len(self.layer_w)):
+                w = self.layer_w[l_idx][idx]
+                b = self.layer_b[l_idx][idx]
+                hidden = dy.tanh(w.expr(update=True) * hidden + b.expr(update=True))
+
+            output_hidden.append(hidden)
+
+        output = []
+        for w, b, hid in zip(self.softmax_w, self.softmax_b, output_hidden):
+            logits = w.expr(update=True) * hid + b.expr(update=True)
+            if runtime:
+                logits = dy.softmax(logits)
+            output.append(logits)
+        return output
+
+    def learn(self, wave, mgc, batch_size):
+        wave_disc = wave
+        losses = []
+        dy.renew_cg()
+        history = dy.inputVector([0 for x in range(self.HISTORY)])
+        last_proc = 0
+        total_loss = 0
+        rr1 = len(mgc)
+        rr2 = int(len(wave) / self.upsample_count)
+        rr = min(rr1, rr2)
+        for mgc_index in range(rr):
+            curr_proc = int((mgc_index + 1) * 100 / rr)
+            if curr_proc % 5 == 0 and curr_proc != last_proc:
+                while last_proc < curr_proc:
+                    last_proc += 5
+                    sys.stdout.write(' ' + str(last_proc))
+                    sys.stdout.flush()
+            pred_probs = self._predict_one(mgc[mgc_index], history, runtime=False)
+            start_index = mgc_index * self.upsample_count
+            for ii in range(self.upsample_count):
+                losses.append(dy.pickneglogsoftmax(pred_probs[ii], wave_disc[ii + start_index]))
+            if len(losses) >= batch_size:
+                loss = dy.esum(losses)
+                total_loss += loss.value()
+                loss.backward()
+                self.trainer.update()
+                losses = []
+                dy.renew_cg()
+
+            stop_index = start_index + self.upsample_count
+            history = (dy.inputVector(wave[stop_index - self.HISTORY:stop_index]) - 127.0) / 128
+
+        if len(losses) > 0:
+            loss = dy.esum(losses)
+            total_loss += loss.value()
+            loss.backward()
+            self.trainer.update()
+            dy.renew_cg()
+
+        return total_loss / len(wave_disc)
 
 
 class Vocoder:
@@ -43,6 +180,8 @@ class Vocoder:
         if use_sparse_lstm:
             lstm_builder = dy.SparseLSTMBuilder
             self.sparse = True
+        else:
+            self.sparse = False
 
         upsample_count = int(12.5 * self.params.target_sample_rate / 1000)
         # self.upsample_w_s = []
@@ -179,7 +318,7 @@ class Vocoder:
                 rnnFine = rnnFine.set_s(rnn_state)
 
             out_list = []
-            cnt=0
+            cnt = 0
             for index in range(stop - start):
                 w_index += 1
 

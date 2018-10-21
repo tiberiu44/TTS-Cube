@@ -223,9 +223,9 @@ if __name__ == '__main__':
 
     def phase_2_train_vocoder(params):
         from io_modules.dataset import Dataset
-        from models.vocoder import Vocoder
+        from models.vocoder import BeeCoder
         from trainers.vocoder import Trainer
-        vocoder = Vocoder(params)
+        vocoder = BeeCoder(params)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             vocoder.load('data/models/rnn_vocoder')
@@ -233,7 +233,7 @@ if __name__ == '__main__':
         devset = Dataset("data/processed/dev")
         sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
             len(devset.files)) + ' development files\n')
-        trainer = Trainer(vocoder, trainset, devset)
+        trainer = Trainer(vocoder, trainset, devset, use_ulaw=True)
         trainer.start_training(20, params.batch_size, params.target_sample_rate)
 
 

@@ -82,7 +82,7 @@ class Trainer:
         sys.stdout.write("\n")
 
         if self.vocoder.sparse:
-            print ("Setting sparsity at: "+str(params.sparsity_step)+"%")
+            print ("Setting sparsity at: " + str(params.sparsity_step) + "%")
             sparsity = params.sparsity_step
             self.vocoder.rnnFine.set_sparsity(float(sparsity) / 100)
             self.vocoder.rnnCoarse.set_sparsity(float(sparsity) / 100)
@@ -93,7 +93,6 @@ class Trainer:
             self.vocoder.store('data/models/rnn_vocoder')
 
         num_files = 0
-
         while left_itt > 0:
             sys.stdout.write("Starting epoch " + str(epoch) + "\n")
             sys.stdout.write("Shuffling training data\n")
@@ -104,15 +103,15 @@ class Trainer:
             for file in self.trainset.files:
                 num_files += 1
 
-                if num_files == params.sparsity_increase:
+                if self.vocoder.sparse and num_files == params.sparsity_increase:
                     sparsity += params.sparsity_step
                     num_files = 0
                     if sparsity <= params.sparsity_target:
-                        print ("Setting sparsity at "+str(sparsity)+"%")
+                        print ("Setting sparsity at " + str(sparsity) + "%")
                         self.vocoder.rnnFine.set_sparsity(float(sparsity) / 100)
                         self.vocoder.rnnCoarse.set_sparsity(float(sparsity) / 100)
                     else:
-                        sparsity=params.sparsity_target
+                        sparsity = params.sparsity_target
 
                 sys.stdout.write(
                     "\t" + str(file_index) + "/" + str(len(self.trainset.files)) + " processing file " + file)
