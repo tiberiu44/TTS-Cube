@@ -39,6 +39,15 @@ class MelVocoder:
     def __init__(self):
         self._mel_basis = None
 
+    def fft(self, y, sample_rate):
+        pre_y = self.preemphasis(y)
+        D = self._stft(pre_y, sample_rate)
+        return D.transpose()
+
+    def ifft(self, y, sample_rate):
+        y = y.transpose()
+        return self._istft(y, sample_rate)
+
     def melspectrogram(self, y, sample_rate, num_mels):
         pre_y = self.preemphasis(y)
         D = self._stft(pre_y, sample_rate)
@@ -47,6 +56,10 @@ class MelVocoder:
 
     def preemphasis(self, x):
         return signal.lfilter([1, -0.97], [1], x)
+
+    def _istft(self, y, sample_rate):
+        n_fft, hop_length, win_length = self._stft_parameters(sample_rate)
+        return librosa.istft(y, hop_length=hop_length, win_length=win_length)
 
     def _stft(self, y, sample_rate):
         n_fft, hop_length, win_length = self._stft_parameters(sample_rate)

@@ -233,7 +233,7 @@ if __name__ == '__main__':
         devset = Dataset("data/processed/dev")
         sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
             len(devset.files)) + ' development files\n')
-        trainer = Trainer(vocoder, trainset, devset, use_ulaw=True)
+        trainer = Trainer(vocoder, trainset, devset)
         trainer.start_training(20, params.batch_size, params.target_sample_rate)
 
 
