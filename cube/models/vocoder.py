@@ -24,7 +24,7 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_LAYERS = [512, 512, 4096, 512]
+        self.HIDDEN_LAYERS = [4096]
         self.FFT_SIZE = 513
         self.sparse = False
         if model is None:
@@ -67,8 +67,13 @@ class BeeCoder:
             out_real = output_real.value()
             out_imag = output_imag.value()
             for ii in range(self.FFT_SIZE):
-                last_fft[ii] = np.complex(out_real[ii], out_imag[ii])
-                predicted[mgc_index, ii] = np.complex(out_real[ii], out_imag[ii])
+                fft_pow = np.exp(out_real[ii]/20)
+                fft_angle = out_imag[ii]
+
+                real_val = np.cos(fft_angle) * fft_pow
+                imag_val = np.sin(fft_angle) * fft_pow
+                last_fft[ii] = np.complex(real_val, imag_val)
+                predicted[mgc_index, ii] = np.complex(real_val, imag_val)
 
         synth = self.vocoder.ifft(predicted, sample_rate=self.params.target_sample_rate)
         # print(synth)
@@ -101,7 +106,7 @@ class BeeCoder:
 
     def learn(self, wave, mgc, batch_size):
 
-        signal_fft = self.vocoder.fft(np.array(wave, dtype=np.float32) / 32768,
+        signal_fft = self.vocoder.fft(np.array(wave, dtype=np.float32) / 32768 - 1.0,
                                       sample_rate=self.params.target_sample_rate)
         # print(signal_fft)
         last_proc = 0
@@ -118,10 +123,13 @@ class BeeCoder:
                     sys.stdout.flush()
             [output_real, output_imag] = self._predict_one(mgc[mgc_index], last_fft=last_fft, runtime=False)
 
-            fft_real = np.real(signal_fft[mgc_index])
-            fft_imag = np.imag(signal_fft[mgc_index])
-            losses.append(dy.l1_distance(output_real, dy.inputVector(fft_real)))
-            losses.append(dy.l1_distance(output_imag, dy.inputVector(fft_imag)))
+            fft_pow = 20 * np.log10(np.maximum(1e-5, signal_fft[mgc_index]))  # np.abs(signal_fft[mgc_index])
+            fft_angle = np.angle(signal_fft[mgc_index])
+            #print (fft_pow)
+            #print (fft_angle)
+            #print("")
+            losses.append(dy.squared_distance(output_real, dy.inputVector(fft_pow)))
+            losses.append(dy.squared_distance(output_imag, dy.inputVector(fft_angle)))
 
             last_fft = signal_fft[mgc_index]
 
