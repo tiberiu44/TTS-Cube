@@ -67,7 +67,7 @@ class BeeCoder:
             out_real = output_real.value()
             out_imag = output_imag.value()
             for ii in range(self.FFT_SIZE):
-                fft_pow = np.exp(out_real[ii]/20)
+                fft_pow = np.exp((out_real[ii] * -100 + 100) / 20)
                 fft_angle = out_imag[ii]
 
                 real_val = np.cos(fft_angle) * fft_pow
@@ -77,7 +77,7 @@ class BeeCoder:
 
         synth = self.vocoder.ifft(predicted, sample_rate=self.params.target_sample_rate)
         # print(synth)
-        synth = np.array((synth + 1) * 32767, dtype=np.int16)
+        synth = np.array((synth + 1.0) * 32767, dtype=np.int16)
         return synth
 
     def store(self, output_base):
@@ -91,8 +91,10 @@ class BeeCoder:
             last_fft_real = np.zeros(self.FFT_SIZE)
             last_fft_imag = np.zeros(self.FFT_SIZE)
         else:
-            last_fft_real = np.real(last_fft)
-            last_fft_imag = np.imag(last_fft)
+            fft_pow = 20 * np.log10(np.maximum(1e-5, np.abs(last_fft)))  # np.abs(signal_fft[mgc_index])
+            min_level_db = -100.0
+            last_fft_real = np.clip((fft_pow - min_level_db) / -min_level_db, 0, 1)
+            last_fft_imag = np.angle(last_fft)
 
         hidden = dy.concatenate([dy.inputVector(mgc), dy.inputVector(last_fft_real), dy.inputVector(last_fft_imag)])
 
@@ -123,11 +125,13 @@ class BeeCoder:
                     sys.stdout.flush()
             [output_real, output_imag] = self._predict_one(mgc[mgc_index], last_fft=last_fft, runtime=False)
 
-            fft_pow = 20 * np.log10(np.maximum(1e-5, signal_fft[mgc_index]))  # np.abs(signal_fft[mgc_index])
+            fft_pow = 20 * np.log10(np.maximum(1e-5, np.abs(signal_fft[mgc_index])))  # np.abs(signal_fft[mgc_index])
+            min_level_db = -100.0
+            fft_pow = np.clip((fft_pow - min_level_db) / -min_level_db, 0, 1)
             fft_angle = np.angle(signal_fft[mgc_index])
-            #print (fft_pow)
-            #print (fft_angle)
-            #print("")
+            # print (fft_pow)
+            # print (fft_angle)
+            # print("")
             losses.append(dy.squared_distance(output_real, dy.inputVector(fft_pow)))
             losses.append(dy.squared_distance(output_imag, dy.inputVector(fft_angle)))
 
