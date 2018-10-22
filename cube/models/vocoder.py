@@ -23,8 +23,8 @@ from io_modules.dataset import DatasetIO
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_LAYERS = [64, 64]
-        self.HISTORY = 80
+        self.HIDDEN_LAYERS = [256, 64]
+        self.HISTORY = 40
         self.sparse = False
         self.upsample_count = int(12.5 * self.params.target_sample_rate / 1000)
         if model is None:
