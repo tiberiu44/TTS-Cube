@@ -24,7 +24,7 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_LAYERS_POWER = [513, 513, 513]
+        self.HIDDEN_LAYERS_POWER = [4096, 4096, 4096]
         # self.HIDDEN_LAYERS_ANGLE = [4096, 4096]
         self.FFT_SIZE = 513
         self.sparse = False
@@ -110,8 +110,8 @@ class BeeCoder:
 
         for w, b in zip(self.hidden_w_power, self.hidden_b_power):
             hidden_power = dy.tanh(w.expr(update=True) * hidden_power + b.expr(update=True))
-            # if not runtime:
-            #    hidden_power = dy.dropout(hidden_power, 0.5)
+            if not runtime:
+                hidden_power = dy.dropout(hidden_power, 0.5)
 
         output_power = dy.logistic(self.output_power_w.expr(update=True) * hidden_power +
                                    self.output_power_b.expr(update=True))
