@@ -38,19 +38,17 @@ class Trainer:
             mgc = np.load(mgc_file)
             import time
             start = time.time()
-            synth = self.vocoder.synthesize(mgc, batch_size, sample=sample, temperature=temperature)
+            synth = self.vocoder.synthesize(mgc, batch_size, sample=sample, temperature=temperature,
+                                            path='test_' + str(file_index) + '.png')
             stop = time.time()
             sys.stdout.write(" execution time=" + str(stop - start))
             sys.stdout.write('\n')
             sys.stdout.flush()
 
             dio = DatasetIO()
-            if self.use_ulaw:
-                enc = dio.ulaw_decode(synth, discreete=True)
-            else:
-                enc = dio.b16_dec(synth, discreete=True)
+
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.wav'
-            dio.write_wave(output_file, enc, target_sample_rate)
+            dio.write_wave(output_file, synth, target_sample_rate, dtype=np.int16)
 
     def _render_devset(self):
         sys.stdout.write('\tRendering devset\n')
@@ -81,17 +79,6 @@ class Trainer:
         self._render_devset()
         sys.stdout.write("\n")
 
-        if self.vocoder.sparse:
-            print ("Setting sparsity at: " + str(params.sparsity_step) + "%")
-            sparsity = params.sparsity_step
-            self.vocoder.rnnFine.set_sparsity(float(sparsity) / 100)
-            self.vocoder.rnnCoarse.set_sparsity(float(sparsity) / 100)
-
-        if self.vocoder.sparse:
-            self.vocoder.store('data/models/rnn_vocoder_sparse')
-        else:
-            self.vocoder.store('data/models/rnn_vocoder')
-
         num_files = 0
         while left_itt > 0:
             sys.stdout.write("Starting epoch " + str(epoch) + "\n")
@@ -103,16 +90,6 @@ class Trainer:
             for file in self.trainset.files:
                 num_files += 1
 
-                if self.vocoder.sparse and num_files == params.sparsity_increase:
-                    sparsity += params.sparsity_step
-                    num_files = 0
-                    if sparsity <= params.sparsity_target:
-                        print ("Setting sparsity at " + str(sparsity) + "%")
-                        self.vocoder.rnnFine.set_sparsity(float(sparsity) / 100)
-                        self.vocoder.rnnCoarse.set_sparsity(float(sparsity) / 100)
-                    else:
-                        sparsity = params.sparsity_target
-
                 sys.stdout.write(
                     "\t" + str(file_index) + "/" + str(len(self.trainset.files)) + " processing file " + file)
                 sys.stdout.flush()
@@ -121,10 +98,9 @@ class Trainer:
                 mgc = np.load(mgc_file)
                 file_index += 1
                 data, sample_rate = dio.read_wave(wav_file)
-                if self.use_ulaw:
-                    [wave_disc, ulaw_cont] = dio.ulaw_encode(data)
-                else:
-                    wave_disc = dio.b16_enc(data)
+                wave_disc = data * 32768
+                wave_disc = np.array(wave_disc, dtype=np.int16)
+
                 import time
                 start = time.time()
                 loss = self.vocoder.learn(wave_disc, mgc, batch_size)
@@ -133,17 +109,17 @@ class Trainer:
                 sys.stdout.write(' avg loss=' + str(loss) + " execution time=" + str(stop - start))
                 sys.stdout.write('\n')
                 sys.stdout.flush()
-                if file_index % 50 == 0:
-                    self.synth_devset(batch_size, target_sample_rate)
-                    if self.vocoder.sparse:
-                        self.vocoder.store('data/models/rnn_vocoder_sparse')
-                    else:
-                        self.vocoder.store('data/models/rnn_vocoder')
+                # if file_index % 50 == 0:
+                #     self.synth_devset(batch_size, target_sample_rate)
+                #     if self.vocoder.sparse:
+                #         self.vocoder.store('data/models/rnn_vocoder_sparse')
+                #     else:
+                #         self.vocoder.store('data/models/rnn_vocoder')
 
             self.synth_devset(batch_size, target_sample_rate)
-            if self.vocoder.sparse:
-                self.vocoder.store('data/models/rnn_vocoder_sparse')
-            else:
-                self.vocoder.store('data/models/rnn_vocoder')
+            # if self.vocoder.sparse:
+            #     self.vocoder.store('data/models/rnn_vocoder_sparse')
+            # else:
+            #     self.vocoder.store('data/models/rnn_vocoder')
 
             epoch += 1

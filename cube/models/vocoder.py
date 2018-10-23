@@ -24,7 +24,8 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_LAYERS = [4096]
+        self.HIDDEN_LAYERS_POWER = [513]
+        self.HIDDEN_LAYERS_ANGLE = [4096]
         self.FFT_SIZE = 513
         self.sparse = False
         if model is None:
@@ -32,27 +33,36 @@ class BeeCoder:
         else:
             self.model = model
 
-        input_size = self.FFT_SIZE * 2 + self.params.mgc_order
-        self.hidden_w = []
-        self.hidden_b = []
-        for layer_size in self.HIDDEN_LAYERS:
-            self.hidden_w.append(self.model.add_parameters((layer_size, input_size)))
-            self.hidden_b.append(self.model.add_parameters((layer_size)))
-            input_size = layer_size
+        input_size_angle = self.FFT_SIZE * 2 + self.params.mgc_order
+        input_size_power = self.params.mgc_order
+        self.hidden_w_power = []
+        self.hidden_b_power = []
+        self.hidden_w_angle = []
+        self.hidden_b_angle = []
+        for layer_size in self.HIDDEN_LAYERS_POWER:
+            self.hidden_w_power.append(self.model.add_parameters((layer_size, input_size_power)))
+            self.hidden_b_power.append(self.model.add_parameters((layer_size)))
+            input_size_power = layer_size
+        for layer_size in self.HIDDEN_LAYERS_ANGLE:
+            self.hidden_w_angle.append(self.model.add_parameters((layer_size, input_size_angle)))
+            self.hidden_b_angle.append(self.model.add_parameters((layer_size)))
+            input_size_angle = layer_size
 
-        self.output_real_w = self.model.add_parameters((self.FFT_SIZE, input_size))
-        self.output_real_b = self.model.add_parameters((self.FFT_SIZE))
-        self.output_imag_w = self.model.add_parameters((self.FFT_SIZE, input_size))
-        self.output_imag_b = self.model.add_parameters((self.FFT_SIZE))
+        self.output_power_w = self.model.add_parameters((self.FFT_SIZE, input_size_power))
+        self.output_power_b = self.model.add_parameters((self.FFT_SIZE))
+        self.output_angle_w = self.model.add_parameters((self.FFT_SIZE, input_size_angle))
+        self.output_angle_b = self.model.add_parameters((self.FFT_SIZE))
 
         self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
 
-    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0):
+    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
         last_fft = None
         predicted = np.zeros((len(mgc), 513), dtype=np.complex)
         last_proc = 0
+
+        pow_list = np.zeros((len(mgc), 513))
         for mgc_index in range(len(mgc)):
             dy.renew_cg()
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
@@ -61,23 +71,38 @@ class BeeCoder:
                     last_proc += 5
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
-            [output_real, output_imag] = self._predict_one(mgc[mgc_index], last_fft=last_fft, runtime=True)
+            [output_power, output_angle] = self._predict_one(mgc[mgc_index], last_fft=last_fft, runtime=True)
 
             last_fft = np.zeros(self.FFT_SIZE, dtype=np.complex)
-            out_real = output_real.value()
-            out_imag = output_imag.value()
+            out_power = output_power.value()
+            out_angle = output_angle.value()
             for ii in range(self.FFT_SIZE):
-                fft_pow = np.exp((out_real[ii] * -100 + 100) / 20)
-                fft_angle = out_imag[ii]
+                pow_list[mgc_index, ii] = out_power[ii]
+
+                value = out_power[ii]
+                min_level_db = -100.0
+                value = pow(10, (value * (-min_level_db) + min_level_db) / 20)
+                fft_pow = value
+                fft_angle = out_angle[ii]
 
                 real_val = np.cos(fft_angle) * fft_pow
                 imag_val = np.sin(fft_angle) * fft_pow
                 last_fft[ii] = np.complex(real_val, imag_val)
                 predicted[mgc_index, ii] = np.complex(real_val, imag_val)
 
+        if path is not None:
+            bitmap = np.zeros((pow_list.shape[1], pow_list.shape[0], 3), dtype=np.uint8)
+            for x in range(pow_list.shape[0]):
+                for y in range(pow_list.shape[1]):
+                    val = pow_list[x, y]
+                    color = val * 255
+                    bitmap[y, x] = [color, color, color]
+            import scipy.misc as smp
+            img = smp.toimage(bitmap)
+            img.save(path)
+
         synth = self.vocoder.ifft(predicted, sample_rate=self.params.target_sample_rate)
-        # print(synth)
-        synth = np.array((synth + 1.0) * 32767, dtype=np.int16)
+        synth = np.array(synth * 32767, dtype=np.int16)
         return synth
 
     def store(self, output_base):
@@ -87,23 +112,31 @@ class BeeCoder:
         self.model.populate(output_base + ".network")
 
     def _predict_one(self, mgc, last_fft=None, runtime=True):
+
         if last_fft is None:
-            last_fft_real = np.zeros(self.FFT_SIZE)
-            last_fft_imag = np.zeros(self.FFT_SIZE)
+            last_fft_power = np.zeros(self.FFT_SIZE)
+            last_fft_angle = np.zeros(self.FFT_SIZE)
         else:
             fft_pow = 20 * np.log10(np.maximum(1e-5, np.abs(last_fft)))  # np.abs(signal_fft[mgc_index])
             min_level_db = -100.0
-            last_fft_real = np.clip((fft_pow - min_level_db) / -min_level_db, 0, 1)
-            last_fft_imag = np.angle(last_fft)
+            last_fft_power = np.clip((fft_pow - min_level_db) / -min_level_db, 0, 1)
+            last_fft_angle = np.angle(last_fft)
 
-        hidden = dy.concatenate([dy.inputVector(mgc), dy.inputVector(last_fft_real), dy.inputVector(last_fft_imag)])
+        hidden_power = dy.inputVector(mgc)
+        hidden_angle = dy.concatenate([dy.inputVector(mgc), dy.inputVector(last_fft_power),
+                                       dy.inputVector(last_fft_angle)])
 
-        for w, b in zip(self.hidden_w, self.hidden_b):
-            hidden = dy.tanh(w.expr(update=True) * hidden + b.expr(update=True))
+        for w, b in zip(self.hidden_w_power, self.hidden_b_power):
+            hidden_power = dy.tanh(w.expr(update=True) * hidden_power + b.expr(update=True))
 
-        output_real = self.output_real_w.expr(update=True) * hidden + self.output_real_b.expr(update=True)
-        output_imag = self.output_imag_w.expr(update=True) * hidden + self.output_imag_b.expr(update=True)
-        output = [output_real, output_imag]
+        for w, b in zip(self.hidden_w_angle, self.hidden_b_angle):
+            hidden_angle = dy.tanh(w.expr(update=True) * hidden_angle + b.expr(update=True))
+
+        output_power = dy.logistic(self.output_power_w.expr(update=True) * hidden_power +
+                                   self.output_power_b.expr(update=True))
+        output_angle = self.output_angle_w.expr(update=True) * hidden_angle + \
+                       self.output_angle_b.expr(update=True)
+        output = [output_power, output_angle]
         return output
 
     def learn(self, wave, mgc, batch_size):
@@ -123,8 +156,8 @@ class BeeCoder:
                     last_proc += 5
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
-            [output_real, output_imag] = self._predict_one(mgc[mgc_index], last_fft=last_fft, runtime=False)
-
+            [output_power, output_angle] = self._predict_one(mgc[mgc_index], last_fft=last_fft, runtime=False)
+            # print(np.abs(signal_fft[mgc_index]))
             fft_pow = 20 * np.log10(np.maximum(1e-5, np.abs(signal_fft[mgc_index])))  # np.abs(signal_fft[mgc_index])
             min_level_db = -100.0
             fft_pow = np.clip((fft_pow - min_level_db) / -min_level_db, 0, 1)
@@ -132,8 +165,8 @@ class BeeCoder:
             # print (fft_pow)
             # print (fft_angle)
             # print("")
-            losses.append(dy.squared_distance(output_real, dy.inputVector(fft_pow)))
-            losses.append(dy.squared_distance(output_imag, dy.inputVector(fft_angle)))
+            losses.append(dy.binary_log_loss(output_power, dy.inputVector(fft_pow)))
+            losses.append(dy.squared_distance(output_angle, dy.inputVector(fft_angle)))
 
             last_fft = signal_fft[mgc_index]
 
