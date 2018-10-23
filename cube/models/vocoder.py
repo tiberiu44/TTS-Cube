@@ -24,8 +24,8 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_LAYERS_POWER = [513]
-        self.HIDDEN_LAYERS_ANGLE = [4096]
+        self.HIDDEN_LAYERS_POWER = [513, 513]
+        self.HIDDEN_LAYERS_ANGLE = [513, 513]
         self.FFT_SIZE = 513
         self.sparse = False
         if model is None:
