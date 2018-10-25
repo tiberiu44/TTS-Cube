@@ -38,8 +38,7 @@ class Trainer:
             mgc = np.load(mgc_file)
             import time
             start = time.time()
-            synth = self.vocoder.synthesize(mgc, batch_size, sample=sample, temperature=temperature,
-                                            path='test_' + str(file_index) + '.png')
+            synth = self.vocoder.synthesize(mgc, batch_size, sample=sample, temperature=temperature)
             stop = time.time()
             sys.stdout.write(" execution time=" + str(stop - start))
             sys.stdout.write('\n')
@@ -109,11 +108,11 @@ class Trainer:
                 sys.stdout.write(' avg loss=' + str(loss) + " execution time=" + str(stop - start))
                 sys.stdout.write('\n')
                 sys.stdout.flush()
-                if file_index % 1000 == 0:
-                     self.synth_devset(batch_size, target_sample_rate)
-                     self.vocoder.store('data/models/nn_vocoder')
+                #if file_index % 1000 == 0:
+                #     self.synth_devset(batch_size, target_sample_rate)
+                #     self.vocoder.store('data/models/nn_vocoder')
 
             self.synth_devset(batch_size, target_sample_rate)
-            self.vocoder.store('data/models/nn_vocoder')
+            #self.vocoder.store('data/models/nn_vocoder')
 
             epoch += 1

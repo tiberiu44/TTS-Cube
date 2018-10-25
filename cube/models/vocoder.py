@@ -24,44 +24,40 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_LAYERS_POWER = [4096, 4096, 4096]
-        # self.HIDDEN_LAYERS_ANGLE = [4096, 4096]
+        self.HIDDEN_LAYERS_POWER = [64, 64, 64, 1]
+
+        self.NUM_NETWORKS = 2000
         self.FFT_SIZE = 513
+        self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
         self.sparse = False
         if model is None:
             self.model = dy.Model()
         else:
             self.model = model
 
-        input_size_angle = self.FFT_SIZE * 2 + self.params.mgc_order
-        input_size_power = self.params.mgc_order
-        self.hidden_w_power = []
-        self.hidden_b_power = []
-        # self.hidden_w_angle = []
-        # self.hidden_b_angle = []
-        for layer_size in self.HIDDEN_LAYERS_POWER:
-            self.hidden_w_power.append(self.model.add_parameters((layer_size, input_size_power)))
-            self.hidden_b_power.append(self.model.add_parameters((layer_size)))
-            input_size_power = layer_size
-        # for layer_size in self.HIDDEN_LAYERS_ANGLE:
-        #     self.hidden_w_angle.append(self.model.add_parameters((layer_size, input_size_angle)))
-        #     self.hidden_b_angle.append(self.model.add_parameters((layer_size)))
-        #     input_size_angle = layer_size
+        self.networks = []
+        for ii in range(self.NUM_NETWORKS):
+            input_size_power = self.params.mgc_order
+            hidden_w_power = []
+            hidden_b_power = []
+            for layer_size in self.HIDDEN_LAYERS_POWER:
+                hidden_w_power.append(self.model.add_parameters((layer_size, input_size_power)))
+                hidden_b_power.append(self.model.add_parameters((layer_size)))
+                input_size_power = layer_size
 
-        self.output_power_w = self.model.add_parameters((self.FFT_SIZE, input_size_power))
-        self.output_power_b = self.model.add_parameters((self.FFT_SIZE))
-        # self.output_angle_w = self.model.add_parameters((self.FFT_SIZE, input_size_angle))
-        # self.output_angle_b = self.model.add_parameters((self.FFT_SIZE))
+            self.networks.append([hidden_w_power, hidden_b_power])
+
+        self.output_w = self.model.add_parameters((self.UPSAMPLE_COUNT, self.NUM_NETWORKS))
+        self.output_b = self.model.add_parameters((self.UPSAMPLE_COUNT))
 
         self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
 
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
-        predicted = np.zeros((len(mgc), 513), dtype=np.float)
         last_proc = 0
+        synth = []
 
-        pow_list = np.zeros((len(mgc), 513))
         for mgc_index in range(len(mgc)):
             dy.renew_cg()
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
@@ -71,29 +67,13 @@ class BeeCoder:
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
             output_power = self._predict_one(mgc[mgc_index], runtime=True)
+            ov = output_power.value()
+            for item in ov:
+                synth.append(item)
 
-            out_power = output_power.value()
-            for ii in range(self.FFT_SIZE):
-                pow_list[mgc_index, ii] = out_power[ii]
+        # synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
+        synth = np.array(self.dio.ulaw_decode(synth, discreete=False))
 
-                value = out_power[ii]
-                min_level_db = -100.0
-                value = pow(10, (value * (-min_level_db) + min_level_db) / 20)
-                fft_pow = value
-                predicted[mgc_index, ii] = fft_pow
-
-        if path is not None:
-            bitmap = np.zeros((pow_list.shape[1], pow_list.shape[0], 3), dtype=np.uint8)
-            for x in range(pow_list.shape[0]):
-                for y in range(pow_list.shape[1]):
-                    val = pow_list[x, y]
-                    color = val * 255
-                    bitmap[y, x] = [color, color, color]
-            import scipy.misc as smp
-            img = smp.toimage(bitmap)
-            img.save(path)
-
-        synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
         synth = np.array(synth * 32767, dtype=np.int16)
 
         return synth
@@ -106,27 +86,37 @@ class BeeCoder:
 
     def _predict_one(self, mgc, runtime=True):
 
-        hidden_power = dy.inputVector(mgc)
+        networks_output = []
 
-        for w, b in zip(self.hidden_w_power, self.hidden_b_power):
-            hidden_power = dy.tanh(w.expr(update=True) * hidden_power + b.expr(update=True))
-            if not runtime:
-                hidden_power = dy.dropout(hidden_power, 0.5)
+        for ii in range(self.NUM_NETWORKS):
+            [hidden_w_power, hidden_b_power] = self.networks[ii]
+            hidden_power = dy.inputVector(mgc)
+            for w, b in zip(hidden_w_power, hidden_b_power):
+                hidden_power = dy.tanh(w.expr(update=True) * hidden_power + b.expr(update=True))
+                if not runtime and ii != len(self.HIDDEN_LAYERS_POWER) - 1:
+                    hidden_power = dy.dropout(hidden_power, 0.5)
 
-        output_power = dy.logistic(self.output_power_w.expr(update=True) * hidden_power +
-                                   self.output_power_b.expr(update=True))
+            networks_output.append(hidden_power)
+
+        networks_output = dy.concatenate(networks_output)
+
+        output_power = dy.tanh(self.output_w.expr(update=True) * networks_output +
+                               self.output_b.expr(update=True))
 
         return output_power
 
     def learn(self, wave, mgc, batch_size):
 
-        signal_fft = self.vocoder.fft(np.array(wave, dtype=np.float32) / 32768 - 1.0,
-                                      sample_rate=self.params.target_sample_rate, use_preemphasis=False)
+        # signal_fft = self.vocoder.fft(np.array(wave, dtype=np.float32) / 32768 - 1.0,
+        #                              sample_rate=self.params.target_sample_rate, use_preemphasis=False)
+        wave = wave / 32768
+        [disc, wave] = self.dio.ulaw_encode(wave)
         # print(signal_fft)
         last_proc = 0
         dy.renew_cg()
         total_loss = 0
         losses = []
+        cnt = 0
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -134,15 +124,12 @@ class BeeCoder:
                     last_proc += 5
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
-            output_power = self._predict_one(mgc[mgc_index], runtime=False)
-            # print(np.abs(signal_fft[mgc_index]))
-            fft_pow = 20 * np.log10(np.maximum(1e-5, np.abs(signal_fft[mgc_index])))  # np.abs(signal_fft[mgc_index])
-            min_level_db = -100.0
-            fft_pow = np.clip((fft_pow - min_level_db) / -min_level_db, 0, 1)
-            # print (fft_pow)
-            # print (fft_angle)
-            # print("")
-            losses.append(dy.binary_log_loss(output_power, dy.inputVector(fft_pow)))
+
+            pred_output = self._predict_one(mgc[mgc_index], runtime=False)
+
+            if mgc_index != len(mgc) - 1:
+                losses.append(dy.squared_distance(pred_output, dy.inputVector(
+                    wave[mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT])))
 
             if len(losses) >= batch_size:
                 loss = dy.esum(losses)
@@ -161,6 +148,146 @@ class BeeCoder:
 
         return total_loss / len(mgc)
 
+
+# class BeeCoder:
+#     def __init__(self, params, model=None, runtime=False):
+#         self.params = params
+#         self.HIDDEN_LAYERS_POWER = [4096, 4096, 4096]
+#         # self.HIDDEN_LAYERS_ANGLE = [4096, 4096]
+#         self.FFT_SIZE = 513
+#         self.sparse = False
+#         if model is None:
+#             self.model = dy.Model()
+#         else:
+#             self.model = model
+#
+#         input_size_angle = self.FFT_SIZE * 2 + self.params.mgc_order
+#         input_size_power = self.params.mgc_order
+#         self.hidden_w_power = []
+#         self.hidden_b_power = []
+#         # self.hidden_w_angle = []
+#         # self.hidden_b_angle = []
+#         for layer_size in self.HIDDEN_LAYERS_POWER:
+#             self.hidden_w_power.append(self.model.add_parameters((layer_size, input_size_power)))
+#             self.hidden_b_power.append(self.model.add_parameters((layer_size)))
+#             input_size_power = layer_size
+#         # for layer_size in self.HIDDEN_LAYERS_ANGLE:
+#         #     self.hidden_w_angle.append(self.model.add_parameters((layer_size, input_size_angle)))
+#         #     self.hidden_b_angle.append(self.model.add_parameters((layer_size)))
+#         #     input_size_angle = layer_size
+#
+#         self.output_power_w = self.model.add_parameters((self.FFT_SIZE, input_size_power))
+#         self.output_power_b = self.model.add_parameters((self.FFT_SIZE))
+#         # self.output_angle_w = self.model.add_parameters((self.FFT_SIZE, input_size_angle))
+#         # self.output_angle_b = self.model.add_parameters((self.FFT_SIZE))
+#
+#         self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
+#         self.dio = DatasetIO()
+#         self.vocoder = MelVocoder()
+#
+#     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
+#         predicted = np.zeros((len(mgc), 513), dtype=np.float)
+#         last_proc = 0
+#
+#         pow_list = np.zeros((len(mgc), 513))
+#         for mgc_index in range(len(mgc)):
+#             dy.renew_cg()
+#             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
+#             if curr_proc % 5 == 0 and curr_proc != last_proc:
+#                 while last_proc < curr_proc:
+#                     last_proc += 5
+#                     sys.stdout.write(' ' + str(last_proc))
+#                     sys.stdout.flush()
+#             output_power = self._predict_one(mgc[mgc_index], runtime=True)
+#
+#             out_power = output_power.value()
+#             for ii in range(self.FFT_SIZE):
+#                 pow_list[mgc_index, ii] = out_power[ii]
+#
+#                 value = out_power[ii]
+#                 min_level_db = -100.0
+#                 value = pow(10, (value * (-min_level_db) + min_level_db) / 20)
+#                 fft_pow = value
+#                 predicted[mgc_index, ii] = fft_pow
+#
+#         if path is not None:
+#             bitmap = np.zeros((pow_list.shape[1], pow_list.shape[0], 3), dtype=np.uint8)
+#             for x in range(pow_list.shape[0]):
+#                 for y in range(pow_list.shape[1]):
+#                     val = pow_list[x, y]
+#                     color = val * 255
+#                     bitmap[y, x] = [color, color, color]
+#             import scipy.misc as smp
+#             img = smp.toimage(bitmap)
+#             img.save(path)
+#
+#         synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
+#         synth = np.array(synth * 32767, dtype=np.int16)
+#
+#         return synth
+#
+#     def store(self, output_base):
+#         self.model.save(output_base + ".network")
+#
+#     def load(self, output_base):
+#         self.model.populate(output_base + ".network")
+#
+#     def _predict_one(self, mgc, runtime=True):
+#
+#         hidden_power = dy.inputVector(mgc)
+#
+#         for w, b in zip(self.hidden_w_power, self.hidden_b_power):
+#             hidden_power = dy.tanh(w.expr(update=True) * hidden_power + b.expr(update=True))
+#             if not runtime:
+#                 hidden_power = dy.dropout(hidden_power, 0.5)
+#
+#         output_power = dy.logistic(self.output_power_w.expr(update=True) * hidden_power +
+#                                    self.output_power_b.expr(update=True))
+#
+#         return output_power
+#
+#     def learn(self, wave, mgc, batch_size):
+#
+#         signal_fft = self.vocoder.fft(np.array(wave, dtype=np.float32) / 32768 - 1.0,
+#                                       sample_rate=self.params.target_sample_rate, use_preemphasis=False)
+#         # print(signal_fft)
+#         last_proc = 0
+#         dy.renew_cg()
+#         total_loss = 0
+#         losses = []
+#         for mgc_index in range(len(mgc)):
+#             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
+#             if curr_proc % 5 == 0 and curr_proc != last_proc:
+#                 while last_proc < curr_proc:
+#                     last_proc += 5
+#                     sys.stdout.write(' ' + str(last_proc))
+#                     sys.stdout.flush()
+#             output_power = self._predict_one(mgc[mgc_index], runtime=False)
+#             # print(np.abs(signal_fft[mgc_index]))
+#             fft_pow = 20 * np.log10(np.maximum(1e-5, np.abs(signal_fft[mgc_index])))  # np.abs(signal_fft[mgc_index])
+#             min_level_db = -100.0
+#             fft_pow = np.clip((fft_pow - min_level_db) / -min_level_db, 0, 1)
+#             # print (fft_pow)
+#             # print (fft_angle)
+#             # print("")
+#             losses.append(dy.binary_log_loss(output_power, dy.inputVector(fft_pow)))
+#
+#             if len(losses) >= batch_size:
+#                 loss = dy.esum(losses)
+#                 total_loss += loss.value()
+#                 loss.backward()
+#                 self.trainer.update()
+#                 losses = []
+#                 dy.renew_cg()
+#
+#         if len(losses) > 0:
+#             loss = dy.esum(losses)
+#             total_loss += loss.value()
+#             loss.backward()
+#             self.trainer.update()
+#             dy.renew_cg()
+#
+#         return total_loss / len(mgc)
 
 class Vocoder:
     def __init__(self, params, model=None, runtime=False, use_sparse_lstm=False):
