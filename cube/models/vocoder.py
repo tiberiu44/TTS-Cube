@@ -26,7 +26,7 @@ class BeeCoder:
         self.params = params
         self.HIDDEN_LAYERS_POWER = [64, 64, 64, 1]
 
-        self.NUM_NETWORKS = 2000
+        self.NUM_NETWORKS = 200
         self.FFT_SIZE = 513
         self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
         self.sparse = False
@@ -92,7 +92,7 @@ class BeeCoder:
             [hidden_w_power, hidden_b_power] = self.networks[ii]
             hidden_power = dy.inputVector(mgc)
             for w, b in zip(hidden_w_power, hidden_b_power):
-                hidden_power = dy.tanh(w.expr(update=True) * hidden_power + b.expr(update=True))
+                hidden_power = dy.elu(w.expr(update=True) * hidden_power + b.expr(update=True))
                 if not runtime and ii != len(self.HIDDEN_LAYERS_POWER) - 1:
                     hidden_power = dy.dropout(hidden_power, 0.5)
 
@@ -100,7 +100,7 @@ class BeeCoder:
 
         networks_output = dy.concatenate(networks_output)
 
-        output_power = dy.tanh(self.output_w.expr(update=True) * networks_output +
+        output_power = dy.softsign(self.output_w.expr(update=True) * networks_output +
                                self.output_b.expr(update=True))
 
         return output_power
