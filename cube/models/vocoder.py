@@ -24,9 +24,9 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_LAYERS_POWER = [64, 64, 64, 1]
+        self.HIDDEN_LAYERS_POWER = [64, 32, 16, 2]
 
-        self.NUM_NETWORKS = 200
+        self.NUM_NETWORKS = 256
         self.FFT_SIZE = 513
         self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
         self.sparse = False
@@ -72,7 +72,7 @@ class BeeCoder:
                 synth.append(item)
 
         # synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
-        synth = np.array(self.dio.ulaw_decode(synth, discreete=False))
+        synth = np.array(synth)
 
         synth = np.array(synth * 32767, dtype=np.int16)
 
@@ -92,25 +92,35 @@ class BeeCoder:
             [hidden_w_power, hidden_b_power] = self.networks[ii]
             hidden_power = dy.inputVector(mgc)
             for w, b in zip(hidden_w_power, hidden_b_power):
-                hidden_power = dy.elu(w.expr(update=True) * hidden_power + b.expr(update=True))
-                if not runtime and ii != len(self.HIDDEN_LAYERS_POWER) - 1:
-                    hidden_power = dy.dropout(hidden_power, 0.5)
+                hidden_power = dy.tanh(w.expr(update=True) * hidden_power + b.expr(update=True))
+                # if not runtime and ii != len(self.HIDDEN_LAYERS_POWER) - 1:
+                #    hidden_power = dy.dropout(hidden_power, 0.5)
 
             networks_output.append(hidden_power)
 
-        networks_output = dy.concatenate(networks_output)
+        # networks_output = dy.concatenate(networks_output)
+        timesteps = [i * (1.0 / self.params.target_sample_rate) for i in range(200)]
+        timesteps = dy.inputVector(timesteps)
 
-        output_power = dy.softsign(self.output_w.expr(update=True) * networks_output +
-                               self.output_b.expr(update=True))
+        signals = []
 
-        return output_power
+        for ii, no in zip(range(len(networks_output)), networks_output):
+            a = no[0]
+            # w = no[1] * 3.14
+            b = no[1] * 3.14
+            w = 2 * np.pi * (self.params.target_sample_rate / 2 / self.NUM_NETWORKS) * ii
+            out = dy.cos(timesteps * w + b) * a
+            signals.append(out)
+
+        output = dy.esum(signals)
+        return output
 
     def learn(self, wave, mgc, batch_size):
-
         # signal_fft = self.vocoder.fft(np.array(wave, dtype=np.float32) / 32768 - 1.0,
-        #                              sample_rate=self.params.target_sample_rate, use_preemphasis=False)
+        #                               sample_rate=self.params.target_sample_rate, use_preemphasis=False)
+
         wave = wave / 32768
-        [disc, wave] = self.dio.ulaw_encode(wave)
+        # [disc, wave] = self.dio.ulaw_encode(wave)
         # print(signal_fft)
         last_proc = 0
         dy.renew_cg()
@@ -128,7 +138,7 @@ class BeeCoder:
             pred_output = self._predict_one(mgc[mgc_index], runtime=False)
 
             if mgc_index != len(mgc) - 1:
-                losses.append(dy.squared_distance(pred_output, dy.inputVector(
+                losses.append(dy.l1_distance(pred_output, dy.inputVector(
                     wave[mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT])))
 
             if len(losses) >= batch_size:

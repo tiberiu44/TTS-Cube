@@ -108,7 +108,7 @@ class Trainer:
                 sys.stdout.write(' avg loss=' + str(loss) + " execution time=" + str(stop - start))
                 sys.stdout.write('\n')
                 sys.stdout.flush()
-                if file_index % 200 == 0:
+                if file_index % 50 == 0:
                      self.synth_devset(batch_size, target_sample_rate)
                      #self.vocoder.store('data/models/nn_vocoder')
 
