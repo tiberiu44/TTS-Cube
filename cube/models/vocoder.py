@@ -109,7 +109,7 @@ class BeeCoder:
             softmax_outputs.append(
                 dy.softmax(self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True)))
 
-            networks_output.append(amax_vect * softmax_outputs[-1])
+            networks_output.append(amax_vect * dy.argmax(softmax_outputs[-1], gradient_mode="zero_gradient"))
             prev = history[ii + 1:]
             if ii != self.UPSAMPLE_COUNT - 1:
                 if gs_output is None:
