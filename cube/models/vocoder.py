@@ -24,7 +24,7 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_SIZE = [224, 224]
+        self.HIDDEN_SIZE = [448, 448]
         self.HISTORY = 80
 
         self.FFT_SIZE = 513
@@ -37,7 +37,7 @@ class BeeCoder:
             self.model = model
 
         self.networks = []
-        for ii in range(self.UPSAMPLE_COUNT):
+        for ii in range(1):
             input_size = self.params.mgc_order + self.HISTORY
             hidden_w = []
             hidden_b = []
@@ -94,6 +94,8 @@ class BeeCoder:
         hist = dy.inputVector(history)
         mgc = dy.inputVector(mgc)
         amax_vect = dy.reshape(dy.inputVector([(ii / 128) - 1.0 for ii in range(256)]), (1, 256))
+        # from ipdb import set_trace
+        # set_trace()
         softmax_outputs = []
         for ii in range(self.UPSAMPLE_COUNT):
             # from ipdb import set_trace
@@ -101,7 +103,7 @@ class BeeCoder:
             # if len(hist.value()) != 80:
             #    from ipdb import set_trace
             #    set_trace()
-            [hidden_w, hidden_b] = self.networks[ii]
+            [hidden_w, hidden_b] = self.networks[0]
             hidden_input = dy.concatenate([mgc, hist])
             for w, b in zip(hidden_w, hidden_b):
                 hidden_input = dy.elu(w.expr(update=True) * hidden_input + b.expr(update=True))
@@ -110,11 +112,13 @@ class BeeCoder:
                 dy.softmax(self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True)))
 
             networks_output.append(amax_vect * dy.argmax(softmax_outputs[-1], gradient_mode="zero_gradient"))
+            # from ipdb import set_trace
+            # set_trace()
             prev = history[ii + 1:]
             if ii != self.UPSAMPLE_COUNT - 1:
                 if gs_output is None:
                     if len(prev) == 0:
-                        hist = dy.nobackprop(dy.concatenate(networks_output[-self.HISTORY:]))
+                        hist = dy.concatenate(networks_output[-self.HISTORY:])
                     else:
                         hist = dy.concatenate([dy.inputVector(prev), dy.nobackprop(dy.concatenate(networks_output))])
                 else:
