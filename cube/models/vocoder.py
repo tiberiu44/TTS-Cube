@@ -48,8 +48,8 @@ class BeeCoder:
 
             self.networks.append([hidden_w, hidden_b])
 
-        self.output_w = self.model.add_parameters((1, input_size))
-        self.output_b = self.model.add_parameters((1))
+        self.output_w = self.model.add_parameters((256, input_size))
+        self.output_b = self.model.add_parameters((256))
 
         self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
         self.dio = DatasetIO()
@@ -68,7 +68,7 @@ class BeeCoder:
                     last_proc += 5
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
-            output_power = self._predict_one(mgc[mgc_index], history=history)
+            output_power, softmaxes = self._predict_one(mgc[mgc_index], history=history)
             ov = output_power.value()
             for item in ov:
                 synth.append(item)
@@ -93,7 +93,8 @@ class BeeCoder:
         networks_output = []
         hist = dy.inputVector(history)
         mgc = dy.inputVector(mgc)
-
+        amax_vect = dy.reshape(dy.inputVector([(ii / 128) - 1.0 for ii in range(256)]), (1, 256))
+        softmax_outputs = []
         for ii in range(self.UPSAMPLE_COUNT):
             # from ipdb import set_trace
             # set_trace()
@@ -105,8 +106,10 @@ class BeeCoder:
             for w, b in zip(hidden_w, hidden_b):
                 hidden_input = dy.elu(w.expr(update=True) * hidden_input + b.expr(update=True))
 
-            networks_output.append(
-                dy.tanh(self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True)))
+            softmax_outputs.append(
+                dy.softmax(self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True)))
+
+            networks_output.append(amax_vect * softmax_outputs[-1])
             prev = history[ii + 1:]
             if ii != self.UPSAMPLE_COUNT - 1:
                 if gs_output is None:
@@ -123,7 +126,7 @@ class BeeCoder:
         networks_output = dy.concatenate(networks_output)
 
         # output = dy.tanh(networks_output)
-        return networks_output
+        return networks_output, softmax_outputs
 
     def _get_reseted_wave(self, fft):
         power_spec = np.abs(fft)
@@ -159,13 +162,18 @@ class BeeCoder:
                     sys.stdout.flush()
 
             if mgc_index < len(mgc) - 1:
-                pred_output = self._predict_one(mgc[mgc_index], history=history,
-                                                gs_output=wave[
-                                                          mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT +
-                                                                                          self.UPSAMPLE_COUNT])
-                target_vec_1 = wave[
-                               mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT]
-                losses.append(dy.l1_distance(pred_output, dy.inputVector(target_vec_1)))
+                pred_output, softmax_outputs = self._predict_one(mgc[mgc_index], history=history,
+                                                                 gs_output=wave[
+                                                                           mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT +
+                                                                                                           self.UPSAMPLE_COUNT])
+                # target_vec_1 = wave[
+                #               mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT]
+                # losses.append(dy.l1_distance(pred_output, dy.inputVector(target_vec_1)))
+                frame_losses = []
+                for ii in range(len(softmax_outputs)):
+                    frame_losses.append(
+                        -dy.log(dy.pick(softmax_outputs[ii], disc[mgc_index * self.UPSAMPLE_COUNT + ii])))
+                losses.append(dy.esum(frame_losses))
 
                 history = wave[
                           (mgc_index + 1) * self.UPSAMPLE_COUNT - self.HISTORY:(mgc_index + 1) * self.UPSAMPLE_COUNT]
@@ -185,7 +193,7 @@ class BeeCoder:
             self.trainer.update()
             dy.renew_cg()
 
-        return total_loss / len(mgc)
+        return total_loss / (len(mgc) * self.UPSAMPLE_COUNT)
 
 
 # class BeeCoder:
