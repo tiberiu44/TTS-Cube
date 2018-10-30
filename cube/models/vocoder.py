@@ -36,9 +36,10 @@ class BeeCoder:
         else:
             self.model = model
 
+        self.start_state = self.model.add_lookup_parameters((1, self.HIDDEN_SIZE[-1]))
         self.networks = []
         for ii in range(1):
-            input_size = self.params.mgc_order + self.HISTORY
+            input_size = self.params.mgc_order + self.HISTORY + self.HIDDEN_SIZE[-1]
             hidden_w = []
             hidden_b = []
             for layer_size in self.HIDDEN_SIZE:
@@ -97,6 +98,7 @@ class BeeCoder:
         # from ipdb import set_trace
         # set_trace()
         softmax_outputs = []
+        last_state = self.start_state[0]
         for ii in range(self.UPSAMPLE_COUNT):
             # from ipdb import set_trace
             # set_trace()
@@ -104,9 +106,9 @@ class BeeCoder:
             #    from ipdb import set_trace
             #    set_trace()
             [hidden_w, hidden_b] = self.networks[0]
-            hidden_input = dy.concatenate([mgc, hist])
+            hidden_input = dy.concatenate([mgc, hist, last_state])
             for w, b in zip(hidden_w, hidden_b):
-                hidden_input = dy.elu(w.expr(update=True) * hidden_input + b.expr(update=True))
+                hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
 
             softmax_outputs.append(
                 self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True))
@@ -126,6 +128,7 @@ class BeeCoder:
                         hist = dy.inputVector(gs_output[ii - self.HISTORY + 1:ii + 1])
                     else:
                         hist = dy.concatenate([dy.inputVector(prev), dy.inputVector(gs_output[:ii + 1])])
+            last_state = hidden_input
 
         networks_output = dy.concatenate(networks_output)
 
