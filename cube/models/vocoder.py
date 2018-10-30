@@ -109,7 +109,7 @@ class BeeCoder:
                 hidden_input = dy.elu(w.expr(update=True) * hidden_input + b.expr(update=True))
 
             softmax_outputs.append(
-                dy.softmax(self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True)))
+                self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True))
 
             networks_output.append(amax_vect * dy.argmax(softmax_outputs[-1], gradient_mode="zero_gradient"))
             # from ipdb import set_trace
@@ -176,7 +176,7 @@ class BeeCoder:
                 frame_losses = []
                 for ii in range(len(softmax_outputs)):
                     frame_losses.append(
-                        -dy.log(dy.pick(softmax_outputs[ii], disc[mgc_index * self.UPSAMPLE_COUNT + ii])))
+                        dy.pickneglogsoftmax(softmax_outputs[ii], disc[mgc_index * self.UPSAMPLE_COUNT + ii]))
                 losses.append(dy.esum(frame_losses))
 
                 history = wave[
