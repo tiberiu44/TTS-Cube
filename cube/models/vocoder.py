@@ -24,8 +24,8 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_SIZE = [448, 448]
-        self.HISTORY = 80
+        self.HIDDEN_SIZE = [800, 800]
+        self.HISTORY = 1
 
         self.FFT_SIZE = 513
         self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
@@ -60,7 +60,7 @@ class BeeCoder:
         last_proc = 0
         synth = []
         history = [0 for ii in range(self.HISTORY)]
-
+        last_state = None
         for mgc_index in range(len(mgc)):
             dy.renew_cg()
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
@@ -69,7 +69,8 @@ class BeeCoder:
                     last_proc += 5
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
-            output_power, softmaxes = self._predict_one(mgc[mgc_index], history=history)
+            output_power, softmaxes, last_state = self._predict_one(mgc[mgc_index], history=history,
+                                                                    last_state=last_state)
             ov = output_power.value()
             for item in ov:
                 synth.append(item)
@@ -89,7 +90,7 @@ class BeeCoder:
     def load(self, output_base):
         self.model.populate(output_base + ".network")
 
-    def _predict_one(self, mgc, history, gs_output=None):
+    def _predict_one(self, mgc, history, gs_output=None, last_state=None):
 
         networks_output = []
         hist = dy.inputVector(history)
@@ -98,7 +99,10 @@ class BeeCoder:
         # from ipdb import set_trace
         # set_trace()
         softmax_outputs = []
-        last_state = self.start_state[0]
+        if last_state is None:
+            last_state = self.start_state[0]
+        else:
+            last_state = dy.inputVector(last_state)
         for ii in range(self.UPSAMPLE_COUNT):
             # from ipdb import set_trace
             # set_trace()
@@ -106,7 +110,11 @@ class BeeCoder:
             #    from ipdb import set_trace
             #    set_trace()
             [hidden_w, hidden_b] = self.networks[0]
-            hidden_input = dy.concatenate([mgc, hist, last_state])
+            if self.HISTORY != 0:
+                hidden_input = dy.concatenate([mgc, hist, last_state])
+            else:
+                hidden_input = dy.concatenate([mgc, last_state])
+
             for w, b in zip(hidden_w, hidden_b):
                 hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
 
@@ -116,24 +124,26 @@ class BeeCoder:
             networks_output.append(amax_vect * dy.argmax(softmax_outputs[-1], gradient_mode="zero_gradient"))
             # from ipdb import set_trace
             # set_trace()
-            prev = history[ii + 1:]
-            if ii != self.UPSAMPLE_COUNT - 1:
-                if gs_output is None:
-                    if len(prev) == 0:
-                        hist = dy.concatenate(networks_output[-self.HISTORY:])
+            if self.HISTORY != 0:
+                prev = history[ii + 1:]
+                if ii != self.UPSAMPLE_COUNT - 1:
+                    if gs_output is None:
+                        if len(prev) == 0:
+                            hist = dy.concatenate(networks_output[-self.HISTORY:])
+                        else:
+                            hist = dy.concatenate(
+                                [dy.inputVector(prev), dy.nobackprop(dy.concatenate(networks_output))])
                     else:
-                        hist = dy.concatenate([dy.inputVector(prev), dy.nobackprop(dy.concatenate(networks_output))])
-                else:
-                    if len(prev) == 0:
-                        hist = dy.inputVector(gs_output[ii - self.HISTORY + 1:ii + 1])
-                    else:
-                        hist = dy.concatenate([dy.inputVector(prev), dy.inputVector(gs_output[:ii + 1])])
+                        if len(prev) == 0:
+                            hist = dy.inputVector(gs_output[ii - self.HISTORY + 1:ii + 1])
+                        else:
+                            hist = dy.concatenate([dy.inputVector(prev), dy.inputVector(gs_output[:ii + 1])])
             last_state = hidden_input
 
         networks_output = dy.concatenate(networks_output)
 
         # output = dy.tanh(networks_output)
-        return networks_output, softmax_outputs
+        return networks_output, softmax_outputs, last_state.npvalue()
 
     def _get_reseted_wave(self, fft):
         power_spec = np.abs(fft)
@@ -159,6 +169,7 @@ class BeeCoder:
         total_loss = 0
         losses = []
         cnt = 0
+        last_state = None
         history = [0 for ii in range(self.HISTORY)]
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
@@ -169,10 +180,11 @@ class BeeCoder:
                     sys.stdout.flush()
 
             if mgc_index < len(mgc) - 1:
-                pred_output, softmax_outputs = self._predict_one(mgc[mgc_index], history=history,
-                                                                 gs_output=wave[
-                                                                           mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT +
-                                                                                                           self.UPSAMPLE_COUNT])
+                pred_output, softmax_outputs, last_state = self._predict_one(mgc[mgc_index], history=history,
+                                                                             gs_output=wave[
+                                                                                       mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT +
+                                                                                                                       self.UPSAMPLE_COUNT],
+                                                                             last_state=last_state)
                 # target_vec_1 = wave[
                 #               mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT]
                 # losses.append(dy.l1_distance(pred_output, dy.inputVector(target_vec_1)))
