@@ -137,8 +137,8 @@ class BeeCoder:
                 last_h = curr_h
                 last_l = curr_l
             else:
-                last_h = dy.scalarInput(float(int(gs_output[ii] / 256)) / 256)
-                last_l = dy.scalarInput(float(int(gs_output[ii] % 256)) / 256)
+                last_h = dy.scalarInput(float(int(gs_output[ii] / 256)) / 255)
+                last_l = dy.scalarInput(float(int(gs_output[ii] % 256)) / 255)
 
             last_state = [last_state_0, last_state_1]
             softmax_outputs.append([soft_out_h, soft_out_l])
@@ -152,9 +152,8 @@ class BeeCoder:
     def learn(self, wave, mgc, batch_size):
         # wave += np.array(wave, dtype=np.int32)
         # wave += 32768
-        wave = wave / 32768
         wave += 1.0
-        wave = wave * 65535
+        wave = (wave / 2) * 65535
         wave = np.clip(np.array(wave, np.int32), 0, 65535)
 
         # wave = np.array(wave, dtype=np.uint16)

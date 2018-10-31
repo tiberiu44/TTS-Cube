@@ -77,7 +77,7 @@ class Trainer:
         dio = DatasetIO()
         self._render_devset()
         sys.stdout.write("\n")
-        #self.synth_devset(batch_size, target_sample_rate)
+        # self.synth_devset(batch_size, target_sample_rate)
 
         num_files = 0
         while left_itt > 0:
@@ -98,8 +98,8 @@ class Trainer:
                 mgc = np.load(mgc_file)
                 file_index += 1
                 data, sample_rate = dio.read_wave(wav_file)
-                wave_disc = data * 32768
-                wave_disc = np.array(wave_disc, dtype=np.int16)
+                # wave_disc = data * 32768
+                wave_disc = np.array(data, dtype=np.float32)
 
                 import time
                 start = time.time()
@@ -109,9 +109,9 @@ class Trainer:
                 sys.stdout.write(' avg loss=' + str(loss) + " execution time=" + str(stop - start))
                 sys.stdout.write('\n')
                 sys.stdout.flush()
-                if file_index % 200 == 0:
-                     self.synth_devset(batch_size, target_sample_rate)
-                     self.vocoder.store('data/models/nn_vocoder')
+                if file_index % 50 == 0:
+                    self.synth_devset(batch_size, target_sample_rate)
+                    self.vocoder.store('data/models/nn_vocoder')
 
             self.synth_devset(batch_size, target_sample_rate)
             self.vocoder.store('data/models/nn_vocoder')
