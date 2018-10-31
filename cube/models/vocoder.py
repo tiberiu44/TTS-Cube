@@ -78,9 +78,8 @@ class BeeCoder:
                     sys.stdout.flush()
             output_power, softmaxes, last_state = self._predict_one(mgc[mgc_index], history=history,
                                                                     last_state=last_state)
-            ov = output_power.value()
-            for item in ov:
-                synth.append(item)
+            for hval, lval in output_power:
+                synth.append(int(hval.value() * 255) * 256 + int(lval.value()) * 255)
             history = synth[-1]
 
         # synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
@@ -111,40 +110,43 @@ class BeeCoder:
         else:
             last_state = [dy.inputVector(last_state[0]), dy.inputVector(last_state[1])]
 
-        last_h = dy.scalarInput(float(int(history / 256)) / 256)
-        last_l = dy.scalarInput(float(int(history % 256)) / 256)
+        last_h = dy.scalarInput(float(int(history / 256)) / 128.0 - 1.0)
+        last_l = dy.scalarInput(float(int(history % 256)) / 128.0 - 1.0)
 
         for ii in range(self.UPSAMPLE_COUNT):
             # high
             [hidden_w, hidden_b] = self.networks_h
             hidden_input = dy.concatenate([mgc, last_h, last_l, last_state[0]])
             for w, b in zip(hidden_w, hidden_b):
-                hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
+                hidden_input = dy.rectify(w.expr(update=True) * hidden_input + b.expr(update=True))
             last_state_0 = hidden_input
             soft_out_h = self.output_h_w.expr(update=True) * hidden_input + self.output_h_b.expr(update=True)
-            curr_h = amax_vect * dy.argmax(soft_out_h, gradient_mode="zero_gradient")
+            curr_h = amax_vect * dy.argmax(soft_out_h, gradient_mode="zero_gradient") * 2.0 - 1.0
 
             # low
             [hidden_w, hidden_b] = self.networks_l
             hidden_input = dy.concatenate([mgc, last_h, last_l, curr_h, last_state[1]])
             for w, b in zip(hidden_w, hidden_b):
-                hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
+                hidden_input = dy.rectify(w.expr(update=True) * hidden_input + b.expr(update=True))
             last_state_1 = hidden_input
             soft_out_l = self.output_l_w.expr(update=True) * hidden_input + self.output_l_b.expr(update=True)
-            curr_l = amax_vect * dy.argmax(soft_out_l, gradient_mode="zero_gradient")
+            curr_l = amax_vect * dy.argmax(soft_out_l, gradient_mode="zero_gradient") * 2.0 - 1.0
 
             if gs_output is None:
                 last_h = curr_h
                 last_l = curr_l
             else:
-                last_h = dy.scalarInput(float(int(gs_output[ii] / 256)) / 255)
-                last_l = dy.scalarInput(float(int(gs_output[ii] % 256)) / 255)
+                last_h = dy.scalarInput(float(int(gs_output[ii] / 256)) / 128.0 - 1.0)
+                last_l = dy.scalarInput(float(int(gs_output[ii] % 256)) / 128.0 - 1.0)
+
+            # from ipdb import set_trace
+            # set_trace()
 
             last_state = [last_state_0, last_state_1]
             softmax_outputs.append([soft_out_h, soft_out_l])
-            networks_output.append(curr_h * 65280 + curr_l * 255)
+            networks_output.append([curr_h, curr_l])
 
-        networks_output = dy.concatenate(networks_output)
+        # networks_output = dy.concatenate(networks_output)
 
         # output = dy.tanh(networks_output)
         return networks_output, softmax_outputs, [last_state[0].npvalue(), last_state[1].npvalue()]
@@ -164,9 +166,9 @@ class BeeCoder:
         dy.renew_cg()
         total_loss = 0
         losses = []
-        cnt = 0
         last_state = None
         last_val = 32768
+        cnt = 0
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -181,17 +183,12 @@ class BeeCoder:
                                                                                        mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT +
                                                                                                                        self.UPSAMPLE_COUNT],
                                                                              last_state=last_state)
-                frame_losses = []
                 for ii in range(len(softmax_outputs)):
-                    frame_losses.append(
-                        dy.pickneglogsoftmax(softmax_outputs[ii][0],
-                                             int(wave[mgc_index * self.UPSAMPLE_COUNT + ii]) / 256))
-                    frame_losses.append(
-                        dy.pickneglogsoftmax(softmax_outputs[ii][1],
-                                             int(wave[mgc_index * self.UPSAMPLE_COUNT + ii]) % 256))
-
-                losses.append(dy.esum(frame_losses))
-
+                    h = int(wave[mgc_index * self.UPSAMPLE_COUNT + ii]) / 256
+                    l = int(wave[mgc_index * self.UPSAMPLE_COUNT + ii]) % 256
+                    losses.append(dy.pickneglogsoftmax(softmax_outputs[ii][0], h))
+                    losses.append(dy.pickneglogsoftmax(softmax_outputs[ii][1], l))
+                    cnt += 1
                 last_val = wave[(mgc_index + 1) * self.UPSAMPLE_COUNT - 1]
 
             if len(losses) >= batch_size:
@@ -209,7 +206,7 @@ class BeeCoder:
             self.trainer.update()
             dy.renew_cg()
 
-        return total_loss / (len(mgc) * self.UPSAMPLE_COUNT * 2)
+        return total_loss / (cnt * 2)
 
 
 # class BeeCoder:
