@@ -34,30 +34,20 @@ class BeeCoder:
             self.model = dy.Model()
         else:
             self.model = model
+        input_size = self.UPSAMPLE_COUNT + self.params.mgc_order
+        hidden_w = []
+        hidden_b = []
+        for layer_size in self.HIDDEN_SIZE:
+            hidden_w.append(self.model.add_parameters((layer_size, input_size)))
+            hidden_b.append(self.model.add_parameters((layer_size)))
+            input_size = layer_size
 
-        self.start_state = self.model.add_lookup_parameters((2, self.HIDDEN_SIZE[-1]))
-        for ii in range(2):
-            input_size = self.params.mgc_order + 2 + self.HIDDEN_SIZE[-1]
-            if ii == 1:
-                input_size += 1
+        # self.networks.append([hidden_w, hidden_b])
 
-            hidden_w = []
-            hidden_b = []
-            for layer_size in self.HIDDEN_SIZE:
-                hidden_w.append(self.model.add_parameters((layer_size, input_size)))
-                hidden_b.append(self.model.add_parameters((layer_size)))
-                input_size = layer_size
+        self.mlp = [hidden_w, hidden_b]
 
-            # self.networks.append([hidden_w, hidden_b])
-            if ii == 0:
-                self.networks_h = [hidden_w, hidden_b]
-            elif ii == 1:
-                self.networks_l = [hidden_w, hidden_b]
-
-        self.output_h_w = self.model.add_parameters((256, input_size))
-        self.output_h_b = self.model.add_parameters((256))
-        self.output_l_w = self.model.add_parameters((256, input_size))
-        self.output_l_b = self.model.add_parameters((256))
+        self.output_w = self.model.add_parameters((2, input_size))
+        self.output_b = self.model.add_parameters((2))
 
         self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
         self.dio = DatasetIO()
@@ -66,8 +56,7 @@ class BeeCoder:
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
         last_proc = 0
         synth = []
-        history = 32768
-        last_state = None
+        noise = np.random.uniform(low=-1.0, high=1.0, size=(len(mgc) * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT))
         for mgc_index in range(len(mgc)):
             dy.renew_cg()
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
@@ -76,17 +65,18 @@ class BeeCoder:
                     last_proc += 5
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
-            output_power, softmaxes, last_state = self._predict_one(mgc[mgc_index], history=history,
-                                                                    last_state=last_state)
-            for hval, lval in output_power:
-                synth.append(int(hval.value() * 255) * 256 + int(lval.value()) * 255)
-            history = synth[-1]
+
+            output_power = self._predict_one(mgc[mgc_index],
+                                             noise[
+                                             self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
+            for hval in output_power:
+                synth.append(hval.npvalue()[0])
 
         # synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
 
-        # synth = self.dio.ulaw_decode(synth, discreete=False)
+        synth = self.dio.ulaw_decode(synth, discreete=False)
         synth = np.array(synth, dtype=np.int32)
-        synth = np.clip(synth - 32767, -32767, 32767)
+        synth = np.clip(synth * 32768, -32767, 32767)
         synth = np.array(synth, dtype=np.int16)
 
         return synth
@@ -97,78 +87,34 @@ class BeeCoder:
     def load(self, output_base):
         self.model.populate(output_base + ".network")
 
-    def _predict_one(self, mgc, history, gs_output=None, last_state=None):
-
-        networks_output = []
+    def _predict_one(self, mgc, noise):
         mgc = dy.inputVector(mgc)
-        amax_vect = dy.reshape(dy.inputVector([(ii / 255) for ii in range(256)]), (1, 256))
-        # from ipdb import set_trace
-        # set_trace()
-        softmax_outputs = []
-        if last_state is None:
-            last_state = [self.start_state[0], self.start_state[1]]
-        else:
-            last_state = [dy.inputVector(last_state[0]), dy.inputVector(last_state[1])]
-
-        last_h = dy.scalarInput(float(int(history / 256)) / 128.0 - 1.0)
-        last_l = dy.scalarInput(float(int(history % 256)) / 128.0 - 1.0)
+        outputs = []
 
         for ii in range(self.UPSAMPLE_COUNT):
+            noise_vec = dy.inputVector(noise[ii:ii + self.UPSAMPLE_COUNT])
             # high
-            [hidden_w, hidden_b] = self.networks_h
-            hidden_input = dy.concatenate([mgc, last_h, last_l, last_state[0]])
+            [hidden_w, hidden_b] = self.mlp
+            hidden_input = dy.concatenate([mgc, noise_vec])
             for w, b in zip(hidden_w, hidden_b):
                 hidden_input = dy.rectify(w.expr(update=True) * hidden_input + b.expr(update=True))
-            last_state_0 = hidden_input
-            soft_out_h = self.output_h_w.expr(update=True) * hidden_input + self.output_h_b.expr(update=True)
-            curr_h = amax_vect * dy.argmax(soft_out_h, gradient_mode="zero_gradient") * 2.0 - 1.0
 
-            # low
-            [hidden_w, hidden_b] = self.networks_l
-            hidden_input = dy.concatenate([mgc, last_h, last_l, curr_h, last_state[1]])
-            for w, b in zip(hidden_w, hidden_b):
-                hidden_input = dy.rectify(w.expr(update=True) * hidden_input + b.expr(update=True))
-            last_state_1 = hidden_input
-            soft_out_l = self.output_l_w.expr(update=True) * hidden_input + self.output_l_b.expr(update=True)
-            curr_l = amax_vect * dy.argmax(soft_out_l, gradient_mode="zero_gradient") * 2.0 - 1.0
+            output = self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True)
+            stdev = dy.logistic(output[1])
+            mean = dy.tanh(output[0])
+            outputs.append(mean + noise[ii + self.UPSAMPLE_COUNT] * stdev)
 
-            if gs_output is None:
-                last_h = curr_h
-                last_l = curr_l
-            else:
-                last_h = dy.scalarInput(float(int(gs_output[ii] / 256)) / 128.0 - 1.0)
-                last_l = dy.scalarInput(float(int(gs_output[ii] % 256)) / 128.0 - 1.0)
-
-            # from ipdb import set_trace
-            # set_trace()
-
-            last_state = [last_state_0, last_state_1]
-            softmax_outputs.append([soft_out_h, soft_out_l])
-            networks_output.append([curr_h, curr_l])
-
-        # networks_output = dy.concatenate(networks_output)
-
-        # output = dy.tanh(networks_output)
-        return networks_output, softmax_outputs, [last_state[0].npvalue(), last_state[1].npvalue()]
+        return outputs
 
     def learn(self, wave, mgc, batch_size):
-        # wave += np.array(wave, dtype=np.int32)
-        # wave += 32768
-        wave += 1.0
-        wave = (wave / 2) * 65535
-        wave = np.clip(np.array(wave, np.int32), 0, 65535)
-
-        # wave = np.array(wave, dtype=np.uint16)
-        # from ipdb import set_trace
-        # set_trace()
-        # print(signal_fft)
+        wave = wave / 32768
+        disc, wave = self.dio.ulaw_encode(wave)
         last_proc = 0
         dy.renew_cg()
         total_loss = 0
         losses = []
-        last_state = None
-        last_val = 32768
         cnt = 0
+        noise = np.random.uniform(low=-1.0, high=1.0, size=(len(wave) + self.UPSAMPLE_COUNT))
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -178,18 +124,14 @@ class BeeCoder:
                     sys.stdout.flush()
 
             if mgc_index < len(mgc) - 1:
-                pred_output, softmax_outputs, last_state = self._predict_one(mgc[mgc_index], history=last_val,
-                                                                             gs_output=wave[
-                                                                                       mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT +
-                                                                                                                       self.UPSAMPLE_COUNT],
-                                                                             last_state=last_state)
-                for ii in range(len(softmax_outputs)):
-                    h = int(wave[mgc_index * self.UPSAMPLE_COUNT + ii]) / 256
-                    l = int(wave[mgc_index * self.UPSAMPLE_COUNT + ii]) % 256
-                    losses.append(dy.pickneglogsoftmax(softmax_outputs[ii][0], h))
-                    losses.append(dy.pickneglogsoftmax(softmax_outputs[ii][1], l))
+
+                outputs = self._predict_one(mgc[mgc_index],
+                                            noise[
+                                            self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
+                for ii in range(len(outputs)):
+                    losses.append(
+                        dy.l1_distance(outputs[ii], dy.scalarInput(wave[ii + mgc_index * self.UPSAMPLE_COUNT])))
                     cnt += 1
-                last_val = wave[(mgc_index + 1) * self.UPSAMPLE_COUNT - 1]
 
             if len(losses) >= batch_size:
                 loss = dy.esum(losses)
