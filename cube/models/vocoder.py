@@ -75,7 +75,7 @@ class BeeCoder:
         # synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
 
         synth = self.dio.ulaw_decode(synth, discreete=False)
-        synth = np.array(synth, dtype=np.int32)
+        synth = np.array(synth, dtype=np.float32)
         synth = np.clip(synth * 32768, -32767, 32767)
         synth = np.array(synth, dtype=np.int16)
 
@@ -148,7 +148,7 @@ class BeeCoder:
             self.trainer.update()
             dy.renew_cg()
 
-        return total_loss / (cnt * 2)
+        return total_loss / cnt
 
 
 # class BeeCoder:
