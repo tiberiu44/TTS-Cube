@@ -39,14 +39,17 @@ class BeeCoder:
         self.upsample_w = []
         self.upsample_b = []
         for ii in range(self.UPSAMPLE_COUNT):
-            self.upsample_w.append(self.model.add_parameters((self.params.mgc_order, self.params.mgc_order)))
-            self.upsample_b.append(self.model.add_parameters((self.params.mgc_order)))
+            self.upsample_w.append([self.model.add_parameters((self.params.mgc_order, self.params.mgc_order)),
+                                    self.model.add_parameters((self.params.mgc_order, self.params.mgc_order))])
+            self.upsample_b.append([self.model.add_parameters((self.params.mgc_order)),
+                                    self.model.add_parameters((self.params.mgc_order))])
 
         hidden_w = []
         hidden_b = []
         for layer_size in self.HIDDEN_SIZE:
-            hidden_w.append(self.model.add_parameters((layer_size, input_size)))
-            hidden_b.append(self.model.add_parameters((layer_size)))
+            hidden_w.append([self.model.add_parameters((layer_size, input_size)),
+                             self.model.add_parameters((layer_size, input_size))])
+            hidden_b.append([self.model.add_parameters((layer_size)), self.model.add_parameters((layer_size))])
             input_size = layer_size
 
         # self.networks.append([hidden_w, hidden_b])
@@ -103,20 +106,25 @@ class BeeCoder:
         stdevs = []
         for ii in range(self.UPSAMPLE_COUNT):
             noise_vec = dy.inputVector(noise[ii + 1:ii + self.UPSAMPLE_COUNT + 1])
-            upsampled = dy.tanh(self.upsample_w[ii].expr(update=True) * mgc + self.upsample_b[ii].expr(update=True))
+            value = dy.tanh(self.upsample_w[ii][0].expr(update=True) * mgc + self.upsample_b[ii][0].expr(update=True))
+            gate = dy.logistic(
+                self.upsample_w[ii][1].expr(update=True) * mgc + self.upsample_b[ii][1].expr(update=True))
+            upsampled = dy.cmult(value, gate)
             [hidden_w, hidden_b] = self.mlp
             hidden_input = dy.concatenate([upsampled, noise_vec])
             for w, b in zip(hidden_w, hidden_b):
-                hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
+                value = dy.tanh(w[0].expr(update=True) * hidden_input + b[0].expr(update=True))
+                gate = dy.logistic(w[1].expr(update=True) * hidden_input + b[1].expr(update=True))
+                hidden_input = dy.cmult(value, gate)
 
-            mean = dy.tanh(self.mean_w.expr(update=True) * hidden_input + self.mean_b.expr(update=True))
-            stdev = dy.logistic(self.stdev_w.expr(update=True) * hidden_input + self.stdev_b.expr(update=True))
+            mean = self.mean_w.expr(update=True) * hidden_input + self.mean_b.expr(update=True)
+            stdev = self.stdev_w.expr(update=True) * hidden_input + self.stdev_b.expr(update=True)
             means.append(mean)
             stdevs.append(stdev)
 
         sample_vec = dy.inputVector(noise[self.UPSAMPLE_COUNT:self.UPSAMPLE_COUNT * 2])
-        mean = dy.concatenate(means)
-        stdev = dy.concatenate(stdevs)
+        mean = dy.tanh(dy.concatenate(means))
+        stdev = dy.logistic(dy.concatenate(stdevs))
         outputs = dy.cmult(stdev, sample_vec) + mean
         # outputs = (dy.logistic(self.decode_w.expr(update=True) * dy.concatenate([mean, stdev])))
 
