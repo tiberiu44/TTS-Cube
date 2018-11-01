@@ -24,7 +24,7 @@ from io_modules.vocoder import MelVocoder
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
-        self.HIDDEN_SIZE = [448, 448]
+        self.HIDDEN_SIZE = [1024, 1024]
 
         self.FFT_SIZE = 513
         self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
@@ -35,6 +35,13 @@ class BeeCoder:
         else:
             self.model = model
         input_size = self.UPSAMPLE_COUNT + self.params.mgc_order
+
+        self.upsample_w = []
+        self.upsample_b = []
+        for ii in range(self.UPSAMPLE_COUNT):
+            self.upsample_w.append(self.model.add_parameters((self.params.mgc_order, self.params.mgc_order)))
+            self.upsample_b.append(self.model.add_parameters((self.params.mgc_order)))
+
         hidden_w = []
         hidden_b = []
         for layer_size in self.HIDDEN_SIZE:
@@ -46,8 +53,10 @@ class BeeCoder:
 
         self.mlp = [hidden_w, hidden_b]
 
-        self.output_w = self.model.add_parameters((2, input_size))
-        self.output_b = self.model.add_parameters((2))
+        self.mean_w = self.model.add_parameters((1, input_size))
+        self.mean_b = self.model.add_parameters((1))
+        self.stdev_w = self.model.add_parameters((1, input_size))
+        self.stdev_b = self.model.add_parameters((1))
 
         self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
         self.dio = DatasetIO()
@@ -56,7 +65,7 @@ class BeeCoder:
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
         last_proc = 0
         synth = []
-        noise = np.random.uniform(low=-1.0, high=1.0, size=(len(mgc) * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT))
+        noise = np.random.normal(0, 1.0, len(mgc) * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT)
         for mgc_index in range(len(mgc)):
             dy.renew_cg()
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
@@ -66,15 +75,15 @@ class BeeCoder:
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
 
-            output_power = self._predict_one(mgc[mgc_index],
-                                             noise[
-                                             self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
-            for hval in output_power:
-                synth.append(hval.npvalue()[0])
+            output, mean, stdev = self._predict_one(mgc[mgc_index],
+                                                    noise[
+                                                    self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
+            for hval in output.value():
+                synth.append(hval)
 
         # synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
 
-        synth = self.dio.ulaw_decode(synth, discreete=False)
+        # synth = self.dio.ulaw_decode(synth, discreete=False)
         synth = np.array(synth, dtype=np.float32)
         synth = np.clip(synth * 32768, -32767, 32767)
         synth = np.array(synth, dtype=np.int16)
@@ -90,31 +99,38 @@ class BeeCoder:
     def _predict_one(self, mgc, noise):
         mgc = dy.inputVector(mgc)
         outputs = []
-
+        means = []
+        stdevs = []
         for ii in range(self.UPSAMPLE_COUNT):
-            noise_vec = dy.inputVector(noise[ii:ii + self.UPSAMPLE_COUNT])
-            # high
+            noise_vec = dy.inputVector(noise[ii + 1:ii + self.UPSAMPLE_COUNT + 1])
+            upsampled = dy.tanh(self.upsample_w[ii].expr(update=True) * mgc + self.upsample_b[ii].expr(update=True))
             [hidden_w, hidden_b] = self.mlp
-            hidden_input = dy.concatenate([mgc, noise_vec])
+            hidden_input = dy.concatenate([upsampled, noise_vec])
             for w, b in zip(hidden_w, hidden_b):
-                hidden_input = dy.rectify(w.expr(update=True) * hidden_input + b.expr(update=True))
+                hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
 
-            output = self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True)
-            stdev = dy.logistic(output[1])
-            mean = dy.tanh(output[0])
-            outputs.append(mean + noise[ii + self.UPSAMPLE_COUNT - 1] * stdev)
+            mean = dy.tanh(self.mean_w.expr(update=True) * hidden_input + self.mean_b.expr(update=True))
+            stdev = dy.logistic(self.stdev_w.expr(update=True) * hidden_input + self.stdev_b.expr(update=True))
+            means.append(mean)
+            stdevs.append(stdev)
 
-        return outputs
+        sample_vec = dy.inputVector(noise[self.UPSAMPLE_COUNT:self.UPSAMPLE_COUNT * 2])
+        mean = dy.concatenate(means)
+        stdev = dy.concatenate(stdevs)
+        outputs = dy.cmult(stdev, sample_vec) + mean
+        # outputs = (dy.logistic(self.decode_w.expr(update=True) * dy.concatenate([mean, stdev])))
+
+        return outputs, mean, stdev
 
     def learn(self, wave, mgc, batch_size):
         wave = wave / 32768
-        disc, wave = self.dio.ulaw_encode(wave)
+        # disc, wave = self.dio.ulaw_encode(wave)
         last_proc = 0
         dy.renew_cg()
         total_loss = 0
         losses = []
         cnt = 0
-        noise = np.random.uniform(low=-1.0, high=1.0, size=(len(wave) + self.UPSAMPLE_COUNT))
+        noise = np.random.uniform(0, 1.0, len(wave) + self.UPSAMPLE_COUNT)
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -124,14 +140,21 @@ class BeeCoder:
                     sys.stdout.flush()
 
             if mgc_index < len(mgc) - 1:
+                outputs, mean, stdev = self._predict_one(mgc[mgc_index],
+                                                         noise[
+                                                         self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
+                # for ii in range(len(outputs)):
+                #     losses.append(
+                #         dy.l1_distance(outputs[ii], dy.scalarInput(wave[ii + mgc_index * self.UPSAMPLE_COUNT])))
+                #     cnt += 1
+                loss = dy.l1_distance(outputs, dy.inputVector(
+                    wave[mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT]))
+                loss += 0.5 * dy.l1_distance(mean, dy.inputVector(
+                    wave[mgc_index * self.UPSAMPLE_COUNT:mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT]))
+                # loss += -0.5 * dy.sum_elems(1 + stdev - dy.pow(mean, dy.scalarInput(2)) - dy.exp(stdev))
 
-                outputs = self._predict_one(mgc[mgc_index],
-                                            noise[
-                                            self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
-                for ii in range(len(outputs)):
-                    losses.append(
-                        dy.l1_distance(outputs[ii], dy.scalarInput(wave[ii + mgc_index * self.UPSAMPLE_COUNT])))
-                    cnt += 1
+                losses.append(loss)
+                cnt += self.UPSAMPLE_COUNT
 
             if len(losses) >= batch_size:
                 loss = dy.esum(losses)
