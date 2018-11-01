@@ -138,7 +138,7 @@ class BeeCoder:
         total_loss = 0
         losses = []
         cnt = 0
-        noise = np.random.uniform(0, 1.0, len(wave) + self.UPSAMPLE_COUNT)
+        noise = np.random.normal(0, 1.0, len(wave) + self.UPSAMPLE_COUNT)
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
