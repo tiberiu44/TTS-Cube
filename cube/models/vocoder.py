@@ -102,7 +102,7 @@ class BeeCoder:
             output = self.output_w.expr(update=True) * hidden_input + self.output_b.expr(update=True)
             stdev = dy.logistic(output[1])
             mean = dy.tanh(output[0])
-            outputs.append(mean + noise[ii + self.UPSAMPLE_COUNT] * stdev)
+            outputs.append(mean + noise[ii + self.UPSAMPLE_COUNT - 1] * stdev)
 
         return outputs
 
