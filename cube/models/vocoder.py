@@ -14,11 +14,15 @@
 # limitations under the License.
 #
 
-import dynet as dy
 import numpy as np
 import sys
 from io_modules.dataset import DatasetIO
 from io_modules.vocoder import MelVocoder
+import torch
+import torch.nn as nn
+
+# Device configuration
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 class BeeCoder:
@@ -31,58 +35,17 @@ class BeeCoder:
         self.FILTER_SIZE = 128
 
         self.sparse = False
-        if model is None:
-            self.model = dy.Model()
-        else:
-            self.model = model
-
-        input_size = self.params.mgc_order  # self.UPSAMPLE_COUNT + self.params.mgc_order
-        hidden_w = []
-        hidden_b = []
-        for layer_size in self.HIDDEN_SIZE:
-            hidden_w.append(self.model.add_parameters((layer_size, input_size)))
-            hidden_b.append(self.model.add_parameters((layer_size)))
-            input_size = layer_size
-
-        self.mlp_excitation = [hidden_w, hidden_b]
-
-        input_size = self.params.mgc_order  # self.UPSAMPLE_COUNT + self.params.mgc_order
-        hidden_w = []
-        hidden_b = []
-        for layer_size in self.HIDDEN_SIZE:
-            hidden_w.append(self.model.add_parameters((layer_size, input_size)))
-            hidden_b.append(self.model.add_parameters((layer_size)))
-            input_size = layer_size
-
-        self.mlp_filter = [hidden_w, hidden_b]
-
-        input_size = self.params.mgc_order  # self.UPSAMPLE_COUNT + self.params.mgc_order
-        hidden_w = []
-        hidden_b = []
-        for layer_size in self.HIDDEN_SIZE:
-            hidden_w.append(self.model.add_parameters((layer_size, input_size)))
-            hidden_b.append(self.model.add_parameters((layer_size)))
-            input_size = layer_size
-
-        self.mlp_vuv = [hidden_w, hidden_b]
-
-        self.excitation_w = self.model.add_parameters((self.UPSAMPLE_COUNT + self.FILTER_SIZE - 1, input_size))
-        self.excitation_b = self.model.add_parameters((self.UPSAMPLE_COUNT + self.FILTER_SIZE - 1))
-        self.filter_w = self.model.add_parameters((self.FILTER_SIZE, input_size))
-        self.filter_b = self.model.add_parameters((self.FILTER_SIZE))
-        self.vuv_w = self.model.add_parameters((1, input_size))
-        self.vuv_b = self.model.add_parameters((1))
-
-        self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
+
+        self.network = VocoderNetwork(self.params.mgc_order, self.UPSAMPLE_COUNT).to(device)
+        self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
 
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
         last_proc = 0
         synth = []
         noise = np.random.normal(0, 1.0, (len(mgc) * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT))
         for mgc_index in range(len(mgc)):
-            dy.renew_cg()
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
                 while last_proc < curr_proc:
@@ -90,11 +53,14 @@ class BeeCoder:
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
 
-            output, excitation, filter, vuv = self._predict_one(mgc[mgc_index],
-                                                                noise[
-                                                                self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
-            for x in output.value():
-                synth.append(x)
+            # output, excitation, filter, vuv = self._predict_one(mgc[mgc_index],
+            #                                                     noise[
+            #                                                     self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
+            input = mgc[mgc_index]
+            inp = torch.tensor(input).reshape(1, 1, 60).float().to(device)
+            output = self.network(inp).reshape(self.UPSAMPLE_COUNT)
+            for x in output:
+                synth.append(x.item())
 
         # synth = self.dio.ulaw_decode(synth, discreete=False)
         synth = np.array(synth, dtype=np.float32)
@@ -104,63 +70,27 @@ class BeeCoder:
         return synth
 
     def store(self, output_base):
-        self.model.save(output_base + ".network")
+        # self.model.save(output_base + ".network")
+        x = 0
 
     def load(self, output_base):
         self.model.populate(output_base + ".network")
 
     def _predict_one(self, mgc, noise):
-        mgc = dy.inputVector(mgc)
-        outputs = []
 
-        noise_vec = dy.inputVector(noise[0:self.UPSAMPLE_COUNT])
-        [hidden_w, hidden_b] = self.mlp_excitation
-        hidden_input = mgc  # dy.concatenate([mgc, noise_vec])
-        for w, b in zip(hidden_w, hidden_b):
-            hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
-        excitation = dy.logistic(
-            self.excitation_w.expr(update=True) * hidden_input + self.excitation_b.expr(update=True))
-
-        [hidden_w, hidden_b] = self.mlp_filter
-        hidden_input = mgc  # dy.concatenate([mgc, noise_vec])
-        for w, b in zip(hidden_w, hidden_b):
-            hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
-        filter = dy.tanh(self.filter_w.expr(update=True) * hidden_input + self.filter_b.expr(update=True))
-
-        [hidden_w, hidden_b] = self.mlp_vuv
-        hidden_input = mgc  # dy.concatenate([mgc, noise_vec])
-        for w, b in zip(hidden_w, hidden_b):
-            hidden_input = dy.tanh(w.expr(update=True) * hidden_input + b.expr(update=True))
-        vuv = dy.logistic(self.vuv_w.expr(update=True) * hidden_input + self.vuv_b.expr(update=True))
-
-        # sample_vec = dy.inputVector(noise[self.UPSAMPLE_COUNT:self.UPSAMPLE_COUNT * 2])
-
-        # noise_vec = dy.inputVector(noise[0:self.UPSAMPLE_COUNT + self.FILTER_SIZE - 1])
-        mixed = excitation  # * vuv + noise_vec * (1.0 - vuv)
-        # for ii in range(self.UPSAMPLE_COUNT):
-        #     tmp = dy.cmult(filter, dy.pickrange(mixed, ii, ii + self.FILTER_SIZE))
-        #     outputs.append(dy.sum_elems(tmp))
-        # outputs = dy.concatenate(outputs)
-        # from ipdb import set_trace
-        # set_trace()
-        mixed = dy.reshape(mixed, (self.UPSAMPLE_COUNT + self.FILTER_SIZE - 1, 1, 1))
-        filter = dy.reshape(filter, (self.FILTER_SIZE, 1, 1, 1))
-        outputs = dy.conv2d(mixed, filter, stride=(1, 1), is_valid=True)
-        outputs = dy.reshape(outputs, (self.UPSAMPLE_COUNT,))
-        outputs = outputs + noise_vec * vuv
-
-        return outputs, excitation, filter, vuv
+        return None
 
     def learn(self, wave, mgc, batch_size):
-        # disc, wave = self.dio.ulaw_encode(wave)
         # from ipdb import set_trace
         # set_trace()
+        # disc, wave = self.dio.ulaw_encode(wave)
         last_proc = 0
-        dy.renew_cg()
         total_loss = 0
         losses = []
         cnt = 0
         noise = np.random.normal(0, 1.0, (len(wave) + self.UPSAMPLE_COUNT))
+        x = []
+        y = []
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -170,736 +100,285 @@ class BeeCoder:
                     sys.stdout.flush()
 
             if mgc_index < len(mgc) - 1:
-                output, excitation, filter, vuv = self._predict_one(mgc[mgc_index],
-                                                                    noise[
-                                                                    self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
+                cnt += 1
+                input = mgc[mgc_index]
+                output = wave[self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + self.UPSAMPLE_COUNT]
+                x.append(input)
+                y.append(output)
 
-                # reconstruction error
-                t_vect = wave[self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + self.UPSAMPLE_COUNT]
-                loss = dy.squared_distance(output, dy.inputVector(t_vect))
-                # dynamic error
-                o1 = dy.pickrange(output, 0, self.UPSAMPLE_COUNT - 1)
-                o2 = dy.pickrange(output, 1, self.UPSAMPLE_COUNT)
-                delta = o2 - o1
-                real_delta = t_vect[1:self.UPSAMPLE_COUNT] - t_vect[0:self.UPSAMPLE_COUNT - 1]
-                loss += dy.squared_distance(delta, dy.inputVector(real_delta))
-                # excitation error
-                #loss += dy.sum_elems(excitation)
-                #o1 = dy.pickrange(excitation, 0, self.UPSAMPLE_COUNT - 1)
-                #o2 = dy.pickrange(excitation, 1, self.UPSAMPLE_COUNT)
-                #loss += dy.sum_elems(dy.abs(o2 - o1))
-
-                losses.append(loss)
-                cnt += self.UPSAMPLE_COUNT
-
-            if len(losses) >= batch_size:
-                loss = dy.esum(losses)
-                total_loss += loss.value()
+            if len(x) == batch_size:
+                self.trainer.zero_grad()
+                batch_x = torch.tensor(x).reshape(batch_size, 1, 60).float().to(device)
+                batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
+                y_pred = self.network(batch_x)
+                # loss = self.criterion.forward(y_pred, batch_y.to(device))
+                loss = (y_pred - batch_y).pow(2).sum() / len(x)
                 loss.backward()
-                self.trainer.update()
-                losses = []
-                dy.renew_cg()
+                self.trainer.step()
+                total_loss += loss
+                x = []
+                y = []
 
-        if len(losses) > 0:
-            loss = dy.esum(losses)
-            total_loss += loss.value()
+        if len(x) > 0:
+            self.trainer.zero_grad()
+            batch_x = torch.tensor(x).reshape(len(x), 1, 60).float().to(device)
+            batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
+            y_pred = self.network(batch_x)
+            # loss = self.criterion.forward(y_pred, batch_y.to(device))
+            loss = (y_pred - batch_y).pow(2).sum() / len(x)
             loss.backward()
-            self.trainer.update()
-            dy.renew_cg()
+            self.trainer.step()
+            total_loss += loss
 
+        total_loss = total_loss.item()
         return total_loss / cnt
 
 
-# class BeeCoder:
-#     def __init__(self, params, model=None, runtime=False):
-#         self.params = params
-#         self.HIDDEN_LAYERS_POWER = [4096, 4096, 4096]
-#         # self.HIDDEN_LAYERS_ANGLE = [4096, 4096]
-#         self.FFT_SIZE = 513
-#         self.sparse = False
-#         if model is None:
-#             self.model = dy.Model()
-#         else:
-#             self.model = model
-#
-#         input_size_angle = self.FFT_SIZE * 2 + self.params.mgc_order
-#         input_size_power = self.params.mgc_order
-#         self.hidden_w_power = []
-#         self.hidden_b_power = []
-#         # self.hidden_w_angle = []
-#         # self.hidden_b_angle = []
-#         for layer_size in self.HIDDEN_LAYERS_POWER:
-#             self.hidden_w_power.append(self.model.add_parameters((layer_size, input_size_power)))
-#             self.hidden_b_power.append(self.model.add_parameters((layer_size)))
-#             input_size_power = layer_size
-#         # for layer_size in self.HIDDEN_LAYERS_ANGLE:
-#         #     self.hidden_w_angle.append(self.model.add_parameters((layer_size, input_size_angle)))
-#         #     self.hidden_b_angle.append(self.model.add_parameters((layer_size)))
-#         #     input_size_angle = layer_size
-#
-#         self.output_power_w = self.model.add_parameters((self.FFT_SIZE, input_size_power))
-#         self.output_power_b = self.model.add_parameters((self.FFT_SIZE))
-#         # self.output_angle_w = self.model.add_parameters((self.FFT_SIZE, input_size_angle))
-#         # self.output_angle_b = self.model.add_parameters((self.FFT_SIZE))
-#
-#         self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
-#         self.dio = DatasetIO()
-#         self.vocoder = MelVocoder()
-#
-#     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
-#         predicted = np.zeros((len(mgc), 513), dtype=np.float)
-#         last_proc = 0
-#
-#         pow_list = np.zeros((len(mgc), 513))
-#         for mgc_index in range(len(mgc)):
-#             dy.renew_cg()
-#             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
-#             if curr_proc % 5 == 0 and curr_proc != last_proc:
-#                 while last_proc < curr_proc:
-#                     last_proc += 5
-#                     sys.stdout.write(' ' + str(last_proc))
-#                     sys.stdout.flush()
-#             output_power = self._predict_one(mgc[mgc_index], runtime=True)
-#
-#             out_power = output_power.value()
-#             for ii in range(self.FFT_SIZE):
-#                 pow_list[mgc_index, ii] = out_power[ii]
-#
-#                 value = out_power[ii]
-#                 min_level_db = -100.0
-#                 value = pow(10, (value * (-min_level_db) + min_level_db) / 20)
-#                 fft_pow = value
-#                 predicted[mgc_index, ii] = fft_pow
-#
-#         if path is not None:
-#             bitmap = np.zeros((pow_list.shape[1], pow_list.shape[0], 3), dtype=np.uint8)
-#             for x in range(pow_list.shape[0]):
-#                 for y in range(pow_list.shape[1]):
-#                     val = pow_list[x, y]
-#                     color = val * 255
-#                     bitmap[y, x] = [color, color, color]
-#             import scipy.misc as smp
-#             img = smp.toimage(bitmap)
-#             img.save(path)
-#
-#         synth = self.vocoder.griffinlim(predicted, sample_rate=self.params.target_sample_rate)
-#         synth = np.array(synth * 32767, dtype=np.int16)
-#
-#         return synth
-#
-#     def store(self, output_base):
-#         self.model.save(output_base + ".network")
-#
-#     def load(self, output_base):
-#         self.model.populate(output_base + ".network")
-#
-#     def _predict_one(self, mgc, runtime=True):
-#
-#         hidden_power = dy.inputVector(mgc)
-#
-#         for w, b in zip(self.hidden_w_power, self.hidden_b_power):
-#             hidden_power = dy.tanh(w.expr(update=True) * hidden_power + b.expr(update=True))
-#             if not runtime:
-#                 hidden_power = dy.dropout(hidden_power, 0.5)
-#
-#         output_power = dy.logistic(self.output_power_w.expr(update=True) * hidden_power +
-#                                    self.output_power_b.expr(update=True))
-#
-#         return output_power
-#
-#     def learn(self, wave, mgc, batch_size):
-#
-#         signal_fft = self.vocoder.fft(np.array(wave, dtype=np.float32) / 32768 - 1.0,
-#                                       sample_rate=self.params.target_sample_rate, use_preemphasis=False)
-#         # print(signal_fft)
-#         last_proc = 0
-#         dy.renew_cg()
-#         total_loss = 0
-#         losses = []
-#         for mgc_index in range(len(mgc)):
-#             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
-#             if curr_proc % 5 == 0 and curr_proc != last_proc:
-#                 while last_proc < curr_proc:
-#                     last_proc += 5
-#                     sys.stdout.write(' ' + str(last_proc))
-#                     sys.stdout.flush()
-#             output_power = self._predict_one(mgc[mgc_index], runtime=False)
-#             # print(np.abs(signal_fft[mgc_index]))
-#             fft_pow = 20 * np.log10(np.maximum(1e-5, np.abs(signal_fft[mgc_index])))  # np.abs(signal_fft[mgc_index])
-#             min_level_db = -100.0
-#             fft_pow = np.clip((fft_pow - min_level_db) / -min_level_db, 0, 1)
-#             # print (fft_pow)
-#             # print (fft_angle)
-#             # print("")
-#             losses.append(dy.binary_log_loss(output_power, dy.inputVector(fft_pow)))
-#
-#             if len(losses) >= batch_size:
-#                 loss = dy.esum(losses)
-#                 total_loss += loss.value()
-#                 loss.backward()
-#                 self.trainer.update()
-#                 losses = []
-#                 dy.renew_cg()
-#
-#         if len(losses) > 0:
-#             loss = dy.esum(losses)
-#             total_loss += loss.value()
-#             loss.backward()
-#             self.trainer.update()
-#             dy.renew_cg()
-#
-#         return total_loss / len(mgc)
+class VocoderNetwork(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(VocoderNetwork, self).__init__()
 
-class Vocoder:
-    def __init__(self, params, model=None, runtime=False, use_sparse_lstm=False):
-        self.UPSAMPLE_PROJ = 200
-        self.RNN_SIZE = 448
-        self.RNN_LAYERS = 1
-        self.OUTPUT_EMB_SIZE = 1
-        self.params = params
-        if model is None:
-            self.model = dy.Model()
-        else:
-            self.model = model
+        self.net1 = nn.Sequential(
+            nn.Conv1d(1, 2, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(2, 4, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(4, 8, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(8, 16, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(16, 32, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
+            # nn.Tanh()
+        )
+        torch.nn.init.xavier_uniform_(self.net1[0].weight)
+        torch.nn.init.xavier_uniform_(self.net1[2].weight)
+        torch.nn.init.xavier_uniform_(self.net1[4].weight)
+        torch.nn.init.xavier_uniform_(self.net1[6].weight)
+        torch.nn.init.xavier_uniform_(self.net1[8].weight)
+        torch.nn.init.xavier_uniform_(self.net1[10].weight)
+        torch.nn.init.xavier_uniform_(self.net1[12].weight)
+        torch.nn.init.xavier_uniform_(self.net1[14].weight)
 
-        self.trainer = dy.AdamTrainer(self.model, alpha=params.learning_rate)
-        self.trainer.set_sparse_updates(True)
-        self.trainer.set_clip_threshold(5.0)
-        # self.trainer = dy.AdamTrainer(self.model)
-        # MGCs are extracted at 12.5 ms
-        from models.utils import orthonormal_VanillaLSTMBuilder
-        lstm_builder = orthonormal_VanillaLSTMBuilder
-        if runtime:
-            lstm_builder = dy.VanillaLSTMBuilder
-        if use_sparse_lstm:
-            lstm_builder = dy.SparseLSTMBuilder
-            self.sparse = True
-        else:
-            self.sparse = False
+        self.net2 = nn.Sequential(
+            nn.Conv1d(1, 2, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(2, 4, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(4, 8, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(8, 16, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(16, 32, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
+            # nn.Tanh()
+        )
+        torch.nn.init.xavier_uniform_(self.net2[0].weight)
+        torch.nn.init.xavier_uniform_(self.net2[2].weight)
+        torch.nn.init.xavier_uniform_(self.net2[4].weight)
+        torch.nn.init.xavier_uniform_(self.net2[6].weight)
+        torch.nn.init.xavier_uniform_(self.net2[8].weight)
+        torch.nn.init.xavier_uniform_(self.net2[10].weight)
+        torch.nn.init.xavier_uniform_(self.net2[12].weight)
+        torch.nn.init.xavier_uniform_(self.net2[14].weight)
 
-        upsample_count = int(12.5 * self.params.target_sample_rate / 1000)
-        # self.upsample_w_s = []
-        self.upsample_w_t = []
-        # self.upsample_b_s = []
-        self.upsample_b_t = []
-        for _ in range(upsample_count):
-            # self.upsample_w_s.append(self.model.add_parameters((self.UPSAMPLE_PROJ, self.params.mgc_order)))
-            self.upsample_w_t.append(self.model.add_parameters((self.UPSAMPLE_PROJ, self.params.mgc_order * 2)))
-            # self.upsample_b_s.append(self.model.add_parameters((self.UPSAMPLE_PROJ)))
-            self.upsample_b_t.append(self.model.add_parameters((self.UPSAMPLE_PROJ)))
+        self.net3 = nn.Sequential(
+            nn.Conv1d(1, 2, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(2, 4, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(4, 8, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(8, 16, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(16, 32, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
+            # nn.Tanh()
+        )
+        torch.nn.init.xavier_uniform_(self.net3[0].weight)
+        torch.nn.init.xavier_uniform_(self.net3[2].weight)
+        torch.nn.init.xavier_uniform_(self.net3[4].weight)
+        torch.nn.init.xavier_uniform_(self.net3[6].weight)
+        torch.nn.init.xavier_uniform_(self.net3[8].weight)
+        torch.nn.init.xavier_uniform_(self.net3[10].weight)
+        torch.nn.init.xavier_uniform_(self.net3[12].weight)
+        torch.nn.init.xavier_uniform_(self.net3[14].weight)
 
-        self.output_coarse_lookup = self.model.add_lookup_parameters((256, self.OUTPUT_EMB_SIZE))
-        self.output_fine_lookup = self.model.add_lookup_parameters((256, self.OUTPUT_EMB_SIZE))
-        # self.rnn = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE + self.UPSAMPLE_PROJ, self.RNN_SIZE, self.model)
-        self.rnnCoarse = lstm_builder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 2 + self.UPSAMPLE_PROJ,
-                                      self.RNN_SIZE, self.model)
-        self.rnnFine = lstm_builder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 3 + self.UPSAMPLE_PROJ,
-                                    self.RNN_SIZE, self.model)
-        # self.rnnCoarse = dy.GRUBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 2 + self.UPSAMPLE_PROJ,
-        #                                self.RNN_SIZE, self.model)
-        # self.rnnFine = dy.GRUBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE * 3 + self.UPSAMPLE_PROJ,
-        #                              self.RNN_SIZE, self.model)
+        self.net4 = nn.Sequential(
+            nn.Conv1d(1, 2, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(2, 4, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(4, 8, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(8, 16, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(16, 32, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
+            # nn.Tanh()
+        )
+        torch.nn.init.xavier_uniform_(self.net4[0].weight)
+        torch.nn.init.xavier_uniform_(self.net4[2].weight)
+        torch.nn.init.xavier_uniform_(self.net4[4].weight)
+        torch.nn.init.xavier_uniform_(self.net4[6].weight)
+        torch.nn.init.xavier_uniform_(self.net4[8].weight)
+        torch.nn.init.xavier_uniform_(self.net4[10].weight)
+        torch.nn.init.xavier_uniform_(self.net4[12].weight)
+        torch.nn.init.xavier_uniform_(self.net4[14].weight)
 
-        self.mlp_coarse_w = []
-        self.mlp_coarse_b = []
-        self.mlp_coarse_w.append(self.model.add_parameters((self.RNN_SIZE, self.RNN_SIZE)))
-        self.mlp_coarse_b.append(self.model.add_parameters((self.RNN_SIZE)))
+        self.net5 = nn.Sequential(
+            nn.Conv1d(1, 2, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(2, 4, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(4, 8, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(8, 16, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(16, 32, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
+            # nn.Tanh()
+        )
+        torch.nn.init.xavier_uniform_(self.net5[0].weight)
+        torch.nn.init.xavier_uniform_(self.net5[2].weight)
+        torch.nn.init.xavier_uniform_(self.net5[4].weight)
+        torch.nn.init.xavier_uniform_(self.net5[6].weight)
+        torch.nn.init.xavier_uniform_(self.net5[8].weight)
+        torch.nn.init.xavier_uniform_(self.net5[10].weight)
+        torch.nn.init.xavier_uniform_(self.net5[12].weight)
+        torch.nn.init.xavier_uniform_(self.net5[14].weight)
 
-        self.mlp_fine_w = []
-        self.mlp_fine_b = []
-        self.mlp_fine_w.append(self.model.add_parameters((self.RNN_SIZE, self.RNN_SIZE)))
-        self.mlp_fine_b.append(self.model.add_parameters((self.RNN_SIZE)))
+        self.net6 = nn.Sequential(
+            nn.Conv1d(1, 2, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(2, 4, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(4, 8, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(8, 16, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(16, 32, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
+            # nn.Tanh()
+        )
+        torch.nn.init.xavier_uniform_(self.net6[0].weight)
+        torch.nn.init.xavier_uniform_(self.net6[2].weight)
+        torch.nn.init.xavier_uniform_(self.net6[4].weight)
+        torch.nn.init.xavier_uniform_(self.net6[6].weight)
+        torch.nn.init.xavier_uniform_(self.net6[8].weight)
+        torch.nn.init.xavier_uniform_(self.net6[10].weight)
+        torch.nn.init.xavier_uniform_(self.net6[12].weight)
+        torch.nn.init.xavier_uniform_(self.net6[14].weight)
 
-        self.softmax_coarse_w = self.model.add_parameters((256, self.RNN_SIZE))
-        self.softmax_coarse_b = self.model.add_parameters((256))
-        self.softmax_fine_w = self.model.add_parameters((256, self.RNN_SIZE))
-        self.softmax_fine_b = self.model.add_parameters((256))
+        self.net7 = nn.Sequential(
+            nn.Conv1d(1, 2, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(2, 4, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(4, 8, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(8, 16, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(16, 32, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
+            # nn.Tanh()
+        )
+        torch.nn.init.xavier_uniform_(self.net7[0].weight)
+        torch.nn.init.xavier_uniform_(self.net7[2].weight)
+        torch.nn.init.xavier_uniform_(self.net7[4].weight)
+        torch.nn.init.xavier_uniform_(self.net7[6].weight)
+        torch.nn.init.xavier_uniform_(self.net7[8].weight)
+        torch.nn.init.xavier_uniform_(self.net7[10].weight)
+        torch.nn.init.xavier_uniform_(self.net7[12].weight)
+        torch.nn.init.xavier_uniform_(self.net7[14].weight)
 
-    def _upsample(self, mgc, start, stop):
-        mgc_index = int(start / len(self.upsample_w_t))
-        ups_index = start % len(self.upsample_w_t)
-        upsampled = []
-        mgc_index_next = mgc_index + 1
-        if mgc_index_next == len(mgc):
-            mgc_index_next -= 1
-        mgc_vect = dy.concatenate([dy.inputVector(mgc[mgc_index]), dy.inputVector(mgc[mgc_index_next])])
-        for x in range(stop - start):
-            # sigm = dy.logistic(self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(update=True))
-            tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(
-                update=True))
-            # r = dy.cmult(sigm, tnh)
-            upsampled.append(tnh)
-            ups_index += 1
-            if ups_index == len(self.upsample_w_t):
-                ups_index = 0
-                mgc_index += 1
-                if mgc_index == len(
-                        mgc):  # last frame is sometimes not processed, but it should have similar parameters
-                    mgc_index -= 1
-                else:
-                    mgc_index_next = mgc_index + 1
-                    if mgc_index_next == len(mgc):
-                        mgc_index_next -= 1
-                    mgc_vect = dy.concatenate([dy.inputVector(mgc[mgc_index]), dy.inputVector(mgc[mgc_index_next])])
-        return upsampled
+        self.net8 = nn.Sequential(
+            nn.Conv1d(1, 2, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(2, 4, kernel_size=13, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(4, 8, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(8, 16, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(16, 32, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
+            # nn.Tanh()
+        )
+        torch.nn.init.xavier_uniform_(self.net8[0].weight)
+        torch.nn.init.xavier_uniform_(self.net8[2].weight)
+        torch.nn.init.xavier_uniform_(self.net8[4].weight)
+        torch.nn.init.xavier_uniform_(self.net8[6].weight)
+        torch.nn.init.xavier_uniform_(self.net8[8].weight)
+        torch.nn.init.xavier_uniform_(self.net8[10].weight)
+        torch.nn.init.xavier_uniform_(self.net8[12].weight)
+        torch.nn.init.xavier_uniform_(self.net8[14].weight)
 
-    def _upsample_old(self, mgc, start, stop):
-        mgc_index = start / len(self.upsample_w_t)
-        ups_index = start % len(self.upsample_w_t)
-        upsampled = []
-        mgc_vect = dy.inputVector(mgc[mgc_index])
-        for x in range(stop - start):
-            # sigm = dy.logistic(self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(update=True))
-            tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(
-                update=True))
-            # r = dy.cmult(sigm, tnh)
-            upsampled.append(tnh)
-            ups_index += 1
-            if ups_index == len(self.upsample_w_t):
-                ups_index = 0
-                mgc_index += 1
-                if mgc_index == len(
-                        mgc):  # last frame is sometimes not processed, but it should have similar parameters
-                    mgc_index -= 1
-                else:
-                    mgc_vect = dy.inputVector(mgc[mgc_index])
-        return upsampled
+        self.act = nn.Tanh()
 
-    def _pick_sample(self, probs, temperature=1.0):
-        probs = probs / np.sum(probs)
-        scaled_prediction = np.log(probs) / temperature
-        scaled_prediction = (scaled_prediction -
-                             np.logaddexp.reduce(scaled_prediction))
-        scaled_prediction = np.exp(scaled_prediction)
-        # print np.sum(probs)
-        # probs = probs / np.sum(probs)
-        return np.random.choice(np.arange(256), p=scaled_prediction)
+    def forward(self, x):
+        out1 = self.net1(x)
+        out1 = out1.reshape(out1.size(0), out1.size(1) * out1.size(2))
 
-    def _fast_sample(self, prob, temperature=1):
-        temperature = temperature / 2
-        bern = dy.random_bernoulli(256, 0.5, scale=temperature) + (1.0 - temperature)
-        prob = dy.cmult(prob, bern)
-        # print prob.npvalue().argmax()
-        return prob.npvalue().argmax()
+        out2 = self.net2(x)
+        out2 = out2.reshape(out2.size(0), out2.size(1) * out2.size(2))
 
-    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0):
-        synth = []
-        total_audio_len = mgc.shape[0] * len(self.upsample_w_t)
-        num_batches = int(total_audio_len / batch_size)
-        if total_audio_len % batch_size != 0:
-            num_batches + 1
-        last_rnn_coarse_state = None
-        last_rnn_fine_state = None
-        last_coarse_sample = 0
-        last_fine_sample = 0
-        w_index = 0
-        last_proc = 0
-        for iBatch in range(num_batches):
-            dy.renew_cg()
-            # bias=dy.inputVector([0]*self.RNN_SIZE)
-            # gain=dy.inputVector([1.0]*self.RNN_SIZE)
-            start = batch_size * iBatch
-            stop = batch_size * (iBatch + 1)
-            if stop >= total_audio_len:
-                stop = total_audio_len - 1
-            upsampled = self._upsample(mgc, start, stop)
-            rnnCoarse = self.rnnCoarse.initial_state()
-            rnnFine = self.rnnFine.initial_state()
-            if last_rnn_coarse_state is not None:
-                rnn_state = [dy.inputVector(s) for s in last_rnn_coarse_state]
-                rnnCoarse = rnnCoarse.set_s(rnn_state)
-                rnn_state = [dy.inputVector(s) for s in last_rnn_fine_state]
-                rnnFine = rnnFine.set_s(rnn_state)
+        out3 = self.net3(x)
+        out3 = out3.reshape(out3.size(0), out3.size(1) * out3.size(2))
 
-            out_list = []
-            cnt = 0
-            for index in range(stop - start):
-                w_index += 1
+        out4 = self.net4(x)
+        out4 = out4.reshape(out4.size(0), out4.size(1) * out4.size(2))
 
-                curr_proc = int(w_index * 100 / total_audio_len)
-                if curr_proc % 5 == 0 and curr_proc != last_proc:
-                    last_proc = curr_proc
-                    sys.stdout.write(' ' + str(curr_proc))
-                    sys.stdout.flush()
+        out5 = self.net5(x)
+        out5 = out5.reshape(out5.size(0), out5.size(1) * out5.size(2))
 
-                ###COARSE
-                if self.OUTPUT_EMB_SIZE == 1:
-                    rnn_coarse_input = dy.concatenate(
-                        [dy.scalarInput(float(last_coarse_sample) / 128.0 - 1.0),
-                         dy.scalarInput(float(last_fine_sample) / 128.0 - 1.0),
-                         upsampled[index]])
-                else:
-                    rnn_coarse_input = dy.concatenate(
-                        [self.output_coarse_lookup[last_coarse_sample], self.output_fine_lookup[last_fine_sample],
-                         upsampled[index]])
-                rnnCoarse = rnnCoarse.add_input(rnn_coarse_input)
+        out6 = self.net6(x)
+        out6 = out6.reshape(out6.size(0), out6.size(1) * out6.size(2))
 
-                rnn_coarse_output = rnnCoarse.output()
-                hidden = rnn_coarse_output
-                for w, b in zip(self.mlp_coarse_w, self.mlp_coarse_b):
-                    hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
-                softmax_coarse_output = dy.softmax(
-                    self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
+        out7 = self.net7(x)
+        out7 = out7.reshape(out7.size(0), out7.size(1) * out7.size(2))
 
-                if sample:
-                    selected_coarse_sample = self._pick_sample(softmax_coarse_output.npvalue(), temperature=temperature)
-                else:
-                    selected_coarse_sample = np.argmax(softmax_coarse_output.npvalue())
-                # selected_coarse_sample = self._fast_sample(softmax_coarse_output, temperature=temperature)
-                #####FINE
-                if self.OUTPUT_EMB_SIZE == 1:
-                    rnn_fine_input = dy.concatenate(
-                        [dy.scalarInput(float(last_coarse_sample) / 128.0 - 1.0),
-                         dy.scalarInput(float(last_fine_sample) / 128.0 - 1.0),
-                         dy.scalarInput(float(selected_coarse_sample) / 128.0 - 1.0), upsampled[index]])
-                else:
-                    rnn_fine_input = dy.concatenate(
-                        [self.output_coarse_lookup[last_coarse_sample], self.output_fine_lookup[last_fine_sample],
-                         self.output_coarse_lookup[selected_coarse_sample], upsampled[index]])
-                rnnFine = rnnFine.add_input(rnn_fine_input)
+        out8 = self.net8(x)
+        out8 = out8.reshape(out8.size(0), out8.size(1) * out8.size(2))
 
-                rnn_fine_output = rnnFine.output()
-                hidden = rnn_fine_output
-                for w, b in zip(self.mlp_fine_w, self.mlp_fine_b):
-                    hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
-                softmax_fine_output = dy.softmax(
-                    self.softmax_fine_w.expr(update=True) * hidden + self.softmax_fine_b.expr(update=True))
-
-                # selected_fine_sample = np.argmax(softmax_fine_output.npvalue())
-                if sample:
-                    selected_fine_sample = self._pick_sample(softmax_fine_output.npvalue(), temperature=temperature)
-                else:
-                    selected_fine_sample = np.argmax(softmax_fine_output.npvalue())
-                # selected_fine_sample = self._fast_sample(softmax_fine_output, temperature=temperature)
-
-                last_coarse_sample = selected_coarse_sample
-                last_fine_sample = selected_fine_sample
-
-                synth.append(last_coarse_sample * 256 + last_fine_sample)
-
-            rnn_state = rnnCoarse.s()
-            last_rnn_coarse_state = [s.value() for s in rnn_state]
-            rnn_state = rnnFine.s()
-            last_rnn_fine_state = [s.value() for s in rnn_state]
-
-        return synth
-
-    def store(self, output_base):
-        self.model.save(output_base + ".network")
-
-    def load(self, output_base):
-        self.model.populate(output_base + ".network")
-
-    def learn(self, wave, mgc, batch_size):
-        total_loss = 0
-        num_batches = int(len(wave) / batch_size)
-        if len(wave) % batch_size != 0:
-            num_batches + 1
-        last_rnn_coarse_state = None
-        last_rnn_fine_state = None
-        last_coarse_sample = 0
-        last_fine_sample = 0
-
-        w_index = 0
-        last_proc = 0
-        for iBatch in range(num_batches):
-            losses = []
-            dy.renew_cg()
-            start = batch_size * iBatch
-            stop = batch_size * (iBatch + 1)
-            if stop >= len(wave):
-                stop = len(wave) - 1
-            upsampled = self._upsample(mgc, start, stop)
-            rnnCoarse = self.rnnCoarse.initial_state()
-            rnnFine = self.rnnFine.initial_state()
-            if last_rnn_coarse_state is not None:
-                rnn_state = [dy.inputVector(s) for s in last_rnn_coarse_state]
-                rnnCoarse = rnnCoarse.set_s(rnn_state)
-                rnn_state = [dy.inputVector(s) for s in last_rnn_fine_state]
-                rnnFine = rnnFine.set_s(rnn_state)
-
-            for index in range(stop - start):
-                w_index += 1
-
-                curr_proc = int(w_index * 100 / len(wave))
-                if curr_proc % 5 == 0 and curr_proc != last_proc:
-                    last_proc = curr_proc
-                    sys.stdout.write(' ' + str(curr_proc))
-                    sys.stdout.flush()
-
-                ###COARSE
-                if self.OUTPUT_EMB_SIZE == 1:
-                    rnn_coarse_input = dy.concatenate(
-                        [dy.scalarInput(float(last_coarse_sample) / 128.0 - 1.0),
-                         dy.scalarInput(float(last_fine_sample) / 128.0 - 1.0),
-                         upsampled[index]])
-                else:
-                    rnn_coarse_input = dy.concatenate(
-                        [self.output_coarse_lookup[last_coarse_sample], self.output_fine_lookup[last_fine_sample],
-                         upsampled[index]])
-                rnnCoarse = rnnCoarse.add_input(rnn_coarse_input)
-
-                rnn_coarse_output = rnnCoarse.output()
-                hidden = rnn_coarse_output
-                for w, b in zip(self.mlp_coarse_w, self.mlp_coarse_b):
-                    hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
-                softmax_coarse_output = self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(
-                    update=True)  # dy.softmax(self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
-
-                real_sample = wave[start + index]
-                real_coarse_sample = int(real_sample / 256)
-                real_fine_sample = int(real_sample) % 256
-
-                losses.append(dy.pickneglogsoftmax(softmax_coarse_output, real_coarse_sample) * 0.5)
-                #####FINE
-                if self.OUTPUT_EMB_SIZE == 1:
-                    rnn_fine_input = dy.concatenate(
-                        [dy.scalarInput(float(last_coarse_sample) / 128.0 - 1.0),
-                         dy.scalarInput(float(last_fine_sample) / 128.0 - 1.0),
-                         dy.scalarInput(float(real_coarse_sample) / 128.0 - 1.0), upsampled[index]])
-                else:
-                    rnn_fine_input = dy.concatenate(
-                        [self.output_coarse_lookup[last_coarse_sample], self.output_fine_lookup[last_fine_sample],
-                         self.output_coarse_lookup[real_coarse_sample], upsampled[index]])
-                rnnFine = rnnFine.add_input(rnn_fine_input)
-
-                rnn_fine_output = rnnFine.output()
-                hidden = rnn_fine_output
-                for w, b in zip(self.mlp_fine_w, self.mlp_fine_b):
-                    hidden = dy.rectify(w.expr(update=True) * hidden + b.expr(update=True))
-                softmax_fine_output = self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(
-                    update=True)  # dy.softmax(self.softmax_coarse_w.expr(update=True) * hidden + self.softmax_coarse_b.expr(update=True))
-                losses.append(dy.pickneglogsoftmax(softmax_fine_output, real_fine_sample) * 0.5)
-
-                last_coarse_sample = real_coarse_sample
-                last_fine_sample = real_fine_sample
-
-            rnn_state = rnnCoarse.s()
-            last_rnn_coarse_state = [s.value() for s in rnn_state]
-            rnn_state = rnnFine.s()
-            last_rnn_fine_state = [s.value() for s in rnn_state]
-
-            loss = dy.esum(losses)
-            tmp = loss.npvalue()
-            try:
-                total_loss += tmp
-                loss.backward()
-                self.trainer.update()
-            except (RuntimeError, TypeError, NameError):
-                sys.stdout.write(" EGRAD")
-                sys.stdout.flush()
-
-        return total_loss / (len(wave))
-
-
-class VocoderOld:
-    def __init__(self, params, model=None):
-        self.UPSAMPLE_PROJ = 200
-        self.RNN_SIZE = 100
-        self.RNN_LAYERS = 1
-        self.OUTPUT_EMB_SIZE = 200
-        self.params = params
-        if model is None:
-            self.model = dy.Model()
-        else:
-            self.model = model
-        # self.trainer = dy.AdamTrainer(self.model, alpha=2e-3, beta_1=0.9, beta_2=0.9)
-        self.trainer = dy.AdamTrainer(self.model)
-        # MGCs are extracted at 12.5 ms
-
-        upsample_count = int(12.5 * self.params.target_sample_rate / 1000)
-        self.upsample_w_s = []
-        self.upsample_w_t = []
-        self.upsample_b_s = []
-        self.upsample_b_t = []
-        for _ in range(upsample_count):
-            self.upsample_w_s.append(self.model.add_parameters((self.UPSAMPLE_PROJ, self.params.mgc_order)))
-            self.upsample_w_t.append(self.model.add_parameters((self.UPSAMPLE_PROJ, self.params.mgc_order)))
-            self.upsample_b_s.append(self.model.add_parameters((self.UPSAMPLE_PROJ)))
-            self.upsample_b_t.append(self.model.add_parameters((self.UPSAMPLE_PROJ)))
-
-        self.output_lookup = self.model.add_lookup_parameters((256, self.OUTPUT_EMB_SIZE))
-        from models.utils import orthonormal_VanillaLSTMBuilder
-        # self.rnn = orthonormal_VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE + self.UPSAMPLE_PROJ, self.RNN_SIZE, self.model)
-        self.rnn = dy.VanillaLSTMBuilder(self.RNN_LAYERS, self.OUTPUT_EMB_SIZE + self.UPSAMPLE_PROJ,
-                                         self.RNN_SIZE, self.model)
-        self.mlp_w = []
-        self.mlp_b = []
-        self.mlp_w.append(self.model.add_parameters((1024, self.RNN_SIZE)))
-        self.mlp_b.append(self.model.add_parameters((1024)))
-
-        self.softmax_w = self.model.add_parameters((256, 1024))
-        self.softmax_b = self.model.add_parameters((256))
-
-    def _upsample(self, mgc, start, stop):
-        mgc_index = start / len(self.upsample_w_s)
-        ups_index = start % len(self.upsample_w_s)
-        upsampled = []
-        mgc_vect = dy.inputVector(mgc[mgc_index])
-        for x in range(stop - start):
-            sigm = dy.logistic(
-                self.upsample_w_s[ups_index].expr(update=True) * mgc_vect + self.upsample_b_s[ups_index].expr(
-                    update=True))
-            tnh = dy.tanh(self.upsample_w_t[ups_index].expr(update=True) * mgc_vect + self.upsample_b_t[ups_index].expr(
-                update=True))
-            r = dy.cmult(sigm, tnh)
-            upsampled.append(r)
-            ups_index += 1
-            if ups_index == len(self.upsample_w_s):
-                ups_index = 0
-                mgc_index += 1
-                if mgc_index == len(
-                        mgc):  # last frame is sometimes not processed, but it should have similar parameters
-                    mgc_index -= 1
-                else:
-                    mgc_vect = dy.inputVector(mgc[mgc_index])
-        return upsampled
-
-    def _pick_sample(self, probs, temperature=1.0):
-        probs = probs / np.sum(probs)
-        scaled_prediction = np.log(probs) / temperature
-        scaled_prediction = (scaled_prediction -
-                             np.logaddexp.reduce(scaled_prediction))
-        scaled_prediction = np.exp(scaled_prediction)
-        # print np.sum(probs)
-        # probs = probs / np.sum(probs)
-        return np.random.choice(np.arange(256), p=scaled_prediction)
-
-    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0):
-        synth = []
-        total_audio_len = mgc.shape[0] * len(self.upsample_w_s)
-        num_batches = total_audio_len / batch_size
-        if total_audio_len % batch_size != 0:
-            num_batches + 1
-        last_rnn_state = None
-        last_sample = 127
-        w_index = 0
-        last_proc = 0
-        for iBatch in range(num_batches):
-            dy.renew_cg()
-            # bias=dy.inputVector([0]*self.RNN_SIZE)
-            # gain=dy.inputVector([1.0]*self.RNN_SIZE)
-            start = batch_size * iBatch
-            stop = batch_size * (iBatch + 1)
-            if stop >= total_audio_len:
-                stop = total_audio_len - 1
-            upsampled = self._upsample(mgc, start, stop)
-            rnn = self.rnn.initial_state()
-            if last_rnn_state is not None:
-                rnn_state = [dy.inputVector(s) for s in last_rnn_state]
-                rnn = rnn.set_s(rnn_state)
-
-            out_list = []
-            for index in range(stop - start):
-                w_index += 1
-                curr_proc = w_index * 100 / total_audio_len
-                if curr_proc % 5 == 0 and curr_proc != last_proc:
-                    last_proc = curr_proc
-                    sys.stdout.write(' ' + str(curr_proc))
-                    sys.stdout.flush()
-
-                if self.OUTPUT_EMB_SIZE != 1:
-                    rnn_input = dy.concatenate([self.output_lookup[last_sample], upsampled[index]])
-                else:
-                    rnn_input = dy.concatenate([dy.scalarInput(float(last_sample) / 127.0 - 1.0), upsampled[index]])
-                rnn = rnn.add_input(rnn_input)
-                rnn_output = rnn.output()  # dy.layer_norm(rnn.output(), gain, bias)
-                hidden = rnn_output
-                for w, b in zip(self.mlp_w, self.mlp_b):
-                    hidden = dy.tanh(w.expr(update=True) * hidden + b.expr(update=True))
-                softmax_output = dy.softmax(
-                    self.softmax_w.expr(update=True) * hidden + self.softmax_b.expr(update=True))
-                out_list.append(softmax_output)
-
-                if sample:
-                    last_sample = self._pick_sample(softmax_output.npvalue(),
-                                                    temperature=temperature)  # np.argmax(softmax_output.npvalue())
-                else:
-                    last_sample = np.argmax(softmax_output.npvalue())
-                # last_sample = np.argmax(softmax_output.npvalue())
-                synth.append(last_sample)
-
-            rnn_state = rnn.s()
-            last_rnn_state = [s.value() for s in rnn_state]
-
-        return synth
-
-    def store(self, output_base):
-        self.model.save(output_base + ".network")
-
-    def load(self, output_base):
-        self.model.populate(output_base + ".network")
-
-    def learn(self, ulaw_wave, mgc, batch_size):
-        total_loss = 0
-        num_batches = len(ulaw_wave) / batch_size
-        if len(ulaw_wave) % batch_size != 0:
-            num_batches + 1
-        last_rnn_state = None
-        last_sample = 127
-        w_index = 0
-        last_proc = 0
-        for iBatch in range(num_batches):
-            losses = []
-            dy.renew_cg()
-            # bias=dy.inputVector([0]*self.RNN_SIZE)
-            # gain=dy.inputVector([1.0]*self.RNN_SIZE)
-            start = batch_size * iBatch
-            stop = batch_size * (iBatch + 1)
-            if stop >= len(ulaw_wave):
-                stop = len(ulaw_wave) - 1
-            upsampled = self._upsample(mgc, start, stop)
-            rnn = self.rnn.initial_state()
-            if last_rnn_state is not None:
-                rnn_state = [dy.inputVector(s) for s in last_rnn_state]
-                rnn = rnn.set_s(rnn_state)
-
-            out_list = []
-            for index in range(stop - start):
-                w_index += 1
-                curr_proc = w_index * 100 / len(ulaw_wave)
-                if curr_proc % 5 == 0 and curr_proc != last_proc:
-                    last_proc = curr_proc
-                    sys.stdout.write(' ' + str(curr_proc))
-                    sys.stdout.flush()
-                # p1 = np.random.random()
-                # p2 = np.random.random()
-                # scale = 1
-                # m1 = 1
-                # m2 = 1
-                # if p1 < 0.33:
-                #     m1 = 0
-                #     scale = 2
-                # if p2 < 0.33:
-                #     m2 = 0
-                #     scale = 2
-                # m1scalar = dy.scalarInput(m1)
-                # m2scalar = dy.scalarInput(m2)
-                # scale = dy.scalarInput(scale)
-                # rnn_input = dy.concatenate(
-                #     [self.output_lookup[last_sample] * m1scalar, upsampled[index] * m2scalar]) * scale
-                if self.OUTPUT_EMB_SIZE != 1:
-                    rnn_input = dy.concatenate([self.output_lookup[last_sample], upsampled[index]])
-                else:
-                    rnn_input = dy.concatenate([dy.scalarInput(float(last_sample) / 127.0 - 1.0), upsampled[index]])
-                rnn = rnn.add_input(rnn_input)
-
-                rnn_output = rnn.output()  # dy.layer_norm(rnn.output(), gain, bias)
-                hidden = rnn_output
-                for w, b in zip(self.mlp_w, self.mlp_b):
-                    hidden = dy.tanh(w.expr(update=True) * hidden + b.expr(update=True))
-                softmax_output = dy.softmax(
-                    self.softmax_w.expr(update=True) * hidden + self.softmax_b.expr(update=True))
-                out_list.append(softmax_output)
-                target_output = ulaw_wave[start + index]
-                losses.append(-dy.log(dy.pick(softmax_output, target_output)))
-                last_sample = target_output
-
-            rnn_state = rnn.s()
-            last_rnn_state = [s.value() for s in rnn_state]
-            loss = dy.esum(losses)
-            total_loss += loss.value()
-            loss.backward()
-            self.trainer.update()
-
-        return total_loss / len(ulaw_wave)
+        return self.act(out1 + out2 + out3 + out4 + out5 + out6 + out7 + out8)
