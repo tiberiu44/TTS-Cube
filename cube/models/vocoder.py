@@ -111,11 +111,13 @@ class BeeCoder:
                 batch_x = torch.tensor(x).reshape(batch_size, 1, 60).float().to(device)
                 batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
                 y_pred = self.network(batch_x)
-                # loss = self.criterion.forward(y_pred, batch_y.to(device))
-                # loss = (y_pred - batch_y).pow(2).sum() / len(x)
                 fft_orig = torch.rfft(batch_y, 1)
                 fft_pred = torch.rfft(y_pred, 1)
+                eps = 1e-8
                 loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum()
+                angle_orig = torch.atan(fft_orig)
+                angle_pred = torch.atan(fft_pred)
+                loss += torch.abs(angle_pred - angle_orig).sum()
                 loss += (y_pred - batch_y).pow(2).sum()
                 loss.backward()
                 self.trainer.step()
@@ -128,8 +130,14 @@ class BeeCoder:
             batch_x = torch.tensor(x).reshape(len(x), 1, 60).float().to(device)
             batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
             y_pred = self.network(batch_x)
-            # loss = self.criterion.forward(y_pred, batch_y.to(device))
-            loss = (y_pred - batch_y).pow(2).sum() / len(x)
+            fft_orig = torch.rfft(batch_y, 1)
+            fft_pred = torch.rfft(y_pred, 1)
+            eps = 1e-8
+            loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum()
+            angle_orig = torch.atan(fft_orig)
+            angle_pred = torch.atan(fft_pred)
+            loss += torch.abs(angle_pred - angle_orig).sum()
+            loss += (y_pred - batch_y).pow(2).sum()
             loss.backward()
             self.trainer.step()
             total_loss += loss
@@ -144,21 +152,21 @@ class VocoderNetwork(nn.Module):
 
         self.net1 = nn.Sequential(
             nn.Conv1d(1, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
-            # nn.Tanh()
+            # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net1[0].weight)
         torch.nn.init.xavier_uniform_(self.net1[2].weight)
@@ -171,21 +179,21 @@ class VocoderNetwork(nn.Module):
 
         self.net2 = nn.Sequential(
             nn.Conv1d(1, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
-            # nn.Tanh()
+            # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net2[0].weight)
         torch.nn.init.xavier_uniform_(self.net2[2].weight)
@@ -198,21 +206,21 @@ class VocoderNetwork(nn.Module):
 
         self.net3 = nn.Sequential(
             nn.Conv1d(1, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
-            # nn.Tanh()
+            # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net3[0].weight)
         torch.nn.init.xavier_uniform_(self.net3[2].weight)
@@ -225,21 +233,21 @@ class VocoderNetwork(nn.Module):
 
         self.net4 = nn.Sequential(
             nn.Conv1d(1, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
-            # nn.Tanh()
+            # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net4[0].weight)
         torch.nn.init.xavier_uniform_(self.net4[2].weight)
@@ -252,21 +260,21 @@ class VocoderNetwork(nn.Module):
 
         self.net5 = nn.Sequential(
             nn.Conv1d(1, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
-            # nn.Tanh()
+            # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net5[0].weight)
         torch.nn.init.xavier_uniform_(self.net5[2].weight)
@@ -279,21 +287,21 @@ class VocoderNetwork(nn.Module):
 
         self.net6 = nn.Sequential(
             nn.Conv1d(1, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
-            # nn.Tanh()
+            # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net6[0].weight)
         torch.nn.init.xavier_uniform_(self.net6[2].weight)
@@ -306,21 +314,21 @@ class VocoderNetwork(nn.Module):
 
         self.net7 = nn.Sequential(
             nn.Conv1d(1, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
-            # nn.Tanh()
+            # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net7[0].weight)
         torch.nn.init.xavier_uniform_(self.net7[2].weight)
@@ -333,21 +341,21 @@ class VocoderNetwork(nn.Module):
 
         self.net8 = nn.Sequential(
             nn.Conv1d(1, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=13, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 64, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(64, 128, kernel_size=5, stride=1, padding=0),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Conv1d(128, 200, kernel_size=16, stride=1, padding=0),
-            # nn.Tanh()
+            # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net8[0].weight)
         torch.nn.init.xavier_uniform_(self.net8[2].weight)
@@ -358,7 +366,15 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net8[12].weight)
         torch.nn.init.xavier_uniform_(self.net8[14].weight)
 
-        self.act = nn.Tanh()
+        self.act = nn.Softsign()
+        self.net1w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
+        self.net2w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
+        self.net3w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
+        self.net4w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
+        self.net5w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
+        self.net6w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
+        self.net7w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
+        self.net8w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
 
     def forward(self, x):
         out1 = self.net1(x)
@@ -385,4 +401,5 @@ class VocoderNetwork(nn.Module):
         out8 = self.net8(x)
         out8 = out8.reshape(out8.size(0), out8.size(1) * out8.size(2))
 
-        return self.act(out1 + out2 + out3 + out4 + out5 + out6 + out7 + out8)
+        return self.act(out1 * self.net1w + out2 * self.net2w + out3 * self.net3w + out4 * self.net4w +
+                        out5 * self.net5w + out6 * self.net6w + out7 * self.net7w + out8 * self.net8w)
