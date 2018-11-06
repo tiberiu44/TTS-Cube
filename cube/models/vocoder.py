@@ -111,12 +111,14 @@ class BeeCoder:
                 batch_x = torch.tensor(x).reshape(batch_size, 1, 60).float().to(device)
                 batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
                 y_pred = self.network(batch_x)
-                # loss = self.criterion.forward(y_pred, batch_y.to(device))
-                # loss = (y_pred - batch_y).pow(2).sum() / len(x)
-                fft_orig = torch.rfft(batch_y, 1)
-                fft_pred = torch.rfft(y_pred, 1)
+
+                fft_orig = torch.rfft(batch_y, 1, onesided=False)
+                fft_pred = torch.rfft(y_pred, 1, onesided=False)
                 loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum()
-                loss += (y_pred - batch_y).pow(2).sum()
+
+                angle_orig=torch.atan(batch_y)
+                angle_pred=torch.atan(y_pred)
+                loss+=(angle_pred-angle_orig).pow(2).sum()
                 loss.backward()
                 self.trainer.step()
                 total_loss += loss
@@ -128,8 +130,15 @@ class BeeCoder:
             batch_x = torch.tensor(x).reshape(len(x), 1, 60).float().to(device)
             batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
             y_pred = self.network(batch_x)
-            # loss = self.criterion.forward(y_pred, batch_y.to(device))
-            loss = (y_pred - batch_y).pow(2).sum() / len(x)
+
+            fft_orig = torch.rfft(batch_y, 1, onesided=False)
+            fft_pred = torch.rfft(y_pred, 1, onesided=False)
+            loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum()
+
+            angle_orig = torch.atan(batch_y)
+            angle_pred = torch.atan(y_pred)
+            loss += (angle_pred - angle_orig).pow(2).sum()
+
             loss.backward()
             self.trainer.step()
             total_loss += loss
