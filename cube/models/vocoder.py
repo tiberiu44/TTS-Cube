@@ -70,11 +70,13 @@ class BeeCoder:
         return synth
 
     def store(self, output_base):
+        torch.save(self.network.state_dict, output_base + ".network")
         # self.model.save(output_base + ".network")
         x = 0
 
     def load(self, output_base):
-        self.model.populate(output_base + ".network")
+        self.network.load_state_dict(torch.load(output_base + ".network"))
+        # self.model.populate(output_base + ".network")
 
     def _predict_one(self, mgc, noise):
 
@@ -368,14 +370,14 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net8[14].weight)
 
         self.act = nn.Softsign()
-        self.net1w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
-        self.net2w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
-        self.net3w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
-        self.net4w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
-        self.net5w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
-        self.net6w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
-        self.net7w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
-        self.net8w = torch.autograd.Variable(torch.rand(1), requires_grad=True)
+        self.net1w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
+        self.net2w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
+        self.net3w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
+        self.net4w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
+        self.net5w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
+        self.net6w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
+        self.net7w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
+        self.net8w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
 
     def forward(self, x):
         out1 = self.net1(x)
