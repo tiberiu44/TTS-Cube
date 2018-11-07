@@ -70,7 +70,7 @@ class BeeCoder:
         return synth
 
     def store(self, output_base):
-        torch.save(self.network.state_dict, output_base + ".network")
+        torch.save(self.network.state_dict(), output_base + ".network")
         # self.model.save(output_base + ".network")
         x = 0
 

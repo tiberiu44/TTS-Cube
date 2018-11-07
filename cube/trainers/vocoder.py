@@ -78,7 +78,8 @@ class Trainer:
         self._render_devset()
         sys.stdout.write("\n")
         # self.synth_devset(batch_size, target_sample_rate)
-
+        self.vocoder.store('data/models/nn_vocoder')
+        
         num_files = 0
         while left_itt > 0:
             sys.stdout.write("Starting epoch " + str(epoch) + "\n")
