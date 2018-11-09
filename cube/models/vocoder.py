@@ -56,8 +56,16 @@ class BeeCoder:
             # output, excitation, filter, vuv = self._predict_one(mgc[mgc_index],
             #                                                     noise[
             #                                                     self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
-            input = mgc[mgc_index]
-            inp = torch.tensor(input).reshape(1, 1, 60).float().to(device)
+
+            prev_mgc = mgc[mgc_index]
+            if mgc_index > 0:
+                prev_mgc = mgc[mgc_index - 1]
+            next_mgc = mgc[mgc_index]
+            if mgc_index < len(mgc) - 1:
+                next_mgc = mgc[mgc_index + 1]  # always ok
+
+            input = [prev_mgc, mgc[mgc_index], next_mgc]
+            inp = torch.tensor(input).reshape(1, 3, 60).float().to(device)
             output = self.network(inp).reshape(self.UPSAMPLE_COUNT)
             for x in output:
                 synth.append(x.item())
@@ -84,16 +92,22 @@ class BeeCoder:
         return None
 
     def _get_loss(self, signal_orig, signal_pred, batch_size):
+        if batch_size < 4:
+            return None
         # from ipdb import set_trace
         # set_trace()
         loss = (-(signal_orig * torch.log(signal_pred) + (1.0 - signal_orig) * torch.log(
-            1.0 - signal_pred))).sum()
+            1.0 - signal_pred))).sum() / (batch_size * self.UPSAMPLE_COUNT)
 
-        fft_orig = torch.rfft((signal_orig - 0.5) * 2, 1)
-        fft_pred = torch.rfft((signal_pred - 0.5) * 2, 1)
-        loss += torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum()
+        # fft_orig = torch.rfft((signal_orig - 0.5) * 2, 1)
+        # fft_pred = torch.rfft((signal_pred - 0.5) * 2, 1)
+        fft_orig = torch.stft(((signal_orig - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
+                              window=torch.hann_window(window_length=512).to(device))
+        fft_pred = torch.stft(((signal_pred - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
+                              window=torch.hann_window(window_length=512).to(device))
+        loss += torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 512)
 
-        return loss / (batch_size * self.UPSAMPLE_COUNT)
+        return loss
 
     def learn(self, wave, mgc, batch_size):
         # from ipdb import set_trace
@@ -118,14 +132,21 @@ class BeeCoder:
 
             if mgc_index < len(mgc) - 1:
                 cnt += 1
-                input = mgc[mgc_index]
+                prev_mgc = mgc[mgc_index]
+                if mgc_index > 0:
+                    prev_mgc = mgc[mgc_index - 1]
+                next_mgc = mgc[mgc_index + 1]  # always ok
+
+                input = [prev_mgc, mgc[mgc_index], next_mgc]
                 output = wave[self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + self.UPSAMPLE_COUNT]
                 x.append(input)
                 y.append(output)
 
             if len(x) == batch_size:
                 self.trainer.zero_grad()
-                batch_x = torch.tensor(x).reshape(batch_size, 1, 60).float().to(device)
+                # from ipdb import set_trace
+                # set_trace()
+                batch_x = torch.tensor(x).reshape(batch_size, 3, 60).float().to(device)
                 batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
                 y_pred = self.network(batch_x)
 
@@ -147,17 +168,18 @@ class BeeCoder:
 
         if len(x) > 0:
             self.trainer.zero_grad()
-            batch_x = torch.tensor(x).reshape(len(x), 1, 60).float().to(device)
+            batch_x = torch.tensor(x).reshape(len(x), 3, 60).float().to(device)
             batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
             y_pred = self.network(batch_x)
 
             # fft_orig = torch.rfft(batch_y, 1)
             # fft_pred = torch.rfft(y_pred, 1)
             loss = self._get_loss(batch_y, y_pred, len(x))
-            loss.backward()
-            self.trainer.step()
-            total_loss += loss
-            num_batches += 1
+            if loss is not None:
+                loss.backward()
+                self.trainer.step()
+                total_loss += loss
+                num_batches += 1
 
         total_loss = total_loss.item()
         return total_loss / num_batches
@@ -168,21 +190,21 @@ class VocoderNetwork(nn.Module):
         super(VocoderNetwork, self).__init__()
 
         self.net1 = nn.Sequential(
-            nn.Conv1d(1, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 200, kernel_size=16, stride=1, padding=0),
+            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
             # nn.ELU()
         )
         torch.nn.init.xavier_uniform_(self.net1[0].weight)
@@ -195,22 +217,23 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net1[14].weight)
 
         self.net2 = nn.Sequential(
-            nn.Conv1d(1, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 200, kernel_size=16, stride=1, padding=0),
+            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
             # nn.ELU()
+
         )
         torch.nn.init.xavier_uniform_(self.net2[0].weight)
         torch.nn.init.xavier_uniform_(self.net2[2].weight)
@@ -222,22 +245,23 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net2[14].weight)
 
         self.net3 = nn.Sequential(
-            nn.Conv1d(1, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 200, kernel_size=16, stride=1, padding=0),
+            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
             # nn.ELU()
+
         )
         torch.nn.init.xavier_uniform_(self.net3[0].weight)
         torch.nn.init.xavier_uniform_(self.net3[2].weight)
@@ -249,22 +273,23 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net3[14].weight)
 
         self.net4 = nn.Sequential(
-            nn.Conv1d(1, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 200, kernel_size=16, stride=1, padding=0),
+            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
             # nn.ELU()
+
         )
         torch.nn.init.xavier_uniform_(self.net4[0].weight)
         torch.nn.init.xavier_uniform_(self.net4[2].weight)
@@ -276,22 +301,23 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net4[14].weight)
 
         self.net5 = nn.Sequential(
-            nn.Conv1d(1, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 200, kernel_size=16, stride=1, padding=0),
+            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
             # nn.ELU()
+
         )
         torch.nn.init.xavier_uniform_(self.net5[0].weight)
         torch.nn.init.xavier_uniform_(self.net5[2].weight)
@@ -303,22 +329,23 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net5[14].weight)
 
         self.net6 = nn.Sequential(
-            nn.Conv1d(1, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 200, kernel_size=16, stride=1, padding=0),
+            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
             # nn.ELU()
+
         )
         torch.nn.init.xavier_uniform_(self.net6[0].weight)
         torch.nn.init.xavier_uniform_(self.net6[2].weight)
@@ -330,22 +357,23 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net6[14].weight)
 
         self.net7 = nn.Sequential(
-            nn.Conv1d(1, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 200, kernel_size=16, stride=1, padding=0),
+            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
             # nn.ELU()
+
         )
         torch.nn.init.xavier_uniform_(self.net7[0].weight)
         torch.nn.init.xavier_uniform_(self.net7[2].weight)
@@ -357,22 +385,23 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net7[14].weight)
 
         self.net8 = nn.Sequential(
-            nn.Conv1d(1, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 512, kernel_size=5, stride=1, padding=0),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
             nn.ELU(),
-            nn.Conv1d(512, 200, kernel_size=16, stride=1, padding=0),
+            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
             # nn.ELU()
+
         )
         torch.nn.init.xavier_uniform_(self.net8[0].weight)
         torch.nn.init.xavier_uniform_(self.net8[2].weight)
