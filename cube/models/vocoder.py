@@ -44,7 +44,7 @@ class BeeCoder:
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
         last_proc = 0
         synth = []
-        noise = np.random.normal(0, 1.0, (len(mgc) * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT))
+        x = []
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -52,10 +52,6 @@ class BeeCoder:
                     last_proc += 5
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
-
-            # output, excitation, filter, vuv = self._predict_one(mgc[mgc_index],
-            #                                                     noise[
-            #                                                     self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + 2 * self.UPSAMPLE_COUNT])
 
             prev_mgc = mgc[mgc_index]
             if mgc_index > 0:
@@ -65,8 +61,19 @@ class BeeCoder:
                 next_mgc = mgc[mgc_index + 1]  # always ok
 
             input = [prev_mgc, mgc[mgc_index], next_mgc]
-            inp = torch.tensor(input).reshape(1, 3, 60).float().to(device)
-            output = self.network(inp).reshape(self.UPSAMPLE_COUNT)
+
+            x.append(input)
+
+            if len(x) == batch_size:
+                inp = torch.tensor(x).reshape(batch_size, 3, 60).float().to(device)
+                output = self.network(inp).reshape(self.UPSAMPLE_COUNT * batch_size)
+                for zz in output:
+                    synth.append(zz.item())
+                x = []
+
+        if len(x) != 0:
+            inp = torch.tensor(x).reshape(len(x), 3, 60).float().to(device)
+            output = self.network(inp).reshape(self.UPSAMPLE_COUNT * len(x))
             for x in output:
                 synth.append(x.item())
 
@@ -83,7 +90,11 @@ class BeeCoder:
         x = 0
 
     def load(self, output_base):
-        self.network.load_state_dict(torch.load(output_base + ".network"))
+        if torch.cuda.is_available():
+            self.network.load_state_dict(torch.load(output_base + ".network"))
+        else:
+            self.network.load_state_dict(
+                torch.load(output_base + '.network',  map_location=lambda storage, loc: storage))
         self.network.to(device)
         # self.model.populate(output_base + ".network")
 
