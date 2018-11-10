@@ -79,7 +79,7 @@ class BeeCoder:
 
         # synth = self.dio.ulaw_decode(synth, discreete=False)
         synth = np.array(synth, dtype=np.float32)
-        synth = np.clip((synth * 32768, -32767, 32767)
+        synth = np.clip(synth * 32768, -32767, 32767)
         synth = np.array(synth, dtype=np.int16)
 
         return synth
