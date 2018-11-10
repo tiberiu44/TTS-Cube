@@ -71,7 +71,7 @@ def _render_spectrogram(mgc, output_file):
 
 
 def synthesize(speaker, input_file, output_file, params):
-    print ("[Encoding]")
+    print("[Encoding]")
     from io_modules.dataset import Dataset
     from io_modules.dataset import Encodings
     from models.encoder import Encoder
@@ -85,23 +85,24 @@ def synthesize(speaker, input_file, output_file, params):
     mgc, att = encoder.generate(seq)
     _render_spectrogram(mgc, output_file + '.png')
 
-    print ("[Vocoding]")
-    from models.vocoder import Vocoder
+    print("[Vocoding]")
+    from models.vocoder import BeeCoder
     from trainers.vocoder import Trainer
-    vocoder = Vocoder(params, runtime=True)
-    vocoder.load('data/models/rnn_vocoder')
+    vocoder = BeeCoder(params, runtime=True)
+    vocoder.load('data/models/nn_vocoder')
 
     import time
     start = time.time()
-    signal = vocoder.synthesize(mgc, batch_size=1000, temperature=params.temperature, sample=params.sample)
+    signal = vocoder.synthesize(mgc, batch_size=params.batch_size, temperature=params.temperature, sample=params.sample)
     stop = time.time()
     sys.stdout.write(" execution time=" + str(stop - start))
     sys.stdout.write('\n')
     sys.stdout.flush()
     from io_modules.dataset import DatasetIO
     dio = DatasetIO()
-    enc = dio.b16_dec(signal, discreete=True)
-    dio.write_wave(output_file, enc, params.target_sample_rate)
+    # enc = dio.b16_dec(signal, discreete=True)
+
+    dio.write_wave(output_file, signal, params.target_sample_rate, dtype=signal.dtype)
 
 
 if __name__ == '__main__':
@@ -112,8 +113,8 @@ if __name__ == '__main__':
                       help='Speaker identity')
     parser.add_option('--output-file', action='store', dest='output_file',
                       help='Output WAVE file')
-    parser.add_option("--batch-size", action='store', dest='batch_size', default='1000', type='int',
-                      help='number of samples in a single batch (default=1000)')
+    parser.add_option("--batch-size", action='store', dest='batch_size', default='32', type='int',
+                      help='number of samples in a single batch (default=32)')
     parser.add_option("--set-mem", action='store', dest='memory', default='2048', type='int',
                       help='preallocate memory for batch training (default 2048)')
     parser.add_option("--use-gpu", action='store_true', dest='gpu',
@@ -130,11 +131,11 @@ if __name__ == '__main__':
     (params, _) = parser.parse_args(sys.argv)
 
     if not params.speaker:
-        print ("Speaker identity is mandatory")
+        print("Speaker identity is mandatory")
     elif not params.txt_file:
-        print ("Input file is mandatory")
+        print("Input file is mandatory")
     elif not params.output_file:
-        print ("Output file is mandatory")
+        print("Output file is mandatory")
 
     memory = int(params.memory)
     # for compatibility we have to add this paramater
