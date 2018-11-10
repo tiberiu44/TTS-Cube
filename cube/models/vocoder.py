@@ -24,7 +24,6 @@ import torch.nn as nn
 # Device configuration
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params

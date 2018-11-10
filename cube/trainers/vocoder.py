@@ -90,7 +90,6 @@ class Trainer:
             total_loss = 0
             for file in self.trainset.files:
                 num_files += 1
-
                 sys.stdout.write(
                     "\t" + str(file_index) + "/" + str(len(self.trainset.files)) + " processing file " + file)
                 sys.stdout.flush()
