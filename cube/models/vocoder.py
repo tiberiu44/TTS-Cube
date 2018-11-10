@@ -24,6 +24,7 @@ import torch.nn as nn
 # Device configuration
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
@@ -78,7 +79,7 @@ class BeeCoder:
 
         # synth = self.dio.ulaw_decode(synth, discreete=False)
         synth = np.array(synth, dtype=np.float32)
-        synth = np.clip((synth - 0.5) * 65536, -32767, 32767)
+        synth = np.clip(synth * 32768, -32767, 32767)
         synth = np.array(synth, dtype=np.int16)
 
         return synth
@@ -106,24 +107,19 @@ class BeeCoder:
             return None
         # from ipdb import set_trace
         # set_trace()
-        loss = (-(signal_orig * torch.log(signal_pred) + (1.0 - signal_orig) * torch.log(
-            1.0 - signal_pred))).sum() / (batch_size * self.UPSAMPLE_COUNT)
-
-        # fft_orig = torch.rfft((signal_orig - 0.5) * 2, 1)
-        # fft_pred = torch.rfft((signal_pred - 0.5) * 2, 1)
         fft_orig = torch.stft(((signal_orig - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(((signal_pred - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        loss += torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 512)
+        loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 512)
+
+        angle_orig = torch.atan(fft_orig)
+        angle_pred = torch.atan(fft_pred)
+        loss += torch.abs(angle_pred - angle_orig).sum() / (batch_size * 512)
 
         return loss
 
     def learn(self, wave, mgc, batch_size):
-        # from ipdb import set_trace
-        # set_trace()
-        # disc, wave = self.dio.ulaw_encode(wave)
-        wave = (wave + 1) / 2.0
         last_proc = 0
         total_loss = 0
         losses = []
@@ -154,14 +150,10 @@ class BeeCoder:
 
             if len(x) == batch_size:
                 self.trainer.zero_grad()
-                # from ipdb import set_trace
-                # set_trace()
                 batch_x = torch.tensor(x).reshape(batch_size, 3, 60).float().to(device)
                 batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
                 y_pred = self.network(batch_x)
 
-                # fft_orig = torch.rfft(batch_y, 1)
-                # fft_pred = torch.rfft(y_pred, 1)
                 loss = self._get_loss(batch_y, y_pred, batch_size)
                 loss.backward()
                 self.trainer.step()
@@ -169,12 +161,6 @@ class BeeCoder:
                 x = []
                 y = []
                 num_batches += 1
-                # eps = 1e-8
-                # loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum()
-                # angle_orig = torch.atan(fft_orig)
-                # angle_pred = torch.atan(fft_pred)
-                # loss += torch.abs(angle_pred - angle_orig).sum()
-                # loss += (y_pred - batch_y).pow(2).sum()
 
         if len(x) > 0:
             self.trainer.zero_grad()
@@ -182,8 +168,6 @@ class BeeCoder:
             batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
             y_pred = self.network(batch_x)
 
-            # fft_orig = torch.rfft(batch_y, 1)
-            # fft_pred = torch.rfft(y_pred, 1)
             loss = self._get_loss(batch_y, y_pred, len(x))
             if loss is not None:
                 loss.backward()
@@ -422,8 +406,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net8[12].weight)
         torch.nn.init.xavier_uniform_(self.net8[14].weight)
 
-        self.act = nn.Sigmoid()
-
+        self.act = nn.Softsign()
 
     def forward(self, x):
         out1 = self.net1(x)
