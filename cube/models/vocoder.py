@@ -94,7 +94,7 @@ class BeeCoder:
             self.network.load_state_dict(torch.load(output_base + ".network"))
         else:
             self.network.load_state_dict(
-                torch.load(output_base + '.network',  map_location=lambda storage, loc: storage))
+                torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
         self.network.to(device)
         # self.model.populate(output_base + ".network")
 
@@ -424,14 +424,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net8[14].weight)
 
         self.act = nn.Sigmoid()
-        self.net1w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
-        self.net2w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
-        self.net3w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
-        self.net4w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
-        self.net5w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
-        self.net6w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
-        self.net7w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
-        self.net8w = torch.autograd.Variable(torch.rand(1), requires_grad=True).to(device)
+
 
     def forward(self, x):
         out1 = self.net1(x)
@@ -458,5 +451,4 @@ class VocoderNetwork(nn.Module):
         out8 = self.net8(x)
         out8 = out8.reshape(out8.size(0), out8.size(1) * out8.size(2))
 
-        return self.act(out1 * self.net1w + out2 * self.net2w + out3 * self.net3w + out4 * self.net4w +
-                        out5 * self.net5w + out6 * self.net6w + out7 * self.net7w + out8 * self.net8w)
+        return self.act(out1 + out2 + out3 + out4 + out5 + out6 + out7 + out8)
