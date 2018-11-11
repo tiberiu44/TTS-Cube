@@ -116,7 +116,16 @@ class BeeCoder:
         angle_orig = torch.atan(fft_orig)
         angle_pred = torch.atan(fft_pred)
 
-        loss += torch.abs(angle_pred - angle_orig).sum() / (batch_size * 512)
+        power_orig = torch.abs(fft_orig)
+        power_pred = torch.abs(fft_pred)
+        real_orig = torch.sin(angle_orig) * power_orig
+        imag_orig = torch.cos(angle_orig) * power_orig
+        real_pred = torch.sin(angle_pred) * power_pred
+        imag_pred = torch.sin(angle_pred) * power_pred
+        loss += torch.abs(power_orig * power_pred - real_orig * real_pred - imag_orig * imag_pred).sum() / (
+                    batch_size * 512)
+
+        # loss += torch.abs(angle_pred - angle_orig).sum() / (batch_size * 512)
 
         return loss
 
