@@ -121,7 +121,7 @@ class BeeCoder:
         real_orig = torch.sin(angle_orig) * power_orig
         imag_orig = torch.cos(angle_orig) * power_orig
         real_pred = torch.sin(angle_pred) * power_pred
-        imag_pred = torch.sin(angle_pred) * power_pred
+        imag_pred = torch.cos(angle_pred) * power_pred
         loss += torch.abs(power_orig * power_pred - real_orig * real_pred - imag_orig * imag_pred).sum() / (
                     batch_size * 512)
 
