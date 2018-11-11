@@ -122,12 +122,12 @@ class BeeCoder:
         power_pred = torch.sqrt(torch.sum(power_pred, dim=2))
         #from ipdb import set_trace
         #set_trace()
-        power_orig += 1e-5
-        power_pred += 1e-5
-        power_orig = (20.0 * torch.log10(power_orig)) / -100.0
-        power_pred = (20.0 * torch.log10(power_pred)) / -100.0
-        loss += -0.6 * torch.abs(power_orig - power_pred).sum() / (
-                batch_size * 257)
+        #power_orig += 1e-5
+        #power_pred += 1e-5
+        #power_orig = (20.0 * torch.log10(power_orig)) / -100.0
+        #power_pred = (20.0 * torch.log10(power_pred)) / -100.0
+        #loss += -0.6 * torch.abs(power_orig - power_pred).sum() / (
+        #        batch_size * 257)
         # real_orig = torch.sin(angle_orig) * power_orig
         # imag_orig = torch.cos(angle_orig) * power_orig
         # real_pred = torch.sin(angle_pred) * power_pred
