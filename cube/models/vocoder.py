@@ -434,7 +434,8 @@ class VocoderNetwork(nn.Module):
 
     def forward(self, x, training=False):
         if training:
-            x = torch.nn.functional.dropout(x, p=0.5)
+            x = torch.nn.functional.dropout(x, p=0.5, training=True)
+            
         out1 = self.net1(x)
         out1 = out1.reshape(out1.size(0), out1.size(1) * out1.size(2))
 
