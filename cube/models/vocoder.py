@@ -111,7 +111,7 @@ class BeeCoder:
                               window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(signal_pred.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 257)
+        # loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 257)
 
         angle_orig = torch.atan(fft_orig)
         angle_pred = torch.atan(fft_pred)
@@ -126,8 +126,7 @@ class BeeCoder:
         # power_pred += 1e-5
         # power_orig = (20.0 * torch.log10(power_orig)) / -100.0
         # power_pred = (20.0 * torch.log10(power_pred)) / -100.0
-        loss += 0.6 * torch.abs(power_orig - power_pred).sum() / (
-                batch_size * 257)
+        loss = torch.abs(power_orig - power_pred).sum() / (batch_size * 257)
         # real_orig = torch.sin(angle_orig) * power_orig
         # imag_orig = torch.cos(angle_orig) * power_orig
         # real_pred = torch.sin(angle_pred) * power_pred
