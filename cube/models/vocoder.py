@@ -116,18 +116,18 @@ class BeeCoder:
         angle_orig = torch.atan(fft_orig)
         angle_pred = torch.atan(fft_pred)
 
-        # power_orig = fft_orig * fft_orig  # torch.abs(fft_orig)
-        # power_pred = fft_pred * fft_pred  # torch.abs(fft_pred)
-        # power_orig = torch.sqrt(torch.sum(power_orig, dim=2))
-        # power_pred = torch.sqrt(torch.sum(power_pred, dim=2))
+        power_orig = fft_orig * fft_orig  # torch.abs(fft_orig)
+        power_pred = fft_pred * fft_pred  # torch.abs(fft_pred)
+        power_orig = torch.sqrt(torch.sum(power_orig, dim=2))
+        power_pred = torch.sqrt(torch.sum(power_pred, dim=2))
         # from ipdb import set_trace
         # set_trace()
         # power_orig += 1e-5
         # power_pred += 1e-5
         # power_orig = (20.0 * torch.log10(power_orig)) / -100.0
         # power_pred = (20.0 * torch.log10(power_pred)) / -100.0
-        # loss += -0.6 * torch.abs(power_orig - power_pred).sum() / (
-        #        batch_size * 257)
+        loss += 0.6 * torch.abs(power_orig - power_pred).sum() / (
+                batch_size * 257)
         # real_orig = torch.sin(angle_orig) * power_orig
         # imag_orig = torch.cos(angle_orig) * power_orig
         # real_pred = torch.sin(angle_pred) * power_pred
