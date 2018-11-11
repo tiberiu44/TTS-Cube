@@ -125,7 +125,7 @@ class BeeCoder:
         # loss += 0.2 * torch.abs(power_orig * power_pred - real_orig * real_pred - imag_orig * imag_pred).sum() / (
         #        batch_size * 512)
 
-        loss += 0.4 * torch.abs(signal_orig - signal_pred).sum() / (batch_size)
+        loss += 0.4 * torch.abs(signal_orig - signal_pred).sum() / (batch_size * self.UPSAMPLE_COUNT)
 
         loss += 0.4 * torch.abs(angle_pred - angle_orig).sum() / (batch_size * 512)
 
