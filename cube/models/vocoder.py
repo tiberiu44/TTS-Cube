@@ -91,7 +91,10 @@ class BeeCoder:
 
     def load(self, output_base):
         if torch.cuda.is_available():
-            self.network.load_state_dict(torch.load(output_base + ".network"))
+            if torch.cuda.device_count() == 1:
+                self.network.load_state_dict(torch.load(output_base + ".network", map_location='cuda:0'))
+            else:
+                self.network.load_state_dict(torch.load(output_base + ".network"))
         else:
             self.network.load_state_dict(
                 torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
@@ -173,7 +176,7 @@ class BeeCoder:
                 self.trainer.zero_grad()
                 batch_x = torch.tensor(x).reshape(batch_size, 3, 60).float().to(device)
                 batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
-                y_pred = self.network(batch_x)
+                y_pred = self.network(batch_x, training=True)
 
                 loss = self._get_loss(batch_y, y_pred, batch_size)
                 loss.backward()
@@ -187,7 +190,7 @@ class BeeCoder:
             self.trainer.zero_grad()
             batch_x = torch.tensor(x).reshape(len(x), 3, 60).float().to(device)
             batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
-            y_pred = self.network(batch_x)
+            y_pred = self.network(batch_x, training=True)
 
             loss = self._get_loss(batch_y, y_pred, len(x))
             if loss is not None:
@@ -429,7 +432,9 @@ class VocoderNetwork(nn.Module):
 
         self.act = nn.Softsign()
 
-    def forward(self, x):
+    def forward(self, x, training=False):
+        if training:
+            x = torch.nn.functional.dropout(x, p=0.5)
         out1 = self.net1(x)
         out1 = out1.reshape(out1.size(0), out1.size(1) * out1.size(2))
 
