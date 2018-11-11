@@ -107,14 +107,15 @@ class BeeCoder:
             return None
         # from ipdb import set_trace
         # set_trace()
-        fft_orig = torch.stft(((signal_orig - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
+        fft_orig = torch.stft(signal_orig.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        fft_pred = torch.stft(((signal_pred - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
+        fft_pred = torch.stft(signal_pred.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
         loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 512)
 
         angle_orig = torch.atan(fft_orig)
         angle_pred = torch.atan(fft_pred)
+
         loss += torch.abs(angle_pred - angle_orig).sum() / (batch_size * 512)
 
         return loss
