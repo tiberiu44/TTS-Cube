@@ -111,22 +111,22 @@ class BeeCoder:
                               window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(signal_pred.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        # loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 257)
+        loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 257)
 
         angle_orig = torch.atan(fft_orig)
         angle_pred = torch.atan(fft_pred)
 
-        power_orig = fft_orig * fft_orig  # torch.abs(fft_orig)
-        power_pred = fft_pred * fft_pred  # torch.abs(fft_pred)
-        power_orig = torch.sqrt(torch.sum(power_orig, dim=2))
-        power_pred = torch.sqrt(torch.sum(power_pred, dim=2))
+        # power_orig = fft_orig * fft_orig  # torch.abs(fft_orig)
+        # power_pred = fft_pred * fft_pred  # torch.abs(fft_pred)
+        # power_orig = torch.sqrt(torch.sum(power_orig, dim=2))
+        # power_pred = torch.sqrt(torch.sum(power_pred, dim=2))
         # from ipdb import set_trace
         # set_trace()
         # power_orig += 1e-5
         # power_pred += 1e-5
         # power_orig = (20.0 * torch.log10(power_orig)) / -100.0
         # power_pred = (20.0 * torch.log10(power_pred)) / -100.0
-        loss = torch.abs(power_orig - power_pred).sum() / (batch_size * 257)
+        # loss = torch.abs(power_orig - power_pred).sum() / (batch_size * 257)
         # real_orig = torch.sin(angle_orig) * power_orig
         # imag_orig = torch.cos(angle_orig) * power_orig
         # real_pred = torch.sin(angle_pred) * power_pred
@@ -134,7 +134,7 @@ class BeeCoder:
         # loss += 0.2 * torch.abs(power_orig * power_pred - real_orig * real_pred - imag_orig * imag_pred).sum() / (
         #        batch_size * 512)
 
-        loss += 0.4 * torch.abs(signal_orig - signal_pred).sum() / (batch_size * self.UPSAMPLE_COUNT)
+        # loss += 0.4 * torch.abs(signal_orig - signal_pred).sum() / (batch_size * self.UPSAMPLE_COUNT)
 
         loss += 0.4 * torch.abs(angle_pred - angle_orig).sum() / (batch_size * 257)
 
