@@ -41,6 +41,7 @@ class BeeCoder:
         self.network = VocoderNetwork(self.params.mgc_order, self.UPSAMPLE_COUNT).to(device)
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
         self.abs_loss = torch.nn.L1Loss()
+        self.mse_loss = torch.nn.MSELoss()
         self.bce_loss = torch.nn.BCELoss()
         self.cnt = 0
 
@@ -110,7 +111,7 @@ class BeeCoder:
                               window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(signal_pred.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        loss = self.abs_loss(fft_pred, fft_orig)  # torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (
+        loss = self.mse_loss(fft_pred, fft_orig)  # torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (
         # fft_orig.shape[0] * fft_orig.shape[1] * fft_orig.shape[2])
         # from ipdb import set_trace
         # set_trace()
@@ -124,12 +125,12 @@ class BeeCoder:
         # set_trace()
         mean = mean.reshape(mean.shape[0], mean.shape[1])
         logvar = logvar.reshape(mean.shape[0], mean.shape[1])
-        loss += self.abs_loss(mean_student, torch.tensor(mean, requires_grad=False))
-        loss += self.abs_loss(logvar_student, torch.tensor(logvar, requires_grad=False))
+        loss += self.mse_loss(mean_student, torch.tensor(mean, requires_grad=False))
+        loss += self.mse_loss(logvar_student, torch.tensor(logvar, requires_grad=False))
 
         # loss += self.abs_loss(torch.log(power_pred + 1e-5), torch.log(power_orig + 1e-5))
 
-        # loss += self.bce_loss(signal_pred, signal_orig)
+        loss += self.mse_loss(signal_pred, signal_orig)
 
         loss += -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 
