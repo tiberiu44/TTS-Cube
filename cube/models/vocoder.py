@@ -42,6 +42,7 @@ class BeeCoder:
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
         self.abs_loss = torch.nn.L1Loss()
         self.bce_loss = torch.nn.BCELoss()
+        self.cnt = 0
 
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
         last_proc = 0
@@ -105,16 +106,24 @@ class BeeCoder:
     def _get_loss(self, signal_orig, signal_pred, mean, logvar, batch_size):
         if batch_size < 4:
             return None
-        # from ipdb import set_trace
-        # set_trace()
         signal_orig = (signal_orig + 1.0) / 2
         fft_orig = torch.stft(((signal_orig - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(((signal_pred - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 257)
+        loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (
+                fft_orig.shape[0] * fft_orig.shape[1] * fft_orig.shape[2])
 
-        loss += self.bce_loss(signal_pred, signal_orig)
+        power_orig = fft_orig * fft_orig
+        power_pred = fft_pred * fft_pred
+        power_orig = torch.sqrt(torch.sum(power_orig, dim=2))
+        power_pred = torch.sqrt(torch.sum(power_pred, dim=2))
+        # from ipdb import set_trace
+        # set_trace()
+
+        loss += self.abs_loss(torch.log(power_pred + 1e-5), torch.log(power_orig + 1e-5))
+
+        # loss += self.bce_loss(signal_pred, signal_orig)
 
         loss += -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 
@@ -172,6 +181,7 @@ class BeeCoder:
                 num_batches += 1
 
         total_loss = total_loss.item()
+        # self.cnt += 1
         return total_loss / num_batches
 
 
