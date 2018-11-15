@@ -403,56 +403,26 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net8[14].weight)
 
         self.encoder_mean = nn.Sequential(
-            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 60, kernel_size=16, stride=1, padding=0),
+            nn.Linear(input_size, 400),
+            nn.Tanh(),
+            nn.Linear(400, 200),
+            nn.Tanh(),
+            nn.Linear(200, 60)
         )
         torch.nn.init.xavier_uniform_(self.encoder_mean[0].weight)
         torch.nn.init.xavier_uniform_(self.encoder_mean[2].weight)
         torch.nn.init.xavier_uniform_(self.encoder_mean[4].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_mean[6].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_mean[8].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_mean[10].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_mean[12].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_mean[14].weight)
 
         self.encoder_logvar = nn.Sequential(
-            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 60, kernel_size=16, stride=1, padding=0),
+            nn.Linear(input_size, 400),
+            nn.Tanh(),
+            nn.Linear(400, 200),
+            nn.Tanh(),
+            nn.Linear(200, 60)
         )
         torch.nn.init.xavier_uniform_(self.encoder_logvar[0].weight)
         torch.nn.init.xavier_uniform_(self.encoder_logvar[2].weight)
         torch.nn.init.xavier_uniform_(self.encoder_logvar[4].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_logvar[6].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_logvar[8].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_logvar[10].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_logvar[12].weight)
-        torch.nn.init.xavier_uniform_(self.encoder_logvar[14].weight)
 
         self.act = nn.Sigmoid()
 
@@ -464,8 +434,8 @@ class VocoderNetwork(nn.Module):
     def forward(self, x, training=False):
         # if training:
         #    x = torch.nn.functional.dropout(x, p=0.33, training=True)
-        mean = self.encoder_mean(x.reshape(x.shape[0], 1, x.shape[1]))
-        logvar = self.encoder_logvar(x.reshape(x.shape[0], 1, x.shape[1]))
+        mean = self.encoder_mean(x)
+        logvar = self.encoder_logvar(x)
 
         x = self.reparameterize(mean, logvar).reshape(x.shape[0], 1, x.shape[1])
         out1 = self.net1(x)
