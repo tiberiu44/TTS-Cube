@@ -40,6 +40,8 @@ class BeeCoder:
 
         self.network = VocoderNetwork(self.params.mgc_order, self.UPSAMPLE_COUNT).to(device)
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
+        self.abs_loss = torch.nn.L1Loss()
+        self.bce_loss = torch.nn.BCELoss()
 
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
         last_proc = 0
@@ -53,33 +55,28 @@ class BeeCoder:
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
 
-            prev_mgc = mgc[mgc_index]
-            if mgc_index > 0:
-                prev_mgc = mgc[mgc_index - 1]
-            next_mgc = mgc[mgc_index]
-            if mgc_index < len(mgc) - 1:
-                next_mgc = mgc[mgc_index + 1]  # always ok
-
-            input = [prev_mgc, mgc[mgc_index], next_mgc]
+            input = mgc[mgc_index]
 
             x.append(input)
 
             if len(x) == batch_size:
-                inp = torch.tensor(x).reshape(batch_size, 3, 60).float().to(device)
-                output = self.network(inp).reshape(self.UPSAMPLE_COUNT * batch_size)
+                inp = torch.tensor(x).reshape(batch_size, 60).float().to(device)
+                [output, mean, logvar] = self.network(inp)
+                output = output.reshape(self.UPSAMPLE_COUNT * batch_size)
                 for zz in output:
                     synth.append(zz.item())
                 x = []
 
         if len(x) != 0:
-            inp = torch.tensor(x).reshape(len(x), 3, 60).float().to(device)
-            output = self.network(inp).reshape(self.UPSAMPLE_COUNT * len(x))
+            inp = torch.tensor(x).reshape(len(x), 60).float().to(device)
+            [output, mean, logvar] = self.network(inp)
+            output = output.reshape(self.UPSAMPLE_COUNT * len(x))
             for x in output:
                 synth.append(x.item())
 
         # synth = self.dio.ulaw_decode(synth, discreete=False)
         synth = np.array(synth, dtype=np.float32)
-        synth = np.clip(synth * 32768, -32767, 32767)
+        synth = np.clip((synth - 0.5) * 65536, -32767, 32767)
         synth = np.array(synth, dtype=np.int16)
 
         return synth
@@ -105,41 +102,21 @@ class BeeCoder:
 
         return None
 
-    def _get_loss(self, signal_orig, signal_pred, batch_size):
+    def _get_loss(self, signal_orig, signal_pred, mean, logvar, batch_size):
         if batch_size < 4:
             return None
         # from ipdb import set_trace
         # set_trace()
-        fft_orig = torch.stft(signal_orig.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
+        signal_orig = (signal_orig + 1.0) / 2
+        fft_orig = torch.stft(((signal_orig - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        fft_pred = torch.stft(signal_pred.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
+        fft_pred = torch.stft(((signal_pred - 0.5) * 2).reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
         loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 257)
 
-        angle_orig = torch.atan(fft_orig)
-        angle_pred = torch.atan(fft_pred)
+        loss += self.bce_loss(signal_pred, signal_orig)
 
-        # power_orig = fft_orig * fft_orig  # torch.abs(fft_orig)
-        # power_pred = fft_pred * fft_pred  # torch.abs(fft_pred)
-        # power_orig = torch.sqrt(torch.sum(power_orig, dim=2))
-        # power_pred = torch.sqrt(torch.sum(power_pred, dim=2))
-        # from ipdb import set_trace
-        # set_trace()
-        # power_orig += 1e-5
-        # power_pred += 1e-5
-        # power_orig = (20.0 * torch.log10(power_orig)) / -100.0
-        # power_pred = (20.0 * torch.log10(power_pred)) / -100.0
-        # loss = torch.abs(power_orig - power_pred).sum() / (batch_size * 257)
-        # real_orig = torch.sin(angle_orig) * power_orig
-        # imag_orig = torch.cos(angle_orig) * power_orig
-        # real_pred = torch.sin(angle_pred) * power_pred
-        # imag_pred = torch.cos(angle_pred) * power_pred
-        # loss += 0.2 * torch.abs(power_orig * power_pred - real_orig * real_pred - imag_orig * imag_pred).sum() / (
-        #        batch_size * 512)
-
-        # loss += 0.4 * torch.abs(signal_orig - signal_pred).sum() / (batch_size * self.UPSAMPLE_COUNT)
-
-        loss += 0.4 * torch.abs(angle_pred - angle_orig).sum() / (batch_size * 257)
+        loss += -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 
         return loss
 
@@ -162,23 +139,18 @@ class BeeCoder:
 
             if mgc_index < len(mgc) - 1:
                 cnt += 1
-                prev_mgc = mgc[mgc_index]
-                if mgc_index > 0:
-                    prev_mgc = mgc[mgc_index - 1]
-                next_mgc = mgc[mgc_index + 1]  # always ok
-
-                input = [prev_mgc, mgc[mgc_index], next_mgc]
+                input = mgc[mgc_index]
                 output = wave[self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + self.UPSAMPLE_COUNT]
                 x.append(input)
                 y.append(output)
 
             if len(x) == batch_size:
                 self.trainer.zero_grad()
-                batch_x = torch.tensor(x).reshape(batch_size, 3, 60).float().to(device)
+                batch_x = torch.tensor(x).reshape(batch_size, 60).float().to(device)
                 batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
-                y_pred = self.network(batch_x, training=True)
+                [y_pred, mean, logvar] = self.network(batch_x, training=True)
 
-                loss = self._get_loss(batch_y, y_pred, batch_size)
+                loss = self._get_loss(batch_y, y_pred, mean, logvar, batch_size)
                 loss.backward()
                 self.trainer.step()
                 total_loss += loss
@@ -188,11 +160,11 @@ class BeeCoder:
 
         if len(x) > 0:
             self.trainer.zero_grad()
-            batch_x = torch.tensor(x).reshape(len(x), 3, 60).float().to(device)
+            batch_x = torch.tensor(x).reshape(len(x), 60).float().to(device)
             batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
-            y_pred = self.network(batch_x, training=True)
+            [y_pred, mean, logvar] = self.network(batch_x, training=True)
 
-            loss = self._get_loss(batch_y, y_pred, len(x))
+            loss = self._get_loss(batch_y, y_pred, mean, logvar, len(x))
             if loss is not None:
                 loss.backward()
                 self.trainer.step()
@@ -208,7 +180,7 @@ class VocoderNetwork(nn.Module):
         super(VocoderNetwork, self).__init__()
 
         self.net1 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
@@ -235,7 +207,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net1[14].weight)
 
         self.net2 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
@@ -263,7 +235,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net2[14].weight)
 
         self.net3 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
@@ -291,7 +263,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net3[14].weight)
 
         self.net4 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
@@ -319,7 +291,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net4[14].weight)
 
         self.net5 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
@@ -347,7 +319,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net5[14].weight)
 
         self.net6 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
@@ -375,7 +347,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net6[14].weight)
 
         self.net7 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
@@ -403,7 +375,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net7[14].weight)
 
         self.net8 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
@@ -430,12 +402,72 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.net8[12].weight)
         torch.nn.init.xavier_uniform_(self.net8[14].weight)
 
-        self.act = nn.Softsign()
+        self.encoder_mean = nn.Sequential(
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 60, kernel_size=16, stride=1, padding=0),
+        )
+        torch.nn.init.xavier_uniform_(self.encoder_mean[0].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_mean[2].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_mean[4].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_mean[6].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_mean[8].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_mean[10].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_mean[12].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_mean[14].weight)
+
+        self.encoder_logvar = nn.Sequential(
+            nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(256, 60, kernel_size=16, stride=1, padding=0),
+        )
+        torch.nn.init.xavier_uniform_(self.encoder_logvar[0].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_logvar[2].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_logvar[4].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_logvar[6].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_logvar[8].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_logvar[10].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_logvar[12].weight)
+        torch.nn.init.xavier_uniform_(self.encoder_logvar[14].weight)
+
+        self.act = nn.Sigmoid()
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return eps.mul(std).add_(mu)
 
     def forward(self, x, training=False):
-        #if training:
+        # if training:
         #    x = torch.nn.functional.dropout(x, p=0.33, training=True)
+        mean = self.encoder_mean(x.reshape(x.shape[0], 1, x.shape[1]))
+        logvar = self.encoder_logvar(x.reshape(x.shape[0], 1, x.shape[1]))
 
+        x = self.reparameterize(mean, logvar).reshape(x.shape[0], 1, x.shape[1])
         out1 = self.net1(x)
         out1 = out1.reshape(out1.size(0), out1.size(1) * out1.size(2))
 
@@ -460,4 +492,4 @@ class VocoderNetwork(nn.Module):
         out8 = self.net8(x)
         out8 = out8.reshape(out8.size(0), out8.size(1) * out8.size(2))
 
-        return self.act(out1 + out2 + out3 + out4 + out5 + out6 + out7 + out8)
+        return [self.act(out1 + out2 + out3 + out4 + out5 + out6 + out7 + out8), mean, logvar]
