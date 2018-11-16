@@ -116,11 +116,11 @@ class BeeCoder:
         # from ipdb import set_trace
         # set_trace()
 
-        power_orig = fft_orig * fft_orig
-        power_pred = fft_pred * fft_pred
-        power_orig = torch.sum(power_orig, dim=2)
-        power_pred = torch.sum(power_pred, dim=2)
-        loss += self.abs_loss(power_pred, power_orig)
+        # power_orig = fft_orig * fft_orig
+        # power_pred = fft_pred * fft_pred
+        # power_orig = torch.sum(power_orig, dim=2)
+        # power_pred = torch.sum(power_pred, dim=2)
+        # loss += self.abs_loss(power_pred, power_orig)
         # from ipdb import set_trace
         # set_trace()
         mean = mean.reshape(mean.shape[0], mean.shape[1])
@@ -130,7 +130,7 @@ class BeeCoder:
 
         loss += self.mse_loss(signal_pred.reshape(signal_pred.shape[0], signal_pred.shape[2]), signal_orig) * 7
 
-        loss += -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
+        loss += (-0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())) / (batch_size * self.UPSAMPLE_COUNT)
 
         return loss
 
