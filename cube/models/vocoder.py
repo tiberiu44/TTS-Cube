@@ -104,33 +104,53 @@ class BeeCoder:
 
         return None
 
-    def _get_loss(self, signal_orig, signal_pred, mean, logvar, batch_size):
-        if batch_size < 4:
-            return None
-        fft_orig = torch.stft(signal_orig.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
-                              window=torch.hann_window(window_length=512).to(device))
-        fft_pred = torch.stft(signal_pred.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
-                              window=torch.hann_window(window_length=512).to(device))
-        loss = self.mse_loss(fft_pred, fft_orig)  # torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (
-        # fft_orig.shape[0] * fft_orig.shape[1] * fft_orig.shape[2])
+    def _get_loss(self, signal_orig, signal_pred, p_coarse, p_fine, batch_size):
+
+        # loss = 0
+        target_fine = []
+        target_coarse = []
+        for y_batch in signal_orig:
+            coarse = []
+            fine = []
+            for yy in y_batch:
+                b16 = int((yy + 1.0) / 2.0 * 65535)
+                coarse.append((b16 // 256) / 255)
+                fine.append((b16 % 256) / 255)
+            target_fine.append(fine)
+            target_coarse.append(coarse)
         # from ipdb import set_trace
         # set_trace()
+        t_fine = torch.tensor(target_fine).to(device)
+        t_coarse = torch.tensor(target_coarse).to(device)
+        loss = self.mse_loss(p_coarse.reshape(p_coarse.shape[0], p_coarse.shape[1]), t_coarse) + self.mse_loss(
+            p_fine.reshape(p_coarse.shape[0], p_coarse.shape[1]), t_fine)
 
-        power_orig = fft_orig * fft_orig
-        power_pred = fft_pred * fft_pred
-        power_orig = torch.sum(power_orig, dim=2)
-        power_pred = torch.sum(power_pred, dim=2)
-        loss += self.abs_loss(power_pred, power_orig)
-        # from ipdb import set_trace
-        # set_trace()
-        mean = mean.reshape(mean.shape[0], mean.shape[1])
-        logvar = logvar.reshape(mean.shape[0], mean.shape[1])
-
-        # loss += self.abs_loss(torch.log(power_pred + 1e-5), torch.log(power_orig + 1e-5))
-
-        # loss += self.mse_loss(signal_pred.reshape(signal_pred.shape[0], signal_pred.shape[2]), signal_orig) * 7
-
-        loss += (-0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())) / (batch_size * self.UPSAMPLE_COUNT)
+        # if batch_size < 4:
+        #     return None
+        # fft_orig = torch.stft(signal_orig.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
+        #                       window=torch.hann_window(window_length=512).to(device))
+        # fft_pred = torch.stft(signal_pred.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
+        #                       window=torch.hann_window(window_length=512).to(device))
+        # loss = self.mse_loss(fft_pred, fft_orig)  # torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (
+        # # fft_orig.shape[0] * fft_orig.shape[1] * fft_orig.shape[2])
+        # # from ipdb import set_trace
+        # # set_trace()
+        #
+        # power_orig = fft_orig * fft_orig
+        # power_pred = fft_pred * fft_pred
+        # power_orig = torch.sum(power_orig, dim=2)
+        # power_pred = torch.sum(power_pred, dim=2)
+        # loss += self.abs_loss(power_pred, power_orig)
+        # # from ipdb import set_trace
+        # # set_trace()
+        # mean = mean.reshape(mean.shape[0], mean.shape[1])
+        # logvar = logvar.reshape(mean.shape[0], mean.shape[1])
+        #
+        # # loss += self.abs_loss(torch.log(power_pred + 1e-5), torch.log(power_orig + 1e-5))
+        #
+        # # loss += self.mse_loss(signal_pred.reshape(signal_pred.shape[0], signal_pred.shape[2]), signal_orig) * 7
+        #
+        # loss += (-0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())) / (batch_size * self.UPSAMPLE_COUNT)
         return loss
 
     def learn(self, wave, mgc, batch_size):
@@ -160,11 +180,11 @@ class BeeCoder:
             if len(x) == batch_size:
                 self.trainer.zero_grad()
                 batch_x = torch.tensor(x).reshape(batch_size, 60).float().to(device)
-                batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
-                [y_pred, mean, logvar] = self.network(batch_x, signal=batch_y,
+                # batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
+                [y_pred, coarse, fine] = self.network(batch_x,
                                                       training=True)
 
-                loss = self._get_loss(batch_y, y_pred, mean, logvar, batch_size)
+                loss = self._get_loss(y, y_pred, coarse, fine, batch_size)
                 loss.backward()
                 self.trainer.step()
                 total_loss += loss
@@ -176,9 +196,9 @@ class BeeCoder:
             self.trainer.zero_grad()
             batch_x = torch.tensor(x).reshape(len(x), 60).float().to(device)
             batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
-            [y_pred, mean, logvar] = self.network(batch_x, signal=batch_y, training=True)
+            [y_pred, coarse, fine] = self.network(batch_x, training=True)
 
-            loss = self._get_loss(batch_y, y_pred, mean, logvar, len(x))
+            loss = self._get_loss(batch_y, y_pred, coarse, fine, len(x))
             if loss is not None:
                 loss.backward()
                 self.trainer.step()
@@ -194,7 +214,7 @@ class VocoderNetwork(nn.Module):
     def __init__(self, input_size, output_size):
         super(VocoderNetwork, self).__init__()
 
-        self.conv_net_mean = nn.ModuleList([nn.Sequential(
+        self.conv_net_coarse = nn.ModuleList([nn.Sequential(
             nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
@@ -211,7 +231,7 @@ class VocoderNetwork(nn.Module):
             nn.ELU(),
             nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0)) for ii in range(8)]
         )
-        self.conv_net_logvar = nn.ModuleList([nn.Sequential(
+        self.conv_net_fine = nn.ModuleList([nn.Sequential(
             nn.Conv1d(1, 256, kernel_size=13, stride=1, padding=0),
             nn.ELU(),
             nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
@@ -230,25 +250,25 @@ class VocoderNetwork(nn.Module):
         )
 
         for ii in range(8):
-            torch.nn.init.xavier_uniform_(self.conv_net_mean[ii][0].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_mean[ii][2].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_mean[ii][4].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_mean[ii][6].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_mean[ii][8].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_mean[ii][10].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_mean[ii][12].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_mean[ii][14].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_coarse[ii][0].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_coarse[ii][2].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_coarse[ii][4].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_coarse[ii][6].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_coarse[ii][8].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_coarse[ii][10].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_coarse[ii][12].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_coarse[ii][14].weight)
 
-            torch.nn.init.xavier_uniform_(self.conv_net_logvar[ii][0].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_logvar[ii][2].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_logvar[ii][4].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_logvar[ii][6].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_logvar[ii][8].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_logvar[ii][10].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_logvar[ii][12].weight)
-            torch.nn.init.xavier_uniform_(self.conv_net_logvar[ii][14].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_fine[ii][0].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_fine[ii][2].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_fine[ii][4].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_fine[ii][6].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_fine[ii][8].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_fine[ii][10].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_fine[ii][12].weight)
+            torch.nn.init.xavier_uniform_(self.conv_net_fine[ii][14].weight)
 
-        self.act = nn.Softsign()
+        self.act = nn.Sigmoid()
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
@@ -257,19 +277,21 @@ class VocoderNetwork(nn.Module):
 
     def forward(self, x, signal=None, training=False):
         x = x.reshape(x.shape[0], 1, x.shape[1])
-        out_mean = []
-        out_logvar = []
+        out_coarse = []
+        out_fine = []
         for ii in range(8):
-            out_mean.append(self.conv_net_mean[ii](x))
-            out_logvar.append(self.conv_net_logvar[ii](x))
+            out_coarse.append(self.conv_net_coarse[ii](x))
+            out_fine.append(self.conv_net_fine[ii](x))
 
-        mean = out_mean[0] + out_mean[1] + out_mean[2] + out_mean[3] + out_mean[4] + out_mean[5] + out_mean[6] + \
-               out_mean[7]
-        logvar = out_logvar[0] + out_logvar[1] + out_logvar[2] + out_logvar[3] + out_logvar[4] + out_logvar[5] + \
-                 out_logvar[6] + out_logvar[7]
+        coarse = out_coarse[0] + out_coarse[1] + out_coarse[2] + out_coarse[3] + out_coarse[4] + out_coarse[5] + \
+                 out_coarse[6] + out_coarse[7]
+        fine = out_fine[0] + out_fine[1] + out_fine[2] + out_fine[3] + out_fine[4] + out_fine[5] + \
+               out_fine[6] + out_fine[7]
         # from ipdb import set_trace
         # set_trace()
+        # fine = self.act(fine)
+        # coarse = self.act(coarse)
 
-        x = self.reparameterize(mean, logvar).reshape(mean.shape[0], 1, mean.shape[1])
-
-        return x, mean, logvar
+        # x = self.reparameterize(mean, logvar).reshape(mean.shape[0], 1, mean.shape[1])
+        x = ((coarse + fine / 256) - 0.5) * 2
+        return x, coarse, fine
