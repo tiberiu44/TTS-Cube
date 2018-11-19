@@ -147,31 +147,37 @@ class VocoderNetwork(nn.Module):
         self.NUM_NETWORKS = 1
 
         self.convolutions = nn.ModuleList([nn.Sequential(
-            nn.Conv1d(1, 32, kernel_size=5, stride=2, padding=0),
+            nn.Conv1d(1, 32, kernel_size=2, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv1d(32, 32, kernel_size=5, stride=2, padding=0),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv1d(32, 32, kernel_size=5, stride=2, padding=0),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv1d(32, 32, kernel_size=5, stride=2, padding=0),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv1d(32, 32, kernel_size=5, stride=2, padding=0),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv1d(32, 32, kernel_size=5, stride=2, padding=0),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv1d(32, 32, kernel_size=5, stride=2, padding=0),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv1d(32, 256, kernel_size=5, stride=2, padding=0),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
+            nn.ELU(),
+            nn.Conv1d(32, 64, kernel_size=2, stride=2, padding=0),
+            nn.ELU(),
+            nn.Conv1d(64, 256, kernel_size=2, stride=2, padding=0),
             nn.Tanh()) for ii in range(self.NUM_NETWORKS)]
 
         )
 
         self.conditioning = nn.Sequential(
-            nn.Linear(60, 200),
+            nn.Linear(60, 100),
             nn.Tanh(),
-            nn.Linear(200, 256),
+            nn.Linear(100, 256),
             nn.Sigmoid()
         )
+        torch.nn.init.xavier_uniform_(self.conditioning[0].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[2].weight)
 
         for ii in range(self.NUM_NETWORKS):
             torch.nn.init.xavier_uniform_(self.convolutions[ii][0].weight)
@@ -209,13 +215,17 @@ class VocoderNetwork(nn.Module):
             x = x.reshape(x.shape[0], 1, x.shape[1])
             pre_softmax = []
 
+            #from ipdb import set_trace
+            #set_trace()
+
             for ii in range(self.NUM_NETWORKS):
                 pre_softmax.append(self.convolutions[ii](x))
 
-            pre = cond
-            for ii in range(self.NUM_NETWORKS):
+            pre = pre_softmax[ii].reshape(cond.shape[0], cond.shape[1])
+            for ii in range(1, self.NUM_NETWORKS):
                 pre = pre + pre_softmax[ii].reshape(cond.shape[0], cond.shape[1])
 
+            pre = pre * cond
             softmax = self.softmax_layer(pre)  # self.act()
             # from ipdb import set_trace
             # set_trace()
@@ -231,7 +241,7 @@ class VocoderNetwork(nn.Module):
                 for ii in range(self.NUM_NETWORKS):
                     pre_softmax.append(self.convolutions[ii](x))
 
-                pre = pre_softmax[0]
+                pre = pre_softmax[0].reshape(cond.shape[0], cond.shape[1])
                 for ii in range(1, self.NUM_NETWORKS):
                     pre = pre + pre_softmax[ii].reshape(cond.shape[0], cond.shape[1])
 
