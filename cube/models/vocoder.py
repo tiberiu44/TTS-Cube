@@ -189,7 +189,7 @@ class VocoderNetwork(nn.Module):
             torch.nn.init.xavier_uniform_(self.convolutions[ii][12].weight)
             torch.nn.init.xavier_uniform_(self.convolutions[ii][14].weight)
 
-        self.softmax_layer = nn.Linear(256, 256)
+        self.softmax_layer = nn.Linear(512, 256)
 
         torch.nn.init.xavier_uniform_(self.softmax_layer.weight)
 
@@ -215,8 +215,8 @@ class VocoderNetwork(nn.Module):
             x = x.reshape(x.shape[0], 1, x.shape[1])
             pre_softmax = []
 
-            #from ipdb import set_trace
-            #set_trace()
+            # from ipdb import set_trace
+            # set_trace()
 
             for ii in range(self.NUM_NETWORKS):
                 pre_softmax.append(self.convolutions[ii](x))
@@ -225,7 +225,7 @@ class VocoderNetwork(nn.Module):
             for ii in range(1, self.NUM_NETWORKS):
                 pre = pre + pre_softmax[ii].reshape(cond.shape[0], cond.shape[1])
 
-            pre = pre * cond
+            pre = torch.cat([pre, cond], dim=1)
             softmax = self.softmax_layer(pre)  # self.act()
             # from ipdb import set_trace
             # set_trace()
@@ -245,7 +245,7 @@ class VocoderNetwork(nn.Module):
                 for ii in range(1, self.NUM_NETWORKS):
                     pre = pre + pre_softmax[ii].reshape(cond.shape[0], cond.shape[1])
 
-                pre = pre * cond
+                pre = torch.cat([pre, cond], dim=1)
 
                 # pre = pre.reshape(pre.shape[0 ], pre.shape[1])
                 softmax = self.act(self.softmax_layer(pre))
