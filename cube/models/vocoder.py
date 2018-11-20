@@ -30,7 +30,7 @@ class BeeCoder:
         self.params = params
 
         self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
-        self.RECEPTIVE_SIZE = 1024  # this means 64ms
+        self.RECEPTIVE_SIZE = 512  # this means 32ms
 
         self.sparse = False
         self.dio = DatasetIO()
@@ -58,9 +58,9 @@ class BeeCoder:
 
             input = mgc[mgc_index]
 
-            x = [input for ii in range(self.UPSAMPLE_COUNT)]
+            # x = [input for ii in range(self.UPSAMPLE_COUNT)]
 
-            [signal, softmax] = self.network(x, prev=synth)
+            [signal, softmax] = self.network([input], prev=synth)
             #
             for zz in signal:
                 synth.append(zz.item())
@@ -102,7 +102,7 @@ class BeeCoder:
         last_proc = 0
         total_loss = 0
         num_batches = 0
-        batch_size = batch_size * self.UPSAMPLE_COUNT
+        # batch_size = batch_size * self.UPSAMPLE_COUNT
         mgc_list = []
         signal = [0 for ii in range(self.RECEPTIVE_SIZE)]
         for mgc_index in range(len(mgc)):
@@ -113,8 +113,8 @@ class BeeCoder:
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
             if mgc_index < len(mgc) - 1:
+                mgc_list.append(mgc[mgc_index])
                 for ii in range(self.UPSAMPLE_COUNT):
-                    mgc_list.append(mgc[mgc_index])
                     signal.append(wave[mgc_index * self.UPSAMPLE_COUNT + ii])
 
                 if len(mgc_list) == batch_size:
@@ -140,7 +140,7 @@ class BeeCoder:
 
 
 class VocoderNetwork(nn.Module):
-    def __init__(self, receptive_field=1024):
+    def __init__(self, receptive_field=512):
         super(VocoderNetwork, self).__init__()
 
         self.RECEPTIVE_FIELD = receptive_field
@@ -163,21 +163,12 @@ class VocoderNetwork(nn.Module):
             nn.ELU(),
             nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv1d(32, 64, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(64, 256, kernel_size=2, stride=2, padding=0),
+            nn.Conv1d(32, 256, kernel_size=2, stride=2, padding=0),
+            # nn.ELU(),
+            # nn.Conv1d(64, 256, kernel_size=2, stride=2, padding=0),
             nn.Tanh()) for ii in range(self.NUM_NETWORKS)]
 
         )
-
-        self.conditioning = nn.Sequential(
-            nn.Linear(60, 100),
-            nn.Tanh(),
-            nn.Linear(100, 256),
-            nn.Sigmoid()
-        )
-        torch.nn.init.xavier_uniform_(self.conditioning[0].weight)
-        torch.nn.init.xavier_uniform_(self.conditioning[2].weight)
 
         for ii in range(self.NUM_NETWORKS):
             torch.nn.init.xavier_uniform_(self.convolutions[ii][0].weight)
@@ -189,9 +180,33 @@ class VocoderNetwork(nn.Module):
             torch.nn.init.xavier_uniform_(self.convolutions[ii][12].weight)
             torch.nn.init.xavier_uniform_(self.convolutions[ii][14].weight)
 
-        self.softmax_layer = nn.Linear(512, 256)
+        self.conditioning = nn.Sequential(
+            nn.Conv1d(1, 32, kernel_size=13, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(32, 32, kernel_size=13, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
+            nn.ELU(),
+            nn.Conv1d(32, 32 * 200, kernel_size=16, stride=1, padding=0))
 
-        torch.nn.init.xavier_uniform_(self.softmax_layer.weight)
+        self.softmax_layer = nn.Linear(256 + 32, 256)
+
+        torch.nn.init.xavier_uniform_(self.conditioning[0].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[2].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[4].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[6].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[8].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[10].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[12].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[14].weight)
 
         self.act = nn.Softmax(dim=1)
 
@@ -205,7 +220,6 @@ class VocoderNetwork(nn.Module):
 
         if signal is not None:
             # prepare the input
-            cond = self.conditioning(torch.Tensor(mgc).to(device))
 
             x_list = []
             for ii in range(len(signal) - self.RECEPTIVE_FIELD):
@@ -221,39 +235,48 @@ class VocoderNetwork(nn.Module):
             for ii in range(self.NUM_NETWORKS):
                 pre_softmax.append(self.convolutions[ii](x))
 
-            pre = pre_softmax[ii].reshape(cond.shape[0], cond.shape[1])
+            pre = pre_softmax[ii].reshape(x.shape[0], 256)
             for ii in range(1, self.NUM_NETWORKS):
-                pre = pre + pre_softmax[ii].reshape(cond.shape[0], cond.shape[1])
+                pre = pre + pre_softmax[ii].reshape(x.shape[0], 256)
 
-            pre = torch.cat([pre, cond], dim=1)
+            conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, 60))
+            conditioning = conditioning.reshape(pre.shape[0], 32)
+            # from ipdb import set_trace
+            # set_trace()
+            pre = torch.cat([conditioning, pre], dim=1)
+
             softmax = self.softmax_layer(pre)  # self.act()
             # from ipdb import set_trace
             # set_trace()
         else:
             signal = prev[-self.RECEPTIVE_FIELD:]
-            for ii in range(len(mgc)):
-                x = torch.Tensor(signal[-self.RECEPTIVE_FIELD:]).to(device)
-                x = x.reshape(1, 1, x.shape[0])
-                cond = self.conditioning(torch.Tensor(mgc[ii]).to(device).reshape(1, 60))
+            for zz in range(len(mgc)):
+                conditioning = self.conditioning(torch.Tensor(mgc[zz]).to(device).reshape(1, 1, 60))
+                conditioning = conditioning.reshape(200, 32)
+                for ii in range(200):
+                    x = torch.Tensor(signal[-self.RECEPTIVE_FIELD:]).to(device)
+                    x = x.reshape(1, 1, x.shape[0])
+                    # cond = self.conditioning(torch.Tensor(mgc[ii]).to(device).reshape(1, 60))
 
-                pre_softmax = []
+                    pre_softmax = []
 
-                for ii in range(self.NUM_NETWORKS):
-                    pre_softmax.append(self.convolutions[ii](x))
+                    for ii in range(self.NUM_NETWORKS):
+                        pre_softmax.append(self.convolutions[ii](x))
 
-                pre = pre_softmax[0].reshape(cond.shape[0], cond.shape[1])
-                for ii in range(1, self.NUM_NETWORKS):
-                    pre = pre + pre_softmax[ii].reshape(cond.shape[0], cond.shape[1])
+                    pre = pre_softmax[0].reshape(x.shape[0], 256)
+                    for ii in range(1, self.NUM_NETWORKS):
+                        pre = pre + pre_softmax[ii].reshape(x.shape[0], 256)
 
-                pre = torch.cat([pre, cond], dim=1)
+                    # pre = torch.cat([pre, cond], dim=1)
 
-                # pre = pre.reshape(pre.shape[0 ], pre.shape[1])
-                softmax = self.act(self.softmax_layer(pre))
-                sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.8)
-                f = float(sample) / 128 - 1.0
-                sign = np.sign(f)
-                decoded = sign * (1.0 / 255.0) * (pow(1.0 + 255, abs(f)) - 1.0)
-                signal.append(decoded)
+                    pre = torch.cat([conditioning[ii].reshape(1, 32), pre], dim=1)
+                    # pre = pre.reshape(pre.shape[0 ], pre.shape[1])
+                    softmax = self.act(self.softmax_layer(pre))
+                    sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.8)
+                    f = float(sample) / 128 - 1.0
+                    sign = np.sign(f)
+                    decoded = sign * (1.0 / 255.0) * (pow(1.0 + 255, abs(f)) - 1.0)
+                    signal.append(decoded)
 
         return signal[self.RECEPTIVE_FIELD:], softmax
 
