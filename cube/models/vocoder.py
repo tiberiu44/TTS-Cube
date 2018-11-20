@@ -144,26 +144,26 @@ class VocoderNetwork(nn.Module):
         super(VocoderNetwork, self).__init__()
 
         self.RECEPTIVE_FIELD = receptive_field
-        self.NUM_NETWORKS = 1
+        self.NUM_NETWORKS = 8
 
         self.convolutions = nn.ModuleList([nn.Sequential(
-            nn.Conv1d(1, 128, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(128, 128, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(128, 128, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(128, 128, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(128, 128, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(128, 128, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(128, 128, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(128, 128, kernel_size=2, stride=2, padding=0),
-            nn.ELU(),
-            nn.Conv1d(128, 256, kernel_size=2, stride=2, padding=0),
+            nn.Conv1d(1, 32, kernel_size=2, stride=2, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
+            nn.Tanh(),
+            nn.Conv1d(32, 256, kernel_size=2, stride=2, padding=0),
             # nn.ELU(),
             # nn.Conv1d(64, 256, kernel_size=2, stride=2, padding=0),
             nn.Tanh()) for ii in range(self.NUM_NETWORKS)]
@@ -182,20 +182,21 @@ class VocoderNetwork(nn.Module):
 
         self.conditioning = nn.Sequential(
             nn.Conv1d(1, 32, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
+            nn.Tanh(),
             nn.Conv1d(32, 32, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
+            nn.Tanh(),
             nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
+            nn.Tanh(),
             nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
+            nn.Tanh(),
             nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
+            nn.Tanh(),
             nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
+            nn.Tanh(),
             nn.Conv1d(32, 32, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(32, 32 * 200, kernel_size=16, stride=1, padding=0))
+            nn.Tanh(),
+            nn.Conv1d(32, 32 * 200, kernel_size=16, stride=1, padding=0),
+            nn.Tanh())
 
         self.softmax_layer = nn.Linear(256 + 32, 256)
 
