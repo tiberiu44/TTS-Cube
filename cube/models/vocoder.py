@@ -140,63 +140,20 @@ class BeeCoder:
 
 
 class VocoderNetwork(nn.Module):
-    def __init__(self, receptive_field=512):
+    def __init__(self, receptive_field=512, mgc_size=60, mgc_projection=60, upsample_size=200):
         super(VocoderNetwork, self).__init__()
 
         self.RECEPTIVE_FIELD = receptive_field
         self.NUM_NETWORKS = 1
+        self.MGC_SIZE = mgc_size
+        self.MGC_PROJECTION = mgc_projection
+        self.UPSAMPLE_SIZE = upsample_size
 
-        # self.convolutions = nn.ModuleList([nn.Sequential(
-        #     nn.Conv1d(1, 32, kernel_size=2, stride=2, padding=0),
-        #     nn.Tanh(),
-        #     nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
-        #     nn.Tanh(),
-        #     nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
-        #     nn.Tanh(),
-        #     nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
-        #     nn.Tanh(),
-        #     nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
-        #     nn.Tanh(),
-        #     nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
-        #     nn.Tanh(),
-        #     nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
-        #     nn.Tanh(),
-        #     nn.Conv1d(32, 32, kernel_size=2, stride=2, padding=0),
-        #     nn.Tanh(),
-        #     nn.Conv1d(32, 256, kernel_size=2, stride=2, padding=0),
-        #     # nn.ELU(),
-        #     # nn.Conv1d(64, 256, kernel_size=2, stride=2, padding=0),
-        # ) for ii in range(self.NUM_NETWORKS)]
-        #
-        # )
+        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 64)
 
-        self.convolutions = FullNet(self.RECEPTIVE_FIELD)
+        self.conditioning = nn.Sequential(nn.Linear(self.MGC_SIZE, self.MGC_PROJECTION * self.UPSAMPLE_SIZE))
 
-        # for ii in range(self.NUM_NETWORKS):
-        #     torch.nn.init.xavier_uniform_(self.convolutions[ii][0].weight)
-        #     torch.nn.init.xavier_uniform_(self.convolutions[ii][2].weight)
-        #     torch.nn.init.xavier_uniform_(self.convolutions[ii][4].weight)
-        #     torch.nn.init.xavier_uniform_(self.convolutions[ii][6].weight)
-        #     torch.nn.init.xavier_uniform_(self.convolutions[ii][8].weight)
-        #     torch.nn.init.xavier_uniform_(self.convolutions[ii][10].weight)
-        #     torch.nn.init.xavier_uniform_(self.convolutions[ii][12].weight)
-        #     torch.nn.init.xavier_uniform_(self.convolutions[ii][14].weight)
-
-        self.conditioning = nn.Sequential(nn.Linear(60, 120),
-                                          nn.Tanh(),
-                                          nn.Linear(120, 200 * 32),
-                                          nn.Tanh())
-
-        self.softmax_layer = nn.Linear(256, 256)
-
-        # torch.nn.init.xavier_uniform_(self.conditioning[0].weight)
-        # torch.nn.init.xavier_uniform_(self.conditioning[2].weight)
-        # torch.nn.init.xavier_uniform_(self.conditioning[4].weight)
-        # torch.nn.init.xavier_uniform_(self.conditioning[6].weight)
-        # torch.nn.init.xavier_uniform_(self.conditioning[8].weight)
-        # torch.nn.init.xavier_uniform_(self.conditioning[10].weight)
-        # torch.nn.init.xavier_uniform_(self.conditioning[12].weight)
-        # torch.nn.init.xavier_uniform_(self.conditioning[14].weight)
+        self.softmax_layer = nn.Linear(512, 256)
 
         self.act = nn.Softmax(dim=1)
 
@@ -221,8 +178,8 @@ class VocoderNetwork(nn.Module):
 
             # from ipdb import set_trace
             # set_trace()
-            conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, 60))
-            conditioning = conditioning.reshape(len(mgc) * 200, 32)
+            conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, self.MGC_PROJECTION))
+            conditioning = conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_PROJECTION)
 
             pre = self.convolutions(x, conditioning)
             pre = torch.tanh(pre).reshape(pre.shape[0], pre.shape[1])
@@ -236,20 +193,20 @@ class VocoderNetwork(nn.Module):
         else:
             signal = prev[-self.RECEPTIVE_FIELD:]
             for zz in range(len(mgc)):
-                conditioning = self.conditioning(torch.Tensor(mgc[zz]).to(device).reshape(1, 1, 60))
-                conditioning = conditioning.reshape(200, 32)
-                for ii in range(200):
+                conditioning = self.conditioning(torch.Tensor(mgc[zz]).to(device).reshape(1, 1, self.MGC_SIZE))
+                conditioning = conditioning.reshape(self.UPSAMPLE_SIZE, self.MGC_PROJECTION)
+                for ii in range(self.UPSAMPLE_SIZE):
                     x = torch.Tensor(signal[-self.RECEPTIVE_FIELD:]).to(device)
                     x = x.reshape(1, 1, x.shape[0])
                     # cond = self.conditioning(torch.Tensor(mgc[ii]).to(device).reshape(1, 60))
-                    pre = self.convolutions(x, conditioning[ii].reshape(1, 32))
+                    pre = self.convolutions(x, conditioning[ii].reshape(1, self.MGC_PROJECTION))
 
                     pre = torch.tanh(pre).reshape(pre.shape[0], pre.shape[1])
 
                     softmax = self.act(self.softmax_layer(pre))
                     # from ipdb import set_trace
                     # set_trace()
-                    sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.8)
+                    sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.5)
                     f = float(sample) / 128 - 1.0
                     sign = np.sign(f)
                     decoded = sign * (1.0 / 255.0) * (pow(1.0 + 255, abs(f)) - 1.0)
@@ -301,18 +258,25 @@ class CondConv(nn.Module):
 
 
 class FullNet(nn.Module):
-    def __init__(self, receptive_field):
+    def __init__(self, receptive_field, conditioning_size, filter_size):
         super(FullNet, self).__init__()
         self.RECEPTIVE_FIELD = receptive_field
-        self.layers = torch.nn.ModuleList([CondConv(1, 32, 32, kernel_size=2, stride=2),
-                                           CondConv(32, 32, 32, kernel_size=2, stride=2),
-                                           CondConv(32, 32, 32, kernel_size=2, stride=2),
-                                           CondConv(32, 32, 32, kernel_size=2, stride=2),
-                                           CondConv(32, 32, 32, kernel_size=2, stride=2),
-                                           CondConv(32, 32, 32, kernel_size=2, stride=2),
-                                           CondConv(32, 32, 32, kernel_size=2, stride=2),
-                                           CondConv(32, 32, 32, kernel_size=2, stride=2),
-                                           CondConv(32, 256, 32, kernel_size=2, stride=2)])
+        self.layers = torch.nn.ModuleList([CondConv(1, filter_size, conditioning_size, kernel_size=2, stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, 512, conditioning_size, kernel_size=2, stride=2)])
 
     def forward(self, input, cond):
         for ii in range(9):
