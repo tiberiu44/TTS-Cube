@@ -153,7 +153,7 @@ class VocoderNetwork(nn.Module):
 
         self.conditioning = nn.Sequential(nn.Linear(self.MGC_SIZE, self.MGC_PROJECTION * self.UPSAMPLE_SIZE))
 
-        self.softmax_layer = nn.Linear(512, 256)
+        self.softmax_layer = nn.Linear(256, 256)
 
         self.act = nn.Softmax(dim=1)
 
@@ -179,7 +179,7 @@ class VocoderNetwork(nn.Module):
             # from ipdb import set_trace
             # set_trace()
             conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, self.MGC_PROJECTION))
-            conditioning = conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_PROJECTION)
+            conditioning = torch.tanh(conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_PROJECTION))
 
             pre = self.convolutions(x, conditioning)
             pre = torch.tanh(pre).reshape(pre.shape[0], pre.shape[1])
@@ -206,7 +206,7 @@ class VocoderNetwork(nn.Module):
                     softmax = self.act(self.softmax_layer(pre))
                     # from ipdb import set_trace
                     # set_trace()
-                    sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.5)
+                    sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.8)
                     f = float(sample) / 128 - 1.0
                     sign = np.sign(f)
                     decoded = sign * (1.0 / 255.0) * (pow(1.0 + 255, abs(f)) - 1.0)
@@ -228,11 +228,14 @@ class VocoderNetwork(nn.Module):
 class CondConv(nn.Module):
     def __init__(self, input_size, output_size, cond_size, kernel_size, stride):
         super(CondConv, self).__init__()
-        self.conv_input = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0)
-        self.conv_gate = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0)
-        self.conv_residual = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0)
-        self.cond_input = nn.Linear(cond_size, output_size)
-        self.cond_gate = nn.Linear(cond_size, output_size)
+        self.conv_input = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                    bias=False)
+        self.conv_gate = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                   bias=False)
+        self.conv_residual = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                       bias=False)
+        self.cond_input = nn.Linear(cond_size, output_size, bias=False)
+        self.cond_gate = nn.Linear(cond_size, output_size, bias=False)
 
         torch.nn.init.xavier_uniform_(self.conv_input.weight)
         torch.nn.init.xavier_uniform_(self.conv_gate.weight)
@@ -276,7 +279,7 @@ class FullNet(nn.Module):
                                                     stride=2),
                                            CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
                                                     stride=2),
-                                           CondConv(filter_size, 512, conditioning_size, kernel_size=2, stride=2)])
+                                           CondConv(filter_size, 256, conditioning_size, kernel_size=2, stride=2)])
 
     def forward(self, input, cond):
         for ii in range(9):
