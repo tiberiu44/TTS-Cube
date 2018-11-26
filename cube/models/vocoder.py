@@ -153,7 +153,7 @@ class VocoderNetwork(nn.Module):
 
         self.conditioning = nn.Sequential(nn.Linear(self.MGC_SIZE, self.MGC_PROJECTION * self.UPSAMPLE_SIZE))
 
-        self.softmax_layer = nn.Linear(256, 256)
+        self.softmax_layer = nn.Linear(64, 256)
 
         self.act = nn.Softmax(dim=1)
 
@@ -264,24 +264,33 @@ class FullNet(nn.Module):
     def __init__(self, receptive_field, conditioning_size, filter_size):
         super(FullNet, self).__init__()
         self.RECEPTIVE_FIELD = receptive_field
-        self.layers = torch.nn.ModuleList([CondConv(1, filter_size, conditioning_size, kernel_size=2, stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, 256, conditioning_size, kernel_size=2, stride=2)])
+        self.FILTER_SIZE = filter_size
+        self.layers = torch.nn.ModuleList(
+            [torch.nn.ModuleList([CondConv(1, 1, conditioning_size, kernel_size=2, stride=2),
+                                  CondConv(1, 1, conditioning_size, kernel_size=2,
+                                           stride=2),
+                                  CondConv(1, 1, conditioning_size, kernel_size=2,
+                                           stride=2),
+                                  CondConv(1, 1, conditioning_size, kernel_size=2,
+                                           stride=2),
+                                  CondConv(1, 1, conditioning_size, kernel_size=2,
+                                           stride=2),
+                                  CondConv(1, 1, conditioning_size, kernel_size=2,
+                                           stride=2),
+                                  CondConv(1, 1, conditioning_size, kernel_size=2,
+                                           stride=2),
+                                  CondConv(1, 1, conditioning_size, kernel_size=2,
+                                           stride=2),
+                                  CondConv(1, 1, conditioning_size, kernel_size=2, stride=2)]) for
+             ii in range(filter_size)])
 
     def forward(self, input, cond):
-        for ii in range(9):
-            input = self.layers[ii](input, cond)
-        return input
+        filter_out = []
+        for iFilter in range(self.FILTER_SIZE):
+            layer_input = input
+            for iLayer in range(9):
+                layer_input = self.layers[iFilter][iLayer](layer_input, cond)
+            filter_out.append(layer_input)
+        # from ipdb import set_trace
+        # set_trace()
+        return torch.cat(filter_out, dim=1)
