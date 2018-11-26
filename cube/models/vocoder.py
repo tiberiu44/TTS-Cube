@@ -265,32 +265,28 @@ class FullNet(nn.Module):
         super(FullNet, self).__init__()
         self.RECEPTIVE_FIELD = receptive_field
         self.FILTER_SIZE = filter_size
-        self.layers = torch.nn.ModuleList(
-            [torch.nn.ModuleList([CondConv(1, 1, conditioning_size, kernel_size=2, stride=2),
-                                  CondConv(1, 1, conditioning_size, kernel_size=2,
-                                           stride=2),
-                                  CondConv(1, 1, conditioning_size, kernel_size=2,
-                                           stride=2),
-                                  CondConv(1, 1, conditioning_size, kernel_size=2,
-                                           stride=2),
-                                  CondConv(1, 1, conditioning_size, kernel_size=2,
-                                           stride=2),
-                                  CondConv(1, 1, conditioning_size, kernel_size=2,
-                                           stride=2),
-                                  CondConv(1, 1, conditioning_size, kernel_size=2,
-                                           stride=2),
-                                  CondConv(1, 1, conditioning_size, kernel_size=2,
-                                           stride=2),
-                                  CondConv(1, 1, conditioning_size, kernel_size=2, stride=2)]) for
-             ii in range(filter_size)])
+        self.layers = torch.nn.ModuleList([CondConv(1, filter_size, conditioning_size, kernel_size=2, stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2),
+                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                                                    stride=2)])
 
     def forward(self, input, cond):
-        filter_out = []
-        for iFilter in range(self.FILTER_SIZE):
-            layer_input = input
-            for iLayer in range(9):
-                layer_input = self.layers[iFilter][iLayer](layer_input, cond)
-            filter_out.append(layer_input)
+        layer_input = input
+        for iLayer in range(9):
+            layer_input = self.layers[iLayer](layer_input, cond)
         # from ipdb import set_trace
         # set_trace()
-        return torch.cat(filter_out, dim=1)
+        return layer_input
