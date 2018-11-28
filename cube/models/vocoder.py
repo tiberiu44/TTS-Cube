@@ -25,6 +25,24 @@ import torch.nn as nn
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
+def log_sum_exp(x):
+    """ numerically stable log_sum_exp implementation that prevents overflow """
+    # TF ordering
+    axis = len(x.size()) - 1
+    m, _ = torch.max(x, dim=axis)
+    m2, _ = torch.max(x, dim=axis, keepdim=True)
+    return m + torch.log(torch.sum(torch.exp(x - m2), dim=axis))
+
+
+def to_one_hot(tensor, n, fill_with=1.):
+    # we perform one hot encore with respect to the last axis
+    one_hot = torch.FloatTensor(tensor.size() + (n,)).zero_()
+    if tensor.is_cuda:
+        one_hot = one_hot.cuda()
+    one_hot.scatter_(len(tensor.size()), tensor.unsqueeze(-1), fill_with)
+    return one_hot
+
+
 class BeeCoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
@@ -60,7 +78,7 @@ class BeeCoder:
 
             # x = [input for ii in range(self.UPSAMPLE_COUNT)]
 
-            [signal, softmax] = self.network([input], prev=synth)
+            [signal, means, logvars, logits] = self.network([input], prev=synth)
             #
             for zz in signal:
                 synth.append(zz.item())
@@ -98,6 +116,36 @@ class BeeCoder:
         loss = 0
         return loss
 
+    def _compute_mixture_loss(self, y_target, means, logvars, logit_probs):
+        num_classes = 65536
+        # from ipdb import set_trace
+        # set_trace()
+
+        y = y_target.reshape(y_target.shape[0], 1).expand_as(means)
+
+        centered_y = y - means
+        inv_stdv = torch.exp(-logvars)
+        plus_in = inv_stdv * (centered_y + 1. / (num_classes - 1))
+        cdf_plus = torch.sigmoid(plus_in)
+        min_in = inv_stdv * (centered_y - 1. / (num_classes - 1))
+        cdf_min = torch.sigmoid(min_in)
+        log_cdf_plus = plus_in - torch.nn.functional.softplus(plus_in)
+        log_one_minus_cdf_min = -torch.nn.functional.softplus(min_in)
+        cdf_delta = cdf_plus - cdf_min
+        mid_in = inv_stdv * centered_y
+        log_pdf_mid = mid_in - logvars - 2. * torch.nn.functional.softplus(mid_in)
+        inner_inner_cond = (cdf_delta > 1e-5).float()
+        inner_inner_out = inner_inner_cond * \
+                          torch.log(torch.clamp(cdf_delta, min=1e-12)) + \
+                          (1. - inner_inner_cond) * (log_pdf_mid - np.log((num_classes - 1) / 2))
+        inner_cond = (y > 0.999).float()
+        inner_out = inner_cond * log_one_minus_cdf_min + (1. - inner_cond) * inner_inner_out
+        cond = (y < -0.999).float()
+        log_probs = cond * log_cdf_plus + (1. - cond) * inner_out
+
+        log_probs = log_probs + torch.nn.functional.log_softmax(logit_probs, -1)
+        return -torch.sum(log_sum_exp(log_probs)) / y_target.shape[0]
+
     def learn(self, wave, mgc, batch_size):
         last_proc = 0
         total_loss = 0
@@ -120,13 +168,14 @@ class BeeCoder:
                 if len(mgc_list) == batch_size:
                     self.trainer.zero_grad()
                     num_batches += 1
-                    y_pred, y_softmax = self.network(mgc_list, signal=signal)
-                    disc, cont = self.dio.ulaw_encode(signal[self.RECEPTIVE_SIZE:])
+                    y_pred, mean, logvar, weight = self.network(mgc_list, signal=signal)
+                    # disc, cont = self.dio.ulaw_encode(signal[self.RECEPTIVE_SIZE:])
                     # from ipdb import set_trace
                     # set_trace()
-                    y_target = torch.tensor(disc, dtype=torch.long).to(device)
+                    y_target = torch.tensor(signal[self.RECEPTIVE_SIZE:], dtype=torch.float).to(device)
 
-                    loss = self.cross_loss(y_softmax, y_target)
+                    loss = self._compute_mixture_loss(y_target, mean, logvar,
+                                                      weight)  # self.cross_loss(y_softmax, y_target)
                     total_loss += loss
                     loss.backward()
                     self.trainer.step()
@@ -140,7 +189,7 @@ class BeeCoder:
 
 
 class VocoderNetwork(nn.Module):
-    def __init__(self, receptive_field=512, mgc_size=60, mgc_projection=60, upsample_size=200):
+    def __init__(self, receptive_field=512, mgc_size=60, mgc_projection=60, upsample_size=200, num_mixtures=10):
         super(VocoderNetwork, self).__init__()
 
         self.RECEPTIVE_FIELD = receptive_field
@@ -148,12 +197,16 @@ class VocoderNetwork(nn.Module):
         self.MGC_SIZE = mgc_size
         self.MGC_PROJECTION = mgc_projection
         self.UPSAMPLE_SIZE = upsample_size
+        self.NUM_MIXTURES = num_mixtures
 
         self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 64)
 
         self.conditioning = nn.Sequential(nn.Linear(self.MGC_SIZE, self.MGC_PROJECTION * self.UPSAMPLE_SIZE))
 
-        self.softmax_layer = nn.Linear(64, 256)
+        # self.softmax_layer = nn.Linear(64, 256)
+        self.mean_layer = nn.Linear(64, num_mixtures)
+        self.stdev_layer = nn.Linear(64, num_mixtures)
+        self.logit_layer = nn.Linear(64, num_mixtures)
 
         self.act = nn.Softmax(dim=1)
 
@@ -161,6 +214,8 @@ class VocoderNetwork(nn.Module):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return eps.mul(std).add_(mu)
+
+
 
     def forward(self, mgc, signal=None, prev=None, training=False):
         # x = x.reshape(x.shape[0], 1, x.shape[1])
@@ -187,7 +242,10 @@ class VocoderNetwork(nn.Module):
             # from ipdb import set_trace
             # set_trace()
 
-            softmax = self.softmax_layer(pre)  # self.act()
+            # softmax = self.softmax_layer(pre)  # self.act()
+            mean = self.mean_layer(pre)
+            stdev = self.stdev_layer(pre)
+            logit = self.logit_layer(pre)
             # from ipdb import set_trace
             # set_trace()
         else:
@@ -203,16 +261,40 @@ class VocoderNetwork(nn.Module):
 
                     pre = torch.tanh(pre).reshape(pre.shape[0], pre.shape[1])
 
-                    softmax = self.act(self.softmax_layer(pre))
+                    # softmax = self.act(self.softmax_layer(pre))
                     # from ipdb import set_trace
                     # set_trace()
-                    sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.8)
-                    f = float(sample) / 128 - 1.0
-                    sign = np.sign(f)
-                    decoded = sign * (1.0 / 255.0) * (pow(1.0 + 255, abs(f)) - 1.0)
-                    signal.append(decoded)
+                    # sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.8)
+                    mean = self.mean_layer(pre)
+                    stdev = self.stdev_layer(pre)
+                    logit = self.logit_layer(pre)
+                    sample = self._pick_sample_from_logistics(mean, stdev, logit)
+                    # f = float(sample) / 128 - 1.0
+                    # sign = np.sign(f)
+                    # decoded = sign * (1.0 / 255.0) * (pow(1.0 + 255, abs(f)) - 1.0)
+                    signal.append(sample)
 
-        return signal[self.RECEPTIVE_FIELD:], softmax
+        return signal[self.RECEPTIVE_FIELD:], mean, stdev, logit  # softmax
+
+    def _pick_sample_from_logistics(self, mean, stdev, logit_probs):
+        log_scale_min = -7.0
+        temp = logit_probs.data.new(logit_probs.size()).uniform_(1e-5, 1.0 - 1e-5)
+        temp = logit_probs.data - torch.log(- torch.log(temp))
+        _, argmax = temp.max(dim=-1)
+
+        # (B, T) -> (B, T, nr_mix)
+        one_hot = to_one_hot(argmax, self.NUM_MIXTURES)
+        # select logistic parameters
+        means = torch.sum(mean * one_hot, dim=-1)
+        log_scales = torch.clamp(torch.sum(
+            stdev * one_hot, dim=-1), min=log_scale_min)
+        # sample from logistic & clip to interval
+        # we don't actually round to the nearest 8bit value when sampling
+        u = means.data.new(means.size()).uniform_(1e-5, 1.0 - 1e-5)
+        x = means + torch.exp(log_scales) * (torch.log(u) - torch.log(1. - u))
+
+        x = torch.clamp(torch.clamp(x, min=-1.), max=1.)
+        return x
 
     def _pick_sample(self, probs, temperature=1.0):
         probs = probs / np.sum(probs)
