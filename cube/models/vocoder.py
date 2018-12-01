@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 
 # Device configuration
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 def log_sum_exp(x):
