@@ -199,14 +199,14 @@ class VocoderNetwork(nn.Module):
         self.UPSAMPLE_SIZE = upsample_size
         self.NUM_MIXTURES = num_mixtures
 
-        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 256)
+        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 128)
 
         self.conditioning = nn.Sequential(nn.Linear(self.MGC_SIZE, self.MGC_PROJECTION * self.UPSAMPLE_SIZE))
 
         # self.softmax_layer = nn.Linear(64, 256)
-        self.mean_layer = nn.Linear(256, num_mixtures)
-        self.stdev_layer = nn.Linear(256, num_mixtures)
-        self.logit_layer = nn.Linear(256, num_mixtures)
+        self.mean_layer = nn.Linear(128, num_mixtures)
+        self.stdev_layer = nn.Linear(128, num_mixtures)
+        self.logit_layer = nn.Linear(128, num_mixtures)
 
         self.act = nn.Softmax(dim=1)
 
@@ -310,14 +310,14 @@ class VocoderNetwork(nn.Module):
 class CondConv(nn.Module):
     def __init__(self, input_size, output_size, cond_size, kernel_size, stride):
         super(CondConv, self).__init__()
-        self.conv_input = nn.utils.weight_norm(nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                    bias=True))
-        self.conv_gate = nn.utils.weight_norm(nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                   bias=True))
-        self.conv_residual = nn.utils.weight_norm(nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                       bias=True))
-        self.cond_input = nn.utils.weight_norm(nn.Linear(cond_size, output_size, bias=True))
-        self.cond_gate = nn.utils.weight_norm(nn.Linear(cond_size, output_size, bias=True))
+        self.conv_input = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                    bias=True)
+        self.conv_gate = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                   bias=True)
+        self.conv_residual = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                       bias=True)
+        self.cond_input = nn.Linear(cond_size, output_size, bias=True)
+        self.cond_gate = nn.Linear(cond_size, output_size, bias=True)
 
         torch.nn.init.xavier_uniform_(self.conv_input.weight)
         torch.nn.init.xavier_uniform_(self.conv_gate.weight)
