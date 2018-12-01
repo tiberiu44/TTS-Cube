@@ -199,14 +199,17 @@ class VocoderNetwork(nn.Module):
         self.UPSAMPLE_SIZE = upsample_size
         self.NUM_MIXTURES = num_mixtures
 
-        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 128)
+        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 64)
 
-        self.conditioning = nn.Sequential(nn.Linear(self.MGC_SIZE, self.MGC_PROJECTION * self.UPSAMPLE_SIZE))
+        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (3, 2), padding=(1, 0), stride=(1, 4)), nn.ELU(),
+                                                nn.ConvTranspose2d(1, 1, (3, 5), padding=(1, 0), stride=(1, 5)), nn.ELU(),
+                                                nn.ConvTranspose2d(1, 1, (3, 5), padding=(1, 0), stride=(1, 5)), nn.ELU(),
+                                                nn.ConvTranspose2d(1, 1, (3, 4), padding=(1, 0), stride=(1, 2)), nn.ELU())
 
         # self.softmax_layer = nn.Linear(64, 256)
-        self.mean_layer = nn.Linear(128, num_mixtures)
-        self.stdev_layer = nn.Linear(128, num_mixtures)
-        self.logit_layer = nn.Linear(128, num_mixtures)
+        self.mean_layer = nn.Linear(64, num_mixtures)
+        self.stdev_layer = nn.Linear(64, num_mixtures)
+        self.logit_layer = nn.Linear(64, num_mixtures)
 
         self.act = nn.Softmax(dim=1)
 
@@ -233,7 +236,7 @@ class VocoderNetwork(nn.Module):
 
             # from ipdb import set_trace
             # set_trace()
-            conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, self.MGC_PROJECTION))
+            conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, 1, self.MGC_PROJECTION))
             conditioning = torch.tanh(conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_PROJECTION))
 
             pre = self.convolutions(x, conditioning)
@@ -251,7 +254,7 @@ class VocoderNetwork(nn.Module):
         else:
             signal = prev[-self.RECEPTIVE_FIELD:]
             for zz in range(len(mgc)):
-                conditioning = self.conditioning(torch.Tensor(mgc[zz]).to(device).reshape(1, 1, self.MGC_SIZE))
+                conditioning = self.conditioning(torch.Tensor(mgc[zz]).to(device).reshape(1, 1, 1, self.MGC_SIZE))
                 conditioning = conditioning.reshape(self.UPSAMPLE_SIZE, self.MGC_PROJECTION)
                 for ii in range(self.UPSAMPLE_SIZE):
                     x = torch.Tensor(signal[-self.RECEPTIVE_FIELD:]).to(device)
