@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 
 # Device configuration
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 
 def log_sum_exp(x):
@@ -38,7 +38,7 @@ def to_one_hot(tensor, n, fill_with=1.):
     # we perform one hot encore with respect to the last axis
     one_hot = torch.FloatTensor(tensor.size() + (n,)).zero_()
     if tensor.is_cuda:
-        one_hot = one_hot.cuda()
+        one_hot = one_hot.to(device)
     one_hot.scatter_(len(tensor.size()), tensor.unsqueeze(-1), fill_with)
     return one_hot
 
@@ -199,14 +199,14 @@ class VocoderNetwork(nn.Module):
         self.UPSAMPLE_SIZE = upsample_size
         self.NUM_MIXTURES = num_mixtures
 
-        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 64)
+        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 256)
 
         self.conditioning = nn.Sequential(nn.Linear(self.MGC_SIZE, self.MGC_PROJECTION * self.UPSAMPLE_SIZE))
 
         # self.softmax_layer = nn.Linear(64, 256)
-        self.mean_layer = nn.Linear(64, num_mixtures)
-        self.stdev_layer = nn.Linear(64, num_mixtures)
-        self.logit_layer = nn.Linear(64, num_mixtures)
+        self.mean_layer = nn.Linear(256, num_mixtures)
+        self.stdev_layer = nn.Linear(256, num_mixtures)
+        self.logit_layer = nn.Linear(256, num_mixtures)
 
         self.act = nn.Softmax(dim=1)
 
@@ -310,14 +310,14 @@ class VocoderNetwork(nn.Module):
 class CondConv(nn.Module):
     def __init__(self, input_size, output_size, cond_size, kernel_size, stride):
         super(CondConv, self).__init__()
-        self.conv_input = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                    bias=False)
-        self.conv_gate = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                   bias=False)
-        self.conv_residual = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                       bias=False)
-        self.cond_input = nn.Linear(cond_size, output_size, bias=False)
-        self.cond_gate = nn.Linear(cond_size, output_size, bias=False)
+        self.conv_input = nn.utils.weight_norm(nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                    bias=False))
+        self.conv_gate = nn.utils.weight_norm(nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                   bias=False))
+        self.conv_residual = nn.utils.weight_norm(nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
+                                       bias=False))
+        self.cond_input = nn.utils.weight_norm(nn.Linear(cond_size, output_size, bias=False))
+        self.cond_gate = nn.utils.weight_norm(nn.Linear(cond_size, output_size, bias=False))
 
         torch.nn.init.xavier_uniform_(self.conv_input.weight)
         torch.nn.init.xavier_uniform_(self.conv_gate.weight)
