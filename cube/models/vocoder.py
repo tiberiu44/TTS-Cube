@@ -314,13 +314,13 @@ class CondConv(nn.Module):
     def __init__(self, input_size, output_size, cond_size, kernel_size, stride):
         super(CondConv, self).__init__()
         self.conv_input = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                    bias=True)
+                                    bias=False)
         self.conv_gate = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                   bias=True)
+                                   bias=False)
         self.conv_residual = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                       bias=True)
-        self.cond_input = nn.Linear(cond_size, output_size, bias=True)
-        self.cond_gate = nn.Linear(cond_size, output_size, bias=True)
+                                       bias=False)
+        self.cond_input = nn.Linear(cond_size, output_size, bias=False)
+        self.cond_gate = nn.Linear(cond_size, output_size, bias=False)
 
         torch.nn.init.xavier_uniform_(self.conv_input.weight)
         torch.nn.init.xavier_uniform_(self.conv_gate.weight)
