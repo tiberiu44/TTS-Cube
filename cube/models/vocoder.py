@@ -199,17 +199,17 @@ class VocoderNetwork(nn.Module):
         self.UPSAMPLE_SIZE = upsample_size
         self.NUM_MIXTURES = num_mixtures
 
-        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 256)
+        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_projection, 64)
 
-        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (3, 2), padding=(1, 0), stride=(1, 2)), nn.ELU(),
-                                                nn.ConvTranspose2d(1, 1, (3, 5), padding=(1, 0), stride=(1, 5)), nn.ELU(),
-                                                nn.ConvTranspose2d(1, 1, (3, 5), padding=(1, 0), stride=(1, 5)), nn.ELU(),
-                                                nn.ConvTranspose2d(1, 1, (3, 4), padding=(1, 0), stride=(1, 4)), nn.ELU())
+        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.ELU(),
+                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ELU(),
+                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ELU(),
+                                          nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ELU())
 
         # self.softmax_layer = nn.Linear(64, 256)
-        self.mean_layer = nn.Linear(256, num_mixtures)
-        self.stdev_layer = nn.Linear(256, num_mixtures)
-        self.logit_layer = nn.Linear(256, num_mixtures)
+        self.mean_layer = nn.Linear(64, num_mixtures)
+        self.stdev_layer = nn.Linear(64, num_mixtures)
+        self.logit_layer = nn.Linear(64, num_mixtures)
 
         self.act = nn.Softmax(dim=1)
 
@@ -217,8 +217,6 @@ class VocoderNetwork(nn.Module):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return eps.mul(std).add_(mu)
-
-
 
     def forward(self, mgc, signal=None, prev=None, training=False):
         # x = x.reshape(x.shape[0], 1, x.shape[1])
@@ -240,7 +238,7 @@ class VocoderNetwork(nn.Module):
             conditioning = conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_PROJECTION)
 
             pre = self.convolutions(x, conditioning)
-            pre = torch.tanh(pre).reshape(pre.shape[0], pre.shape[1])
+            pre = pre.reshape(pre.shape[0], pre.shape[1])
 
             # from ipdb import set_trace
             # set_trace()
@@ -262,7 +260,7 @@ class VocoderNetwork(nn.Module):
                     # cond = self.conditioning(torch.Tensor(mgc[ii]).to(device).reshape(1, 60))
                     pre = self.convolutions(x, conditioning[ii].reshape(1, self.MGC_PROJECTION))
 
-                    pre = torch.tanh(pre).reshape(pre.shape[0], pre.shape[1])
+                    pre = pre.reshape(pre.shape[0], pre.shape[1])
 
                     # softmax = self.act(self.softmax_layer(pre))
                     # from ipdb import set_trace
