@@ -207,9 +207,10 @@ class VocoderNetwork(nn.Module):
                                           nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ELU())
 
         # self.softmax_layer = nn.Linear(64, 256)
-        self.mean_layer = nn.Linear(64, num_mixtures)
-        self.stdev_layer = nn.Linear(64, num_mixtures)
-        self.logit_layer = nn.Linear(64, num_mixtures)
+        self.pre_output = nn.Linear(64, 256)
+        self.mean_layer = nn.Linear(256, num_mixtures)
+        self.stdev_layer = nn.Linear(256, num_mixtures)
+        self.logit_layer = nn.Linear(256, num_mixtures)
 
         self.act = nn.Softmax(dim=1)
 
@@ -239,6 +240,7 @@ class VocoderNetwork(nn.Module):
 
             pre = self.convolutions(x, conditioning)
             pre = pre.reshape(pre.shape[0], pre.shape[1])
+            pre = torch.relu(self.pre_output(pre))
 
             # from ipdb import set_trace
             # set_trace()
@@ -261,7 +263,7 @@ class VocoderNetwork(nn.Module):
                     pre = self.convolutions(x, conditioning[ii].reshape(1, self.MGC_PROJECTION))
 
                     pre = pre.reshape(pre.shape[0], pre.shape[1])
-
+                    pre = torch.relu(self.pre_output(pre))
                     # softmax = self.act(self.softmax_layer(pre))
                     # from ipdb import set_trace
                     # set_trace()
