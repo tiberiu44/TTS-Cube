@@ -211,7 +211,7 @@ class VocoderNetwork(nn.Module):
         self.UPSAMPLE_SIZE = upsample_size
         self.NUM_MIXTURES = num_mixtures
 
-        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, 64)
+        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, 256)
 
         self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.ELU(),
                                           nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ELU(),
@@ -219,7 +219,7 @@ class VocoderNetwork(nn.Module):
                                           nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ELU())
 
         # self.softmax_layer = nn.Linear(64, 256)
-        self.pre_output = nn.Linear(64, 256)
+        self.pre_output = nn.Linear(256, 256)
         self.mean_layer = nn.Linear(256, num_mixtures)
         self.stdev_layer = nn.Linear(256, num_mixtures)
         self.logit_layer = nn.Linear(256, num_mixtures)
