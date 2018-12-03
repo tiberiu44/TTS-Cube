@@ -151,8 +151,8 @@ class BeeCoder:
         # set_trace()
         signal_target = y_target  # y_target.reshape(y_target.shape[0] * y_target.shape[1])
         signal_pred = y_pred.reshape(y_pred.shape[0] * y_pred.shape[1])
-        fft_target = torch.stft(signal_target, 512, window=torch.hann_window(window_length=512))
-        fft_pred = torch.stft(signal_pred, 512, window=torch.hann_window(window_length=512))
+        fft_target = torch.stft(signal_target, 512, window=torch.hann_window(window_length=512).to(device))
+        fft_pred = torch.stft(signal_pred, 512, window=torch.hann_window(window_length=512).to(device))
 
         loss = (fft_target - fft_pred).sum() / (y_target.shape[0] / self.UPSAMPLE_COUNT)
         return loss
