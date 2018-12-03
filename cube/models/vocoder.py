@@ -154,7 +154,7 @@ class BeeCoder:
         fft_target = torch.stft(signal_target, 512, window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(signal_pred, 512, window=torch.hann_window(window_length=512).to(device))
 
-        loss = (fft_target - fft_pred).sum() / (y_target.shape[0] / self.UPSAMPLE_COUNT)
+        loss = torch.abs(fft_target - fft_pred).sum() / (y_target.shape[0] / self.UPSAMPLE_COUNT)
         return loss
 
     def learn(self, wave, mgc, batch_size):
