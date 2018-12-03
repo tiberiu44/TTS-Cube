@@ -162,14 +162,14 @@ class BeeCoder:
         b = fft_pred.split(1, dim=2)[1]
         fft_pred = a + b
 
-        fft_target = torch.log(torch.sqrt(fft_target)) / -10
-        fft_pred = torch.log(torch.sqrt(fft_pred)) / -10
+        fft_target = 20 * (torch.log(torch.clamp(torch.sqrt(fft_target), min=1e-5)) / 2.3026) / -100
+        fft_pred = 20 * (torch.log(torch.clamp(torch.sqrt(fft_pred), min=1e-5)) / 2.3026) / -100
         fft_target = torch.clamp(fft_target, min=1e-5, max=1.0 - 1e-5)
         fft_pred = torch.clamp(fft_pred, min=1e-5, max=1.0 - 1e-5)
         #from ipdb import set_trace
         #set_trace()
         loss = -(fft_target * torch.log(fft_pred) + (1.0 - fft_target) * torch.log(1.0 - fft_pred))
-        loss = loss.sum() / (fft_target.shape[0] * fft_target.shape[1])
+        loss = loss.sum() / (fft_target.shape[1] * fft_target.shape[0])
         return loss
 
     def learn(self, wave, mgc, batch_size):
