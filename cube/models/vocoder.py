@@ -147,14 +147,29 @@ class BeeCoder:
         return -torch.sum(log_sum_exp(log_probs)) / y_target.shape[0]
 
     def _compute_aux_loss(self, y_target, y_pred):
-        # from ipdb import set_trace
-        # set_trace()
+
         signal_target = y_target  # y_target.reshape(y_target.shape[0] * y_target.shape[1])
         signal_pred = y_pred.reshape(y_pred.shape[0] * y_pred.shape[1])
         fft_target = torch.stft(signal_target, 512, window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(signal_pred, 512, window=torch.hann_window(window_length=512).to(device))
 
-        loss = torch.abs(fft_target - fft_pred).sum() / (y_target.shape[0] / self.UPSAMPLE_COUNT)
+        fft_target = fft_target * fft_target
+        fft_pred = fft_pred * fft_pred
+        a = fft_target.split(1, dim=2)[0]
+        b = fft_target.split(1, dim=2)[1]
+        fft_target = a + b
+        a = fft_pred.split(1, dim=2)[0]
+        b = fft_pred.split(1, dim=2)[1]
+        fft_pred = a + b
+
+        fft_target = torch.log(torch.sqrt(fft_target)) / -10
+        fft_pred = torch.log(torch.sqrt(fft_pred)) / -10
+        fft_target = torch.clamp(fft_target, min=1e-5, max=1.0 - 1e-5)
+        fft_pred = torch.clamp(fft_pred, min=1e-5, max=1.0 - 1e-5)
+        #from ipdb import set_trace
+        #set_trace()
+        loss = -(fft_target * torch.log(fft_pred) + (1.0 - fft_target) * torch.log(1.0 - fft_pred))
+        loss = loss.sum() / (fft_target.shape[0] * fft_target.shape[1])
         return loss
 
     def learn(self, wave, mgc, batch_size):
