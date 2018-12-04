@@ -38,7 +38,7 @@ class Trainer:
             mgc = np.load(mgc_file)
             import time
             start = time.time()
-            synth = self.vocoder.synthesize(mgc, batch_size, sample=sample, temperature=temperature)
+            synth, residual = self.vocoder.synthesize(mgc, batch_size, sample=sample, temperature=temperature, return_residual=True)
             stop = time.time()
             sys.stdout.write(" execution time=" + str(stop - start))
             sys.stdout.write('\n')
@@ -48,6 +48,9 @@ class Trainer:
 
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.wav'
             dio.write_wave(output_file, synth, target_sample_rate, dtype=np.int16)
+
+            output_file = 'data/output/' + file[file.rfind('/') + 1:] + 'residual.wav'
+            dio.write_wave(output_file, residual, target_sample_rate, dtype=np.int16)
 
     def _render_devset(self):
         sys.stdout.write('\tRendering devset\n')
@@ -77,7 +80,7 @@ class Trainer:
         dio = DatasetIO()
         self._render_devset()
         sys.stdout.write("\n")
-        # self.synth_devset(batch_size, target_sample_rate)
+        #self.synth_devset(batch_size, target_sample_rate)
         self.vocoder.store('data/models/nn_vocoder')
 
         num_files = 0

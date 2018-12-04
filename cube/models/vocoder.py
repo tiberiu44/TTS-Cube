@@ -62,9 +62,10 @@ class BeeCoder:
         self.cross_loss = torch.nn.CrossEntropyLoss()
         self.cnt = 0
 
-    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
+    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None, return_residual=False):
         last_proc = 0
         synth = [0 for ii in range(self.RECEPTIVE_SIZE)]
+        residual = []
         x = []
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
@@ -79,16 +80,22 @@ class BeeCoder:
             # x = [input for ii in range(self.UPSAMPLE_COUNT)]
 
             [signal, means, logvars, logits, aux] = self.network([input], prev=synth)
+
             #
-            for zz in signal:
+            for zz, rr in zip(signal, aux):
                 synth.append(zz.item())
+                residual.append(rr.item())
             x = []
 
         # synth = self.dio.ulaw_decode(synth, discreete=False)
         synth = np.array(synth[self.RECEPTIVE_SIZE:], dtype=np.float32)
         synth = np.clip(synth * 32768, -32767, 32767)
         synth = np.array(synth, dtype=np.int16)
-
+        residual = np.array(residual, dtype=np.float32)
+        residual = np.clip(residual * 32768, -32767, 32767)
+        residual = np.array(residual, dtype=np.int16)
+        if return_residual:
+            return synth, residual
         return synth
 
     def store(self, output_base):
@@ -153,22 +160,23 @@ class BeeCoder:
         fft_target = torch.stft(signal_target, 512, window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(signal_pred, 512, window=torch.hann_window(window_length=512).to(device))
 
-        fft_target = fft_target * fft_target
-        fft_pred = fft_pred * fft_pred
-        a = fft_target.split(1, dim=2)[0]
-        b = fft_target.split(1, dim=2)[1]
-        fft_target = a + b
-        a = fft_pred.split(1, dim=2)[0]
-        b = fft_pred.split(1, dim=2)[1]
-        fft_pred = a + b
+        #fft_target = fft_target * fft_target
+        #fft_pred = fft_pred * fft_pred
+        loss = torch.abs(fft_target - fft_pred)
+        # a = fft_target.split(1, dim=2)[0]
+        # b = fft_target.split(1, dim=2)[1]
+        # fft_target = a + b
+        # a = fft_pred.split(1, dim=2)[0]
+        # b = fft_pred.split(1, dim=2)[1]
+        # fft_pred = a + b
 
-        fft_target = 20 * (torch.log(torch.clamp(torch.sqrt(fft_target), min=1e-5)) / 2.3026) / -100
-        fft_pred = 20 * (torch.log(torch.clamp(torch.sqrt(fft_pred), min=1e-5)) / 2.3026) / -100
-        fft_target = torch.clamp(fft_target, min=1e-5, max=1.0 - 1e-5)
-        fft_pred = torch.clamp(fft_pred, min=1e-5, max=1.0 - 1e-5)
-        #from ipdb import set_trace
-        #set_trace()
-        loss = -(fft_target * torch.log(fft_pred) + (1.0 - fft_target) * torch.log(1.0 - fft_pred))
+        # fft_target = 20 * (torch.log(torch.clamp(torch.sqrt(fft_target), min=1e-5)) / 2.3026) / -100
+        # fft_pred = 20 * (torch.log(torch.clamp(torch.sqrt(fft_pred), min=1e-5)) / 2.3026) / -100
+        # fft_target = torch.clamp(fft_target, min=1e-5, max=1.0 - 1e-5)
+        # fft_pred = torch.clamp(fft_pred, min=1e-5, max=1.0 - 1e-5)
+        # # from ipdb import set_trace
+        # # set_trace()
+        # loss = -(fft_target * torch.log(fft_pred) + (1.0 - fft_target) * torch.log(1.0 - fft_pred))
         loss = loss.sum() / (fft_target.shape[1] * fft_target.shape[0])
         return loss
 
@@ -200,10 +208,10 @@ class BeeCoder:
                     # set_trace()
                     y_target = torch.tensor(signal[self.RECEPTIVE_SIZE:], dtype=torch.float).to(device)
 
-                    loss = self._compute_mixture_loss(y_target, mean, logvar,
-                                                      weight)  # self.cross_loss(y_softmax, y_target)
+                    # loss = self._compute_mixture_loss(y_target, mean, logvar,
+                    #                                  weight)  # self.cross_loss(y_softmax, y_target)
 
-                    loss += self._compute_aux_loss(y_target, y_aux)
+                    loss = self._compute_aux_loss(y_target, y_aux)
                     total_loss += loss
                     loss.backward()
                     self.trainer.step()
@@ -232,6 +240,10 @@ class VocoderNetwork(nn.Module):
                                           nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ELU(),
                                           nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ELU(),
                                           nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ELU())
+        torch.nn.init.xavier_uniform_(self.conditioning[0].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[2].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[4].weight)
+        torch.nn.init.xavier_uniform_(self.conditioning[6].weight)
 
         # self.softmax_layer = nn.Linear(64, 256)
         self.pre_output = nn.Linear(256, 256)
@@ -250,6 +262,7 @@ class VocoderNetwork(nn.Module):
 
     def forward(self, mgc, signal=None, prev=None, training=False):
         # x = x.reshape(x.shape[0], 1, x.shape[1])
+        conditioning_out = []
 
         if signal is not None:
             # prepare the input
@@ -306,7 +319,8 @@ class VocoderNetwork(nn.Module):
                     # sign = np.sign(f)
                     # decoded = sign * (1.0 / 255.0) * (pow(1.0 + 255, abs(f)) - 1.0)
                     signal.append(sample)
-                conditioning_out = None
+                conditioning_out.append(self.softsign(self.conditioning_out(conditioning)))
+            conditioning_out = torch.cat(conditioning_out).reshape(len(signal) - self.RECEPTIVE_FIELD)
 
         return signal[self.RECEPTIVE_FIELD:], mean, stdev, logit, conditioning_out  # softmax
 
