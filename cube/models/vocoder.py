@@ -211,7 +211,7 @@ class BeeCoder:
                     loss = self._compute_mixture_loss(y_target, mean, logvar,
                                                       weight)  # self.cross_loss(y_softmax, y_target)
 
-                    loss = +self._compute_aux_loss(y_target, y_aux)
+                    loss += self._compute_aux_loss(y_target, y_aux)
                     total_loss += loss
                     loss.backward()
                     self.trainer.step()
