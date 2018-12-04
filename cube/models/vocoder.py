@@ -160,8 +160,8 @@ class BeeCoder:
         fft_target = torch.stft(signal_target, 512, window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(signal_pred, 512, window=torch.hann_window(window_length=512).to(device))
 
-        #fft_target = fft_target * fft_target
-        #fft_pred = fft_pred * fft_pred
+        # fft_target = fft_target * fft_target
+        # fft_pred = fft_pred * fft_pred
         loss = torch.abs(fft_target - fft_pred)
         # a = fft_target.split(1, dim=2)[0]
         # b = fft_target.split(1, dim=2)[1]
@@ -208,10 +208,10 @@ class BeeCoder:
                     # set_trace()
                     y_target = torch.tensor(signal[self.RECEPTIVE_SIZE:], dtype=torch.float).to(device)
 
-                    # loss = self._compute_mixture_loss(y_target, mean, logvar,
-                    #                                  weight)  # self.cross_loss(y_softmax, y_target)
+                    loss = self._compute_mixture_loss(y_target, mean, logvar,
+                                                      weight)  # self.cross_loss(y_softmax, y_target)
 
-                    loss = self._compute_aux_loss(y_target, y_aux)
+                    loss = +self._compute_aux_loss(y_target, y_aux)
                     total_loss += loss
                     loss.backward()
                     self.trainer.step()
