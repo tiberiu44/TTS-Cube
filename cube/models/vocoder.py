@@ -48,13 +48,13 @@ class BeeCoder:
         self.params = params
 
         self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
-        self.RECEPTIVE_SIZE = 1024  # this means 64ms
+        self.RECEPTIVE_SIZE = 512  # this means 16ms
 
         self.sparse = False
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
 
-        self.network = VocoderNetwork(receptive_field=self.RECEPTIVE_SIZE).to(device)
+        self.network = VocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=64).to(device)
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
         self.abs_loss = torch.nn.L1Loss()
         self.mse_loss = torch.nn.MSELoss()
@@ -184,7 +184,7 @@ class BeeCoder:
 
 
 class VocoderNetwork(nn.Module):
-    def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, num_mixtures=10):
+    def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, num_mixtures=10, filter_size=256):
         super(VocoderNetwork, self).__init__()
 
         self.RECEPTIVE_FIELD = receptive_field
@@ -193,7 +193,7 @@ class VocoderNetwork(nn.Module):
         self.UPSAMPLE_SIZE = upsample_size
         self.NUM_MIXTURES = num_mixtures
 
-        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, 256)
+        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, filter_size)
 
         self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
                                           nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
@@ -205,7 +205,7 @@ class VocoderNetwork(nn.Module):
         torch.nn.init.xavier_uniform_(self.conditioning[6].weight)
 
         # self.softmax_layer = nn.Linear(64, 256)
-        self.pre_output = nn.Linear(256, 256)
+        self.pre_output = nn.Linear(filter_size, 256)
         self.mean_layer = nn.Linear(256, num_mixtures)
         self.stdev_layer = nn.Linear(256, num_mixtures)
         self.logit_layer = nn.Linear(256, num_mixtures)
