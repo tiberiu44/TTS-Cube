@@ -195,14 +195,14 @@ class VocoderNetwork(nn.Module):
 
         self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, filter_size)
 
-        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
-                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
-                                          nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ReLU(),
-                                          nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.ReLU())
-        torch.nn.init.xavier_uniform_(self.conditioning[0].weight)
-        torch.nn.init.xavier_uniform_(self.conditioning[2].weight)
-        torch.nn.init.xavier_uniform_(self.conditioning[4].weight)
-        torch.nn.init.xavier_uniform_(self.conditioning[6].weight)
+        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.Tanh(),
+                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.Tanh(),
+                                          nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.Tanh(),
+                                          nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.Tanh())
+        torch.nn.init.xavier_normal_(self.conditioning[0].weight)
+        torch.nn.init.xavier_normal_(self.conditioning[2].weight)
+        torch.nn.init.xavier_normal_(self.conditioning[4].weight)
+        torch.nn.init.xavier_normal_(self.conditioning[6].weight)
 
         # self.softmax_layer = nn.Linear(64, 256)
         self.pre_output = nn.Linear(filter_size, 256)
@@ -298,11 +298,11 @@ class CondConv(nn.Module):
         self.cond_input = nn.Linear(cond_size, output_size, bias=True)
         self.cond_gate = nn.Linear(cond_size, output_size, bias=True)
 
-        torch.nn.init.xavier_uniform_(self.conv_input.weight)
-        torch.nn.init.xavier_uniform_(self.conv_gate.weight)
-        torch.nn.init.xavier_uniform_(self.conv_residual.weight)
-        torch.nn.init.xavier_uniform_(self.cond_input.weight)
-        torch.nn.init.xavier_uniform_(self.cond_gate.weight)
+        torch.nn.init.xavier_normal_(self.conv_input.weight)
+        torch.nn.init.xavier_normal_(self.conv_gate.weight)
+        torch.nn.init.xavier_normal_(self.conv_residual.weight)
+        torch.nn.init.xavier_normal_(self.cond_input.weight)
+        torch.nn.init.xavier_normal_(self.cond_gate.weight)
 
     def forward(self, conv, cond):
         input = self.conv_input(conv)
