@@ -236,10 +236,10 @@ class VocoderNetwork(nn.Module):
 
         self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, 256)
 
-        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.ELU(),
-                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ELU(),
-                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ELU(),
-                                          nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ELU())
+        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.ReLU(),
+                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
+                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
+                                          nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ReLU())
         torch.nn.init.xavier_uniform_(self.conditioning[0].weight)
         torch.nn.init.xavier_uniform_(self.conditioning[2].weight)
         torch.nn.init.xavier_uniform_(self.conditioning[4].weight)
