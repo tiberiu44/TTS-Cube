@@ -48,7 +48,7 @@ class BeeCoder:
         self.params = params
 
         self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
-        self.RECEPTIVE_SIZE = 512  # this means 32ms
+        self.RECEPTIVE_SIZE = 1024  # this means 64ms
 
         self.sparse = False
         self.dio = DatasetIO()
@@ -65,8 +65,7 @@ class BeeCoder:
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None, return_residual=False):
         last_proc = 0
         synth = [0 for ii in range(self.RECEPTIVE_SIZE)]
-        residual = []
-        x = []
+
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -77,25 +76,16 @@ class BeeCoder:
 
             input = mgc[mgc_index]
 
-            # x = [input for ii in range(self.UPSAMPLE_COUNT)]
-
-            [signal, means, logvars, logits, aux] = self.network([input], prev=synth)
+            [signal, means, logvars, logits] = self.network([input], prev=synth)
 
             #
-            for zz, rr in zip(signal, aux):
+            for zz in signal:
                 synth.append(zz.item())
-                residual.append(rr.item())
-            x = []
 
-        # synth = self.dio.ulaw_decode(synth, discreete=False)
         synth = np.array(synth[self.RECEPTIVE_SIZE:], dtype=np.float32)
         synth = np.clip(synth * 32768, -32767, 32767)
         synth = np.array(synth, dtype=np.int16)
-        residual = np.array(residual, dtype=np.float32)
-        residual = np.clip(residual * 32768, -32767, 32767)
-        residual = np.array(residual, dtype=np.int16)
-        if return_residual:
-            return synth, residual
+
         return synth
 
     def store(self, output_base):
@@ -113,7 +103,6 @@ class BeeCoder:
             self.network.load_state_dict(
                 torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
         self.network.to(device)
-        # self.model.populate(output_base + ".network")
 
     def _predict_one(self, mgc, noise):
 
@@ -125,8 +114,6 @@ class BeeCoder:
 
     def _compute_mixture_loss(self, y_target, means, logvars, logit_probs):
         num_classes = 65536
-        # from ipdb import set_trace
-        # set_trace()
 
         y = y_target.reshape(y_target.shape[0], 1).expand_as(means)
 
@@ -153,33 +140,6 @@ class BeeCoder:
         log_probs = log_probs + torch.nn.functional.log_softmax(logit_probs, -1)
         return -torch.sum(log_sum_exp(log_probs)) / y_target.shape[0]
 
-    def _compute_aux_loss(self, y_target, y_pred):
-
-        signal_target = y_target  # y_target.reshape(y_target.shape[0] * y_target.shape[1])
-        signal_pred = y_pred.reshape(y_pred.shape[0] * y_pred.shape[1])
-        fft_target = torch.stft(signal_target, 512, window=torch.hann_window(window_length=512).to(device))
-        fft_pred = torch.stft(signal_pred, 512, window=torch.hann_window(window_length=512).to(device))
-
-        # fft_target = fft_target * fft_target
-        # fft_pred = fft_pred * fft_pred
-        loss = torch.abs(fft_target - fft_pred)
-        # a = fft_target.split(1, dim=2)[0]
-        # b = fft_target.split(1, dim=2)[1]
-        # fft_target = a + b
-        # a = fft_pred.split(1, dim=2)[0]
-        # b = fft_pred.split(1, dim=2)[1]
-        # fft_pred = a + b
-
-        # fft_target = 20 * (torch.log(torch.clamp(torch.sqrt(fft_target), min=1e-5)) / 2.3026) / -100
-        # fft_pred = 20 * (torch.log(torch.clamp(torch.sqrt(fft_pred), min=1e-5)) / 2.3026) / -100
-        # fft_target = torch.clamp(fft_target, min=1e-5, max=1.0 - 1e-5)
-        # fft_pred = torch.clamp(fft_pred, min=1e-5, max=1.0 - 1e-5)
-        # # from ipdb import set_trace
-        # # set_trace()
-        # loss = -(fft_target * torch.log(fft_pred) + (1.0 - fft_target) * torch.log(1.0 - fft_pred))
-        loss = loss.sum() / (fft_target.shape[1] * fft_target.shape[0])
-        return loss
-
     def learn(self, wave, mgc, batch_size):
         last_proc = 0
         total_loss = 0
@@ -202,7 +162,7 @@ class BeeCoder:
                 if len(mgc_list) == batch_size:
                     self.trainer.zero_grad()
                     num_batches += 1
-                    y_pred, mean, logvar, weight, y_aux = self.network(mgc_list, signal=signal)
+                    y_pred, mean, logvar, weight = self.network(mgc_list, signal=signal)
                     # disc, cont = self.dio.ulaw_encode(signal[self.RECEPTIVE_SIZE:])
                     # from ipdb import set_trace
                     # set_trace()
@@ -211,7 +171,6 @@ class BeeCoder:
                     loss = self._compute_mixture_loss(y_target, mean, logvar,
                                                       weight)  # self.cross_loss(y_softmax, y_target)
 
-                    loss += self._compute_aux_loss(y_target, y_aux)
                     total_loss += loss
                     loss.backward()
                     self.trainer.step()
@@ -225,7 +184,7 @@ class BeeCoder:
 
 
 class VocoderNetwork(nn.Module):
-    def __init__(self, receptive_field=512, mgc_size=60, upsample_size=200, num_mixtures=10):
+    def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, num_mixtures=10):
         super(VocoderNetwork, self).__init__()
 
         self.RECEPTIVE_FIELD = receptive_field
@@ -236,10 +195,10 @@ class VocoderNetwork(nn.Module):
 
         self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, 256)
 
-        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.ReLU(),
+        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
                                           nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
-                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.ReLU(),
-                                          nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ReLU())
+                                          nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.ReLU(),
+                                          nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.ReLU())
         torch.nn.init.xavier_uniform_(self.conditioning[0].weight)
         torch.nn.init.xavier_uniform_(self.conditioning[2].weight)
         torch.nn.init.xavier_uniform_(self.conditioning[4].weight)
@@ -261,9 +220,6 @@ class VocoderNetwork(nn.Module):
         return eps.mul(std).add_(mu)
 
     def forward(self, mgc, signal=None, prev=None, training=False):
-        # x = x.reshape(x.shape[0], 1, x.shape[1])
-        conditioning_out = []
-
         if signal is not None:
             # prepare the input
 
@@ -273,10 +229,7 @@ class VocoderNetwork(nn.Module):
 
             x = torch.Tensor(x_list).to(device)
             x = x.reshape(x.shape[0], 1, x.shape[1])
-            pre_softmax = []
 
-            # from ipdb import set_trace
-            # set_trace()
             conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, 1, self.MGC_SIZE))
             conditioning = conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_SIZE)
 
@@ -284,16 +237,9 @@ class VocoderNetwork(nn.Module):
             pre = pre.reshape(pre.shape[0], pre.shape[1])
             pre = torch.relu(self.pre_output(pre))
 
-            # from ipdb import set_trace
-            # set_trace()
-
-            # softmax = self.softmax_layer(pre)  # self.act()
             mean = self.mean_layer(pre)
             stdev = self.stdev_layer(pre)
             logit = self.logit_layer(pre)
-            conditioning_out = self.softsign(self.conditioning_out(conditioning))
-            # from ipdb import set_trace
-            # set_trace()
         else:
             signal = prev[-self.RECEPTIVE_FIELD:]
             for zz in range(len(mgc)):
@@ -302,27 +248,18 @@ class VocoderNetwork(nn.Module):
                 for ii in range(self.UPSAMPLE_SIZE):
                     x = torch.Tensor(signal[-self.RECEPTIVE_FIELD:]).to(device)
                     x = x.reshape(1, 1, x.shape[0])
-                    # cond = self.conditioning(torch.Tensor(mgc[ii]).to(device).reshape(1, 60))
-                    pre = self.convolutions(x, conditioning[ii].reshape(1, self.MGC_SIZE))
 
+                    pre = self.convolutions(x, conditioning[ii].reshape(1, self.MGC_SIZE))
                     pre = pre.reshape(pre.shape[0], pre.shape[1])
                     pre = torch.relu(self.pre_output(pre))
-                    # softmax = self.act(self.softmax_layer(pre))
-                    # from ipdb import set_trace
-                    # set_trace()
-                    # sample = self._pick_sample(softmax.data.cpu().numpy().reshape(256), temperature=0.8)
+
                     mean = self.mean_layer(pre)
                     stdev = self.stdev_layer(pre)
-                    logit = self.logit_layer(pre)
-                    sample = self._pick_sample_from_logistics(mean, stdev, logit)
-                    # f = float(sample) / 128 - 1.0
-                    # sign = np.sign(f)
-                    # decoded = sign * (1.0 / 255.0) * (pow(1.0 + 255, abs(f)) - 1.0)
+                    logits = self.logit_layer(pre)
+                    sample = self._pick_sample_from_logistics(mean, stdev, logits)
                     signal.append(sample)
-                conditioning_out.append(self.softsign(self.conditioning_out(conditioning)))
-            conditioning_out = torch.cat(conditioning_out).reshape(len(signal) - self.RECEPTIVE_FIELD)
 
-        return signal[self.RECEPTIVE_FIELD:], mean, stdev, logit, conditioning_out  # softmax
+        return signal[self.RECEPTIVE_FIELD:], mean, stdev, logit
 
     def _pick_sample_from_logistics(self, mean, stdev, logit_probs):
         log_scale_min = -7.0
@@ -330,14 +267,10 @@ class VocoderNetwork(nn.Module):
         temp = logit_probs.data - torch.log(- torch.log(temp))
         _, argmax = temp.max(dim=-1)
 
-        # (B, T) -> (B, T, nr_mix)
         one_hot = to_one_hot(argmax, self.NUM_MIXTURES)
-        # select logistic parameters
         means = torch.sum(mean * one_hot, dim=-1)
         log_scales = torch.clamp(torch.sum(
             stdev * one_hot, dim=-1), min=log_scale_min)
-        # sample from logistic & clip to interval
-        # we don't actually round to the nearest 8bit value when sampling
         u = means.data.new(means.size()).uniform_(1e-5, 1.0 - 1e-5)
         x = means + torch.exp(log_scales) * (torch.log(u) - torch.log(1. - u))
 
@@ -350,8 +283,6 @@ class VocoderNetwork(nn.Module):
         scaled_prediction = (scaled_prediction -
                              np.logaddexp.reduce(scaled_prediction))
         scaled_prediction = np.exp(scaled_prediction)
-        # print np.sum(probs)
-        # probs = probs / np.sum(probs)
         return np.random.choice(np.arange(256), p=scaled_prediction)
 
 
@@ -359,13 +290,13 @@ class CondConv(nn.Module):
     def __init__(self, input_size, output_size, cond_size, kernel_size, stride):
         super(CondConv, self).__init__()
         self.conv_input = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                    bias=False)
+                                    bias=True)
         self.conv_gate = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                   bias=False)
+                                   bias=True)
         self.conv_residual = nn.Conv1d(input_size, output_size, kernel_size=kernel_size, stride=stride, padding=0,
-                                       bias=False)
-        self.cond_input = nn.Linear(cond_size, output_size, bias=False)
-        self.cond_gate = nn.Linear(cond_size, output_size, bias=False)
+                                       bias=True)
+        self.cond_input = nn.Linear(cond_size, output_size, bias=True)
+        self.cond_gate = nn.Linear(cond_size, output_size, bias=True)
 
         torch.nn.init.xavier_uniform_(self.conv_input.weight)
         torch.nn.init.xavier_uniform_(self.conv_gate.weight)
@@ -386,7 +317,7 @@ class CondConv(nn.Module):
         gate_cond = gate_cond.reshape(input_cond.shape[0], input_cond.shape[1], 1).expand(-1, -1, input.shape[2])
         it = torch.tanh(input + input_cond)
         gt = torch.sigmoid(gate + gate_cond)
-        output = it * gt + residual
+        output = (it * gt + residual) * 0.70710678118  # don't know why :)
         return output
 
 
@@ -395,28 +326,18 @@ class FullNet(nn.Module):
         super(FullNet, self).__init__()
         self.RECEPTIVE_FIELD = receptive_field
         self.FILTER_SIZE = filter_size
-        self.layers = torch.nn.ModuleList([CondConv(1, filter_size, conditioning_size, kernel_size=2, stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2),
-                                           CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
-                                                    stride=2)])
+        ml = [CondConv(1, filter_size, conditioning_size, kernel_size=2, stride=2)]
+        rc = receptive_field // 2
+        while rc != 1:
+            ml.append(CondConv(filter_size, filter_size, conditioning_size, kernel_size=2,
+                               stride=2))
+            rc = rc // 2
+        self.num_layers = len(ml)
+        self.layers = torch.nn.ModuleList(ml)
 
     def forward(self, input, cond):
         layer_input = input
-        for iLayer in range(9):
+        for iLayer in range(self.num_layers):
             layer_input = self.layers[iLayer](layer_input, cond)
-        # from ipdb import set_trace
-        # set_trace()
+
         return layer_input
