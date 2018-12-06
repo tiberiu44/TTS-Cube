@@ -239,7 +239,7 @@ class VocoderNetwork(nn.Module):
 
             mean = self.mean_layer(pre)
             stdev = self.stdev_layer(pre)
-            logit = self.logit_layer(pre)
+            logits = self.logit_layer(pre)
         else:
             signal = prev[-self.RECEPTIVE_FIELD:]
             for zz in range(len(mgc)):
@@ -259,7 +259,7 @@ class VocoderNetwork(nn.Module):
                     sample = self._pick_sample_from_logistics(mean, stdev, logits)
                     signal.append(sample)
 
-        return signal[self.RECEPTIVE_FIELD:], mean, stdev, logit
+        return signal[self.RECEPTIVE_FIELD:], mean, stdev, logits
 
     def _pick_sample_from_logistics(self, mean, stdev, logit_probs):
         log_scale_min = -7.0
