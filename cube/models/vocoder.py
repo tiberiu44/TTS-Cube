@@ -54,7 +54,7 @@ class BeeCoder:
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
 
-        self.network = VocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=64).to(device)
+        self.network = VocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=256).to(device)
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
         self.abs_loss = torch.nn.L1Loss()
         self.mse_loss = torch.nn.MSELoss()
@@ -195,14 +195,13 @@ class VocoderNetwork(nn.Module):
 
         self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, filter_size)
 
-        self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.Tanh(),
-                                          nn.ConvTranspose2d(1, 1, (5, 5), padding=(2, 0), stride=(1, 5)), nn.Tanh(),
-                                          nn.ConvTranspose2d(1, 1, (5, 4), padding=(2, 0), stride=(1, 4)), nn.Tanh(),
-                                          nn.ConvTranspose2d(1, 1, (5, 2), padding=(2, 0), stride=(1, 2)), nn.Tanh())
-        torch.nn.init.xavier_normal_(self.conditioning[0].weight)
-        torch.nn.init.xavier_normal_(self.conditioning[2].weight)
-        torch.nn.init.xavier_normal_(self.conditioning[4].weight)
-        torch.nn.init.xavier_normal_(self.conditioning[6].weight)
+        # self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 200), padding=(2, 0), stride=(1, 200)),
+        #                                  nn.Tanh())
+        # torch.nn.init.xavier_normal_(self.conditioning[0].weight)
+        # torch.nn.init.xavier_normal_(self.conditioning[2].weight)
+        # torch.nn.init.xavier_normal_(self.conditioning[4].weight)
+        # torch.nn.init.xavier_normal_(self.conditioning[6].weight)
+        self.conditioning = nn.Sequential(nn.Linear(mgc_size, mgc_size * upsample_size), nn.Tanh())
 
         # self.softmax_layer = nn.Linear(64, 256)
         self.pre_output = nn.Linear(filter_size, 256)
