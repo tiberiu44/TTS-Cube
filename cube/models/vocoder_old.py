@@ -77,7 +77,7 @@ class BeeCoder:
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
 
-    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
+    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None, return_residual=False):
         last_proc = 0
         synth = []
         noise = np.random.normal(0, 1.0, (len(mgc) * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT))

@@ -71,6 +71,8 @@ def _render_spectrogram(mgc, output_file):
 
 
 def synthesize(speaker, input_file, output_file, params):
+    from models.vocoder import device
+    print (device)
     print("[Encoding]")
     from io_modules.dataset import Dataset
     from io_modules.dataset import Encodings

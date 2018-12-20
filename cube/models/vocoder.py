@@ -56,10 +56,6 @@ class BeeCoder:
 
         self.network = VocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=256).to(device)
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
-        self.abs_loss = torch.nn.L1Loss()
-        self.mse_loss = torch.nn.MSELoss()
-        self.bce_loss = torch.nn.BCELoss()
-        self.cross_loss = torch.nn.CrossEntropyLoss()
         self.cnt = 0
 
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None, return_residual=False):
@@ -90,8 +86,6 @@ class BeeCoder:
 
     def store(self, output_base):
         torch.save(self.network.state_dict(), output_base + ".network")
-        # self.model.save(output_base + ".network")
-        x = 0
 
     def load(self, output_base):
         if torch.cuda.is_available():
@@ -103,14 +97,6 @@ class BeeCoder:
             self.network.load_state_dict(
                 torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
         self.network.to(device)
-
-    def _predict_one(self, mgc, noise):
-
-        return None
-
-    def _get_loss(self, signal_orig, signal_pred):
-        loss = 0
-        return loss
 
     def _compute_mixture_loss(self, y_target, means, logvars, logit_probs):
         num_classes = 65536
@@ -163,13 +149,11 @@ class BeeCoder:
                     self.trainer.zero_grad()
                     num_batches += 1
                     y_pred, mean, logvar, weight = self.network(mgc_list, signal=signal)
-                    # disc, cont = self.dio.ulaw_encode(signal[self.RECEPTIVE_SIZE:])
-                    # from ipdb import set_trace
-                    # set_trace()
+
                     y_target = torch.tensor(signal[self.RECEPTIVE_SIZE:], dtype=torch.float).to(device)
 
                     loss = self._compute_mixture_loss(y_target, mean, logvar,
-                                                      weight)  # self.cross_loss(y_softmax, y_target)
+                                                      weight)
 
                     total_loss += loss
                     loss.backward()
@@ -193,14 +177,8 @@ class VocoderNetwork(nn.Module):
         self.UPSAMPLE_SIZE = upsample_size
         self.NUM_MIXTURES = num_mixtures
 
-        self.convolutions = FullNet(self.RECEPTIVE_FIELD, mgc_size, filter_size)
+        self.convolutions = WaveNet(self.RECEPTIVE_FIELD, mgc_size, filter_size)
 
-        # self.conditioning = nn.Sequential(nn.ConvTranspose2d(1, 1, (5, 200), padding=(2, 0), stride=(1, 200)),
-        #                                  nn.Tanh())
-        # torch.nn.init.xavier_normal_(self.conditioning[0].weight)
-        # torch.nn.init.xavier_normal_(self.conditioning[2].weight)
-        # torch.nn.init.xavier_normal_(self.conditioning[4].weight)
-        # torch.nn.init.xavier_normal_(self.conditioning[6].weight)
         self.conditioning = nn.Sequential(nn.Linear(mgc_size, mgc_size * upsample_size), nn.Tanh())
 
         # self.softmax_layer = nn.Linear(64, 256)
@@ -308,8 +286,6 @@ class CondConv(nn.Module):
         gate = self.conv_gate(conv)
         residual = self.conv_residual(conv)
 
-        # from ipdb import set_trace
-        # set_trace()
         input_cond = self.cond_input(cond)
         gate_cond = self.cond_gate(cond)
         input_cond = input_cond.reshape(input_cond.shape[0], input_cond.shape[1], 1).expand(-1, -1, input.shape[2])
@@ -320,9 +296,9 @@ class CondConv(nn.Module):
         return output
 
 
-class FullNet(nn.Module):
+class WaveNet(nn.Module):
     def __init__(self, receptive_field, conditioning_size, filter_size):
-        super(FullNet, self).__init__()
+        super(WaveNet, self).__init__()
         self.RECEPTIVE_FIELD = receptive_field
         self.FILTER_SIZE = filter_size
         ml = [CondConv(1, filter_size, conditioning_size, kernel_size=2, stride=2)]
