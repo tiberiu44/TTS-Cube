@@ -223,9 +223,9 @@ if __name__ == '__main__':
 
     def phase_2_train_vocoder(params):
         from io_modules.dataset import Dataset
-        from models.vocoder import BeeCoder
+        from models.vocoder import WavenetVocoder
         from trainers.vocoder import Trainer
-        vocoder = BeeCoder(params)
+        vocoder = WavenetVocoder(params)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             vocoder.load('data/models/nn_vocoder')
@@ -282,10 +282,26 @@ if __name__ == '__main__':
         trainer = Trainer(encoder, trainset, devset)
         trainer.start_training(10, 1000, params)
 
+
     def phase_4_train_pvocoder(params):
-        pass
+        from io_modules.dataset import Dataset
+        from models.vocoder import WavenetVocoder
+        from models.vocoder import ParallelWavenetVocoder
+        from trainers.vocoder import Trainer
+        vocoder_wavenet = WavenetVocoder(params)
+        sys.stdout.write('Loading wavenet vocoder\n')
+        vocoder_wavenet.load('data/models/nn_vocoder')
+        vocoder = ParallelWavenetVocoder(params, vocoder_wavenet)
+        if params.resume:
+            sys.stdout.write('Resuming from previous checkpoint\n')
+            vocoder.load('data/models/pnn_vocoder')
 
-
+        trainset = Dataset("data/processed/train")
+        devset = Dataset("data/processed/dev")
+        sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
+            len(devset.files)) + ' development files\n')
+        trainer = Trainer(vocoder, trainset, devset, target_output_path='data/models/pnn_vocoder')
+        trainer.start_training(20, params.batch_size, params.target_sample_rate)
 
 
     if params.phase and params.phase == '1':
@@ -296,4 +312,3 @@ if __name__ == '__main__':
         phase_3_train_encoder(params)
     if params.phase and params.phase == '4':
         phase_4_train_pvocoder(params)
-

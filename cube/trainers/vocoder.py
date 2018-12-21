@@ -20,11 +20,12 @@ from io_modules.dataset import DatasetIO
 
 
 class Trainer:
-    def __init__(self, vocoder, trainset, devset, use_ulaw=False):
+    def __init__(self, vocoder, trainset, devset, use_ulaw=False, target_output_path='data/models/nn_vocoder'):
         self.vocoder = vocoder
         self.trainset = trainset
         self.devset = devset
         self.use_ulaw = use_ulaw
+        self.target_output_path = target_output_path
 
     def synth_devset(self, batch_size, target_sample_rate, sample=True, temperature=1.0):
         sys.stdout.write('\tSynthesizing devset\n')
@@ -38,7 +39,7 @@ class Trainer:
             mgc = np.load(mgc_file)
             import time
             start = time.time()
-            synth = self.vocoder.synthesize(mgc, batch_size, sample=sample, temperature=temperature)
+            synth = self.vocoder.synthesize(mgc, batch_size)
             stop = time.time()
             sys.stdout.write(" execution time=" + str(stop - start))
             sys.stdout.write('\n')
@@ -77,8 +78,8 @@ class Trainer:
         dio = DatasetIO()
         self._render_devset()
         sys.stdout.write("\n")
-        #self.synth_devset(batch_size, target_sample_rate)
-        self.vocoder.store('data/models/nn_vocoder')
+        # self.synth_devset(batch_size, target_sample_rate)
+        self.vocoder.store(self.target_output_path)
 
         num_files = 0
         while left_itt > 0:
@@ -111,9 +112,9 @@ class Trainer:
                 sys.stdout.flush()
                 if file_index % 500 == 0:
                     self.synth_devset(batch_size, target_sample_rate)
-                    self.vocoder.store('data/models/nn_vocoder')
+                    self.vocoder.store(self.target_output_path)
 
             self.synth_devset(batch_size, target_sample_rate)
-            self.vocoder.store('data/models/nn_vocoder')
+            self.vocoder.store(self.target_output_path)
 
             epoch += 1

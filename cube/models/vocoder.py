@@ -43,20 +43,182 @@ def to_one_hot(tensor, n, fill_with=1.):
     return one_hot
 
 
-class BeeCoder:
+class ParallelWavenetVocoder:
+    def __init__(self, params, wavenet):
+        self.params = params
+        self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
+        self.RECEPTIVE_SIZE = 512  # this means 16ms
+        self.MGC_SIZE = params.mgc_order
+        self.dio = DatasetIO()
+        self.vocoder = MelVocoder()
+        self.wavenet = wavenet
+        self.network = ParallelVocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=64).to(device)
+        self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
+
+    def synthesize(self, mgc, batch_size):
+        last_proc = 0
+        synth = []
+
+        noise = np.random.normal(0, 1, (self.RECEPTIVE_SIZE + len(mgc) * self.UPSAMPLE_COUNT))
+        noise = np.array(noise, dtype=np.float32)
+
+        for mgc_index in range(len(mgc)):
+            curr_proc = int((mgc_index + 1) * 100 / len(mgc))
+            if curr_proc % 5 == 0 and curr_proc != last_proc:
+                while last_proc < curr_proc:
+                    last_proc += 5
+                    sys.stdout.write(' ' + str(last_proc))
+                    sys.stdout.flush()
+
+            input = mgc[mgc_index]
+            start = mgc_index * self.UPSAMPLE_COUNT
+            stop = mgc_index * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE + self.UPSAMPLE_COUNT
+            [signal, means, logvars] = self.network([input], noise[start:stop])
+            for zz in signal:
+                synth.append(zz.item())
+
+        synth = np.array(synth, dtype=np.float32)
+        synth = np.clip(synth * 32768, -32767, 32767)
+        synth = np.array(synth, dtype=np.int16)
+
+        return synth
+
+    def learn(self, wave, mgc, batch_size):
+        last_proc = 0
+        total_loss = 0
+        num_batches = 0
+
+        mgc_list = []
+        signal = [0 for ii in range(self.RECEPTIVE_SIZE)]
+        noise = np.random.normal(0, 1, (self.RECEPTIVE_SIZE + len(mgc) * self.UPSAMPLE_COUNT))
+        noise = np.array(noise, dtype=np.float32)
+
+        start = 0
+
+        for mgc_index in range(len(mgc)):
+            curr_proc = int((mgc_index + 1) * 100 / len(mgc))
+            if curr_proc % 5 == 0 and curr_proc != last_proc:
+                while last_proc < curr_proc:
+                    last_proc += 5
+                    sys.stdout.write(' ' + str(last_proc))
+                    sys.stdout.flush()
+            if mgc_index < len(mgc) - 1:
+                mgc_list.append(mgc[mgc_index])
+
+                if len(mgc_list) == batch_size:
+                    self.trainer.zero_grad()
+                    num_batches += 1
+
+                    stop = start + len(mgc_list) * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE
+                    # from ipdb import set_trace
+                    # set_trace()
+                    y_pred, mean, logvar = self.network(mgc_list, noise[start:stop])
+                    for zz in y_pred:
+                        signal.append(zz.item())
+
+                    t_mean, t_logvar, t_logits = self._compute_wavenet_target(signal[start:stop], mgc_list)
+                    loss = self._compute_iaf_loss(y_pred, mean, logvar, t_mean, t_logvar, t_logits,
+                                                  torch.tensor(wave[start:stop - self.RECEPTIVE_SIZE]).to(device))
+                    start = stop - self.RECEPTIVE_SIZE
+
+
+                    total_loss += loss
+                    loss.backward()
+                    self.trainer.step()
+
+                    mgc_list = []
+
+        total_loss = total_loss.item()
+        # self.cnt += 1
+        return total_loss / num_batches
+
+    def _compute_wavenet_target(self, signal, mgc):
+        with torch.no_grad():
+            # prepare the input
+
+            x_list = []
+            for ii in range(len(signal) - self.RECEPTIVE_SIZE):
+                x_list.append(signal[ii:ii + self.RECEPTIVE_SIZE])
+
+            x = torch.Tensor(x_list).to(device)
+
+            x = x.reshape(x.shape[0], 1, x.shape[1])
+
+            conditioning = self.wavenet.network.conditioning(
+                torch.Tensor(mgc).to(device).reshape(len(mgc), 1, 1, self.MGC_SIZE))
+            conditioning = conditioning.reshape(len(mgc) * self.UPSAMPLE_COUNT, self.MGC_SIZE)
+
+            pre = self.wavenet.network.convolutions(x, conditioning)
+            pre = pre.reshape(pre.shape[0], pre.shape[1])
+            pre = torch.relu(self.wavenet.network.pre_output(pre))
+
+            mean = self.wavenet.network.mean_layer(pre)
+            stdev = self.wavenet.network.stdev_layer(pre)
+            logits = self.wavenet.network.logit_layer(pre)
+            return mean, stdev, logits
+
+    def _compute_iaf_loss(self, p_y, p_mean, p_logvar, t_mean, t_logvar, t_logits, t_y):
+
+        log_scale_min = -7.0
+
+        temp = t_logits.data.new(t_logits.size()).uniform_(1e-5, 1.0 - 1e-5)
+        temp = t_logits.data - torch.log(- torch.log(temp))
+        _, argmax = temp.max(dim=-1)
+
+        one_hot = to_one_hot(argmax, self.wavenet.network.NUM_MIXTURES)
+        sel_mean = torch.sum(t_mean * one_hot, dim=-1)
+        sel_logvar = torch.clamp(torch.sum(
+            t_logvar * one_hot, dim=-1), min=log_scale_min)
+
+        # from ipdb import set_trace
+        # set_trace()
+
+        p_mean = p_mean.reshape((p_mean.shape[0]))
+        p_logvar = p_logvar.reshape((p_logvar.shape[0]))
+        m0 = p_mean
+        m1 = sel_mean.detach()
+        logv0 = p_logvar
+        logv1 = sel_logvar.detach()
+        loss_iaf = torch.sum((m1 - m0).pow(2) + (logv1 - logv0).pow(2)) / p_y.shape[0]
+
+        fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
+                              window=torch.hann_window(window_length=512).to(device))
+        fft_pred = torch.stft(p_y.reshape(p_y.shape[0]), n_fft=512,
+                              window=torch.hann_window(window_length=512).to(device))
+        loss_power = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (
+                fft_orig.shape[0] * fft_orig.shape[1])
+        return loss_iaf + loss_power
+        # from ipdb import set_trace
+        # set_trace()
+        # return loss / p_y.shape[0]
+
+    def store(self, output_base):
+        torch.save(self.network.state_dict(), output_base + ".network")
+
+    def load(self, output_base):
+        if torch.cuda.is_available():
+            if torch.cuda.device_count() == 1:
+                self.network.load_state_dict(torch.load(output_base + ".network", map_location='cuda:0'))
+            else:
+                self.network.load_state_dict(torch.load(output_base + ".network"))
+        else:
+            self.network.load_state_dict(
+                torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
+        self.network.to(device)
+
+
+class WavenetVocoder:
     def __init__(self, params, model=None, runtime=False):
         self.params = params
 
         self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
         self.RECEPTIVE_SIZE = 512  # this means 16ms
 
-        self.sparse = False
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
 
         self.network = VocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=256).to(device)
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
-        self.cnt = 0
 
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None, return_residual=False):
         last_proc = 0
@@ -167,6 +329,57 @@ class BeeCoder:
         return total_loss / num_batches
 
 
+class ParallelVocoderNetwork(nn.Module):
+    def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, filter_size=256):
+        super(ParallelVocoderNetwork, self).__init__()
+
+        self.RECEPTIVE_FIELD = receptive_field
+        self.NUM_NETWORKS = 1
+        self.MGC_SIZE = mgc_size
+        self.UPSAMPLE_SIZE = upsample_size
+
+        self.convolutions = WaveNet(self.RECEPTIVE_FIELD, mgc_size, filter_size)
+
+        self.conditioning = nn.Sequential(nn.Linear(mgc_size, mgc_size * upsample_size), nn.Tanh())
+
+        self.pre_output = nn.Linear(filter_size, 256)
+        self.mean_layer = nn.Linear(256, 1)
+        self.stdev_layer = nn.Linear(256, 1)
+        self.conditioning_out = nn.Linear(mgc_size, 1)
+
+        self.act = nn.Softmax(dim=1)
+        self.softsign = torch.nn.Softsign()
+
+    def reparameterize(self, mu, logvar, rand):
+        std = torch.exp(0.5 * logvar)
+        eps = rand
+        return eps.mul(std).add_(mu)
+
+    def forward(self, mgc, noise):
+        # prepare the input
+        x_list = []
+        for ii in range(len(noise) - self.RECEPTIVE_FIELD):
+            x_list.append(noise[ii:ii + self.RECEPTIVE_FIELD])
+
+        x = torch.Tensor(x_list).to(device)
+        x = x.reshape(x.shape[0], 1, x.shape[1])
+
+        conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, 1, self.MGC_SIZE))
+        conditioning = conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_SIZE)
+
+        pre = self.convolutions(x, conditioning)
+        pre = pre.reshape(pre.shape[0], pre.shape[1])
+        pre = torch.relu(self.pre_output(pre))
+
+        mean = self.mean_layer(pre)
+        logvar = self.stdev_layer(pre)
+
+        return self.reparameterize(mean, logvar,
+                                   torch.tensor(noise[self.RECEPTIVE_FIELD:]).to(device).reshape(mean.shape[0],
+                                                                                                 mean.shape[1])), \
+               mean, logvar
+
+
 class VocoderNetwork(nn.Module):
     def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, num_mixtures=10, filter_size=256):
         super(VocoderNetwork, self).__init__()
@@ -190,11 +403,6 @@ class VocoderNetwork(nn.Module):
 
         self.act = nn.Softmax(dim=1)
         self.softsign = torch.nn.Softsign()
-
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return eps.mul(std).add_(mu)
 
     def forward(self, mgc, signal=None, prev=None, training=False):
         if signal is not None:

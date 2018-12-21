@@ -88,9 +88,9 @@ def synthesize(speaker, input_file, output_file, params):
     _render_spectrogram(mgc, output_file + '.png')
 
     print("[Vocoding]")
-    from models.vocoder import BeeCoder
+    from models.vocoder import WavenetVocoder
     from trainers.vocoder import Trainer
-    vocoder = BeeCoder(params, runtime=True)
+    vocoder = WavenetVocoder(params, runtime=True)
     vocoder.load('data/models/nn_vocoder')
 
     import time
