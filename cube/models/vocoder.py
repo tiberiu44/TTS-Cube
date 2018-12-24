@@ -121,7 +121,6 @@ class ParallelWavenetVocoder:
                                                   torch.tensor(wave[start:stop - self.RECEPTIVE_SIZE]).to(device))
                     start = stop - self.RECEPTIVE_SIZE
 
-
                     total_loss += loss
                     loss.backward()
                     self.trainer.step()
@@ -179,18 +178,31 @@ class ParallelWavenetVocoder:
         m1 = sel_mean.detach()
         logv0 = p_logvar
         logv1 = sel_logvar.detach()
-        loss_iaf = torch.sum((m1 - m0).pow(2) + (logv1 - logv0).pow(2)) / p_y.shape[0]
+        # v0 = torch.exp(logv0)
+        # v1 = torch.exp(logv1)
+        loss_iaf = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
+        # prob_mean=1.0-np.tanh(np.abs(x-m)/(2*s))
+
+        # prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
+        # prob_mean_m1 = torch.clamp(1.0 - torch.tanh(torch.abs(m0 - m1) / (2 * torch.exp(logv1))), 1e-8, 1.0 - 1e-8)
+        # loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + (logv0 + 2.0))
 
         fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(p_y.reshape(p_y.shape[0]), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        loss_power = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (
-                fft_orig.shape[0] * fft_orig.shape[1])
-        return loss_iaf + loss_power
+        real_orig = fft_orig[:, :, 0]
+        im_org = fft_orig[:, :, 1]
+        power_orig = torch.sqrt(torch.pow(real_orig, 2) + torch.pow(im_org, 2))
+        real_pred = fft_pred[:, :, 0]
+        im_pred = fft_pred[:, :, 1]
+        power_pred = torch.sqrt(torch.pow(real_pred, 2) + torch.pow(im_pred, 2))
+        loss_power = torch.sum(torch.pow(torch.norm(torch.abs(power_pred) - torch.abs(power_orig), p=2, dim=1), 2)) / (
+                power_pred.shape[0] * power_pred.shape[1])
         # from ipdb import set_trace
         # set_trace()
-        # return loss / p_y.shape[0]
+
+        return loss_iaf + loss_power
 
     def store(self, output_base):
         torch.save(self.network.state_dict(), output_base + ".network")
