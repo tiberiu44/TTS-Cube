@@ -52,7 +52,7 @@ class ParallelWavenetVocoder:
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
         self.wavenet = wavenet
-        self.network = ParallelVocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=64).to(device)
+        self.network = ParallelVocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=256).to(device)
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
 
     def synthesize(self, mgc, batch_size):
@@ -178,9 +178,17 @@ class ParallelWavenetVocoder:
         m1 = sel_mean.detach()
         logv0 = p_logvar
         logv1 = sel_logvar.detach()
-        # v0 = torch.exp(logv0)
-        # v1 = torch.exp(logv1)
+        v0 = torch.exp(logv0)
+        v1 = torch.exp(logv1)
+
+        # loss_kl = torch.mean(
+        #    logv1 - logv0 + (torch.pow(v0, 2) + torch.pow(m0 - m1, 2)) / (2.0 * torch.pow(v1, 2)) - 0.5)
+
         loss_iaf = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
+        # loss_iaf1 = torch.mean(4 * torch.pow(torch.abs(logv1 - logv0), 2))
+        # loss_iaf2 = torch.sum(torch.log(v1 / v0) \
+        #                       + (torch.pow(v0, 2) - torch.pow(v1, 2)
+        #                          + torch.pow((m0 - m1), 2)) / (2 * torch.pow(v1, 2)))/p_y.shape[0]
         # prob_mean=1.0-np.tanh(np.abs(x-m)/(2*s))
 
         # prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
@@ -197,12 +205,26 @@ class ParallelWavenetVocoder:
         real_pred = fft_pred[:, :, 0]
         im_pred = fft_pred[:, :, 1]
         power_pred = torch.sqrt(torch.pow(real_pred, 2) + torch.pow(im_pred, 2))
-        loss_power = torch.sum(torch.pow(torch.norm(torch.abs(power_pred) - torch.abs(power_orig), p=2, dim=1), 2)) / (
+        loss_power1 = torch.sum(torch.pow(torch.norm(torch.abs(power_pred) - torch.abs(power_orig), p=2, dim=1), 2)) / (
                 power_pred.shape[0] * power_pred.shape[1])
+
+        # freq1 = int(3000 / (self.params.target_sample_rate * 0.5) * 257)
+        # fft_pred = torch.stft(p_y.reshape(p_y.shape[0]), n_fft=512,
+        #                       window=torch.hann_window(window_length=512).to(device))[freq1:, :]
+        # fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
+        #                       window=torch.hann_window(window_length=512).to(device))[freq1:, :]
+        # real_orig = fft_orig[:, :, 0]
+        # im_org = fft_orig[:, :, 1]
+        # power_orig = torch.sqrt(torch.pow(real_orig, 2) + torch.pow(im_org, 2))
+        # real_pred = fft_pred[:, :, 0]
+        # im_pred = fft_pred[:, :, 1]
+        # power_pred = torch.sqrt(torch.pow(real_pred, 2) + torch.pow(im_pred, 2))
+        #
+        # loss_power2 = torch.mean(torch.pow(torch.norm(torch.abs(power_pred) - torch.abs(power_orig), p=2, dim=1), 2))
         # from ipdb import set_trace
         # set_trace()
 
-        return loss_iaf + loss_power
+        return loss_iaf + 4 * loss_power1
 
     def store(self, output_base):
         torch.save(self.network.state_dict(), output_base + ".network")
