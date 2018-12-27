@@ -185,27 +185,29 @@ class ParallelWavenetVocoder:
         # set_trace()
 
         p_mean = p_mean.reshape((p_mean.shape[0]))
-        p_logvar = p_logvar.reshape((p_logvar.shape[0]))
+        p_logvar = torch.clamp(p_logvar.reshape((p_logvar.shape[0])), min=log_scale_min)
         m0 = p_mean
         m1 = sel_mean.detach()
         logv0 = p_logvar
         logv1 = sel_logvar.detach()
         v0 = torch.exp(logv0)
         v1 = torch.exp(logv1)
-
-        # loss_kl = torch.mean(
+        # from ipdb import set_trace
+        # set_trace()
+        #loss_iaf = torch.mean(
         #    logv1 - logv0 + (torch.pow(v0, 2) + torch.pow(m0 - m1, 2)) / (2.0 * torch.pow(v1, 2)) - 0.5)
 
-        loss_iaf = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
-        # loss_iaf1 = torch.mean(4 * torch.pow(torch.abs(logv1 - logv0), 2))
+        # loss_iaf = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
+        # loss_iaf1 = torch.mean(4 * torch.pow(logv1 - logv0, 2))
         # loss_iaf2 = torch.sum(torch.log(v1 / v0) \
-        #                       + (torch.pow(v0, 2) - torch.pow(v1, 2)
-        #                          + torch.pow((m0 - m1), 2)) / (2 * torch.pow(v1, 2)))/p_y.shape[0]
+        #                      + (torch.pow(v0, 2) - torch.pow(v1, 2)
+        #                         + torch.pow((m0 - m1), 2)) / (2 * torch.pow(v1, 2))) / p_y.shape[0]
+        # loss_iaf = loss_iaf1 + loss_iaf2
         # prob_mean=1.0-np.tanh(np.abs(x-m)/(2*s))
 
-        # prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
-        # prob_mean_m1 = torch.clamp(1.0 - torch.tanh(torch.abs(m0 - m1) / (2 * torch.exp(logv1))), 1e-8, 1.0 - 1e-8)
-        # loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + (logv0 + 2.0))
+        prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
+        prob_mean_m1 = torch.clamp(1.0 - torch.tanh(torch.abs(m0 - m1) / (2 * torch.exp(logv1))), 1e-8, 1.0 - 1e-8)
+        loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + (logv0 + 2.0))
 
         fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
