@@ -52,7 +52,7 @@ class ParallelWavenetVocoder:
         self.dio = DatasetIO()
         self.vocoder = MelVocoder()
         self.wavenet = wavenet
-        self.network = ParallelVocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=256).to(device)
+        self.network = ParallelVocoderNetwork(receptive_field=self.RECEPTIVE_SIZE, filter_size=64).to(device)
         self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
 
     def synthesize(self, mgc, batch_size):
@@ -86,6 +86,8 @@ class ParallelWavenetVocoder:
     def learn(self, wave, mgc, batch_size):
         last_proc = 0
         total_loss = 0
+        total_loss_iaf = 0
+        total_loss_power = 0
         num_batches = 0
 
         mgc_list = []
@@ -97,9 +99,9 @@ class ParallelWavenetVocoder:
 
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
-            if curr_proc % 5 == 0 and curr_proc != last_proc:
+            if curr_proc % 10 == 0 and curr_proc != last_proc:
                 while last_proc < curr_proc:
-                    last_proc += 5
+                    last_proc += 10
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
             if mgc_index < len(mgc) - 1:
@@ -117,11 +119,16 @@ class ParallelWavenetVocoder:
                         signal.append(zz.item())
 
                     t_mean, t_logvar, t_logits = self._compute_wavenet_target(signal[start:stop], mgc_list)
-                    loss = self._compute_iaf_loss(y_pred, mean, logvar, t_mean, t_logvar, t_logits,
-                                                  torch.tensor(wave[start:stop - self.RECEPTIVE_SIZE]).to(device))
+                    loss, loss_iaf, loss_power = self._compute_iaf_loss(y_pred, mean, logvar, t_mean, t_logvar,
+                                                                        t_logits,
+                                                                        torch.tensor(
+                                                                            wave[start:stop - self.RECEPTIVE_SIZE]).to(
+                                                                            device))
                     start = stop - self.RECEPTIVE_SIZE
 
                     total_loss += loss
+                    total_loss_power += loss_power
+                    total_loss_iaf += loss_iaf
                     loss.backward()
                     self.trainer.step()
 
@@ -129,6 +136,11 @@ class ParallelWavenetVocoder:
 
         total_loss = total_loss.item()
         # self.cnt += 1
+        total_loss_iaf = total_loss_iaf.item() / num_batches
+        total_loss_power = total_loss_power.item() / num_batches
+
+        sys.stdout.write(" iaf=" + str(total_loss_iaf) + ", power=" + str(total_loss_power) + " ")
+
         return total_loss / num_batches
 
     def _compute_wavenet_target(self, signal, mgc):
@@ -224,7 +236,7 @@ class ParallelWavenetVocoder:
         # from ipdb import set_trace
         # set_trace()
 
-        return loss_iaf + 4 * loss_power1
+        return loss_iaf + loss_power1, loss_iaf, loss_power1
 
     def store(self, output_base):
         torch.save(self.network.state_dict(), output_base + ".network")
@@ -364,7 +376,7 @@ class WavenetVocoder:
 
 
 class ParallelVocoderNetwork(nn.Module):
-    def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, filter_size=256):
+    def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, filter_size=64):
         super(ParallelVocoderNetwork, self).__init__()
 
         self.RECEPTIVE_FIELD = receptive_field
