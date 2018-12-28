@@ -194,7 +194,7 @@ class ParallelWavenetVocoder:
         v1 = torch.exp(logv1)
         # from ipdb import set_trace
         # set_trace()
-        #loss_iaf = torch.mean(
+        # loss_iaf = torch.mean(
         #    logv1 - logv0 + (torch.pow(v0, 2) + torch.pow(m0 - m1, 2)) / (2.0 * torch.pow(v1, 2)) - 0.5)
 
         # loss_iaf = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
@@ -207,7 +207,7 @@ class ParallelWavenetVocoder:
 
         prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
         prob_mean_m1 = torch.clamp(1.0 - torch.tanh(torch.abs(m0 - m1) / (2 * torch.exp(logv1))), 1e-8, 1.0 - 1e-8)
-        loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + (logv0 + 2.0))
+        loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + torch.pow(logv0 - logv1, 2))
 
         fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
