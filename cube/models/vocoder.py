@@ -168,6 +168,24 @@ class ParallelWavenetVocoder:
             logits = self.wavenet.network.logit_layer(pre)
             return mean, stdev, logits
 
+    def _compute_loss_by_sampling(self, p_mean, p_logvar, t_mean, t_logvar):
+        # generate random samples and estimate their probability using student and teacher
+        # from ipdb import set_trace
+        # set_trace()
+        loss = 0
+        NUM_SAMPLES = 5
+        std = torch.exp(0.5 * t_logvar)
+        for ii in range(NUM_SAMPLES):
+            eps = torch.randn_like(t_mean)
+            samples = eps.mul(std).add_(t_mean)
+            prob_t = torch.clamp(1.0 - torch.tanh(torch.abs(samples - t_mean) / (2 * torch.exp(t_logvar))), 1e-8,
+                                 1.0 - 1e-8)
+            prob_p = torch.clamp(1.0 - torch.tanh(torch.abs(samples - p_mean) / (2 * torch.exp(p_logvar))), 1e-8,
+                                 1.0 - 1e-8)
+            loss += torch.mean(-prob_t * torch.log(prob_p) - (1.0 - prob_t) * torch.log(1.0 - prob_p))
+
+        return loss
+
     def _compute_iaf_loss(self, p_y, p_mean, p_logvar, t_mean, t_logvar, t_logits, t_y):
 
         log_scale_min = -7.0
@@ -205,9 +223,10 @@ class ParallelWavenetVocoder:
         # loss_iaf = loss_iaf1 + loss_iaf2
         # prob_mean=1.0-np.tanh(np.abs(x-m)/(2*s))
 
-        prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
-        prob_mean_m1 = torch.clamp(1.0 - torch.tanh(torch.abs(m0 - m1) / (2 * torch.exp(logv1))), 1e-8, 1.0 - 1e-8)
-        loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + torch.pow(logv0 - logv1, 2))
+        # prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
+        # prob_mean_m1 = torch.clamp(1.0 - torch.tanh(torch.abs(m0 - m1) / (2 * torch.exp(logv1))), 1e-8, 1.0 - 1e-8)
+        loss_iaf = self._compute_loss_by_sampling(p_mean, p_logvar, m1, logv1)
+        # loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + torch.pow(logv0 - logv1, 2))
 
         fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
