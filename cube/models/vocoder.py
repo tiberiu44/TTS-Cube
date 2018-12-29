@@ -173,7 +173,7 @@ class ParallelWavenetVocoder:
         # from ipdb import set_trace
         # set_trace()
         loss = 0
-        NUM_SAMPLES = 5
+        NUM_SAMPLES = 10
         std = torch.exp(0.5 * t_logvar)
         for ii in range(NUM_SAMPLES):
             eps = torch.randn_like(t_mean)
@@ -184,7 +184,7 @@ class ParallelWavenetVocoder:
                                  1.0 - 1e-5)
             loss += torch.mean(-prob_t * torch.log(prob_p) - (1.0 - prob_t) * torch.log(1.0 - prob_p))
 
-        return loss / NUM_SAMPLES
+        return loss
 
     def _compute_iaf_loss(self, p_y, p_mean, p_logvar, t_mean, t_logvar, t_logits, t_y):
 
@@ -215,7 +215,7 @@ class ParallelWavenetVocoder:
         # loss_iaf = torch.mean(
         #    logv1 - logv0 + (torch.pow(v0, 2) + torch.pow(m0 - m1, 2)) / (2.0 * torch.pow(v1, 2)) - 0.5)
 
-        # loss_iaf = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
+        loss_iaf1 = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
         # loss_iaf1 = torch.mean(4 * torch.pow(logv1 - logv0, 2))
         # loss_iaf2 = torch.sum(torch.log(v1 / v0) \
         #                      + (torch.pow(v0, 2) - torch.pow(v1, 2)
@@ -225,7 +225,8 @@ class ParallelWavenetVocoder:
 
         # prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
         # prob_mean_m1 = torch.clamp(1.0 - torch.tanh(torch.abs(m0 - m1) / (2 * torch.exp(logv1))), 1e-8, 1.0 - 1e-8)
-        loss_iaf = self._compute_loss_by_sampling(p_mean, p_logvar, m1, logv1)
+        loss_iaf2 = self._compute_loss_by_sampling(p_mean, p_logvar, m1, logv1)
+        loss_iaf = loss_iaf1 + loss_iaf2
         # loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + torch.pow(logv0 - logv1, 2))
 
         fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
