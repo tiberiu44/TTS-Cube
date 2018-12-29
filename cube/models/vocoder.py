@@ -178,13 +178,13 @@ class ParallelWavenetVocoder:
         for ii in range(NUM_SAMPLES):
             eps = torch.randn_like(t_mean)
             samples = eps.mul(std).add_(t_mean)
-            prob_t = torch.clamp(1.0 - torch.tanh(torch.abs(samples - t_mean) / (2 * torch.exp(t_logvar))), 1e-8,
-                                 1.0 - 1e-8)
-            prob_p = torch.clamp(1.0 - torch.tanh(torch.abs(samples - p_mean) / (2 * torch.exp(p_logvar))), 1e-8,
-                                 1.0 - 1e-8)
+            prob_t = torch.clamp(1.0 - torch.tanh(torch.abs(samples - t_mean) / (2 * torch.exp(t_logvar))), 1e-5,
+                                 1.0 - 1e-5)
+            prob_p = torch.clamp(1.0 - torch.tanh(torch.abs(samples - p_mean) / (2 * torch.exp(p_logvar))), 1e-5,
+                                 1.0 - 1e-5)
             loss += torch.mean(-prob_t * torch.log(prob_p) - (1.0 - prob_t) * torch.log(1.0 - prob_p))
 
-        return loss
+        return loss / NUM_SAMPLES
 
     def _compute_iaf_loss(self, p_y, p_mean, p_logvar, t_mean, t_logvar, t_logits, t_y):
 
