@@ -184,7 +184,7 @@ class ParallelWavenetVocoder:
                                  1.0 - 1e-5)
             loss += torch.mean(-prob_t * torch.log(prob_p) - (1.0 - prob_t) * torch.log(1.0 - prob_p))
 
-        return loss/NUM_SAMPLES
+        return loss / NUM_SAMPLES
 
     def _compute_iaf_loss(self, p_y, p_mean, p_logvar, t_mean, t_logvar, t_logits, t_y):
 
@@ -210,7 +210,7 @@ class ParallelWavenetVocoder:
         logv1 = sel_logvar.detach()
         v0 = torch.exp(logv0)
         v1 = torch.exp(logv1)
-        #loss_iaf = torch.sum(torch.pow(m0 - m1, 2) / (2 * torch.pow(v1, 2)) + 0.5 * (
+        # loss_iaf = torch.sum(torch.pow(m0 - m1, 2) / (2 * torch.pow(v1, 2)) + 0.5 * (
         #        torch.pow(v0, 2) / torch.pow(v1, 2) - 1 - torch.log(torch.pow(v0, 2) / torch.pow(v1, 2))))/p_y.shape[0]
         # from ipdb import set_trace
         # set_trace()
@@ -400,25 +400,23 @@ class WavenetVocoder:
 
 
 class ParallelVocoderNetwork(nn.Module):
-    def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, filter_size=64):
+    def __init__(self, receptive_field=1024, mgc_size=60, upsample_size=200, filter_size=64, num_stacks=4):
         super(ParallelVocoderNetwork, self).__init__()
 
         self.RECEPTIVE_FIELD = receptive_field
         self.NUM_NETWORKS = 1
         self.MGC_SIZE = mgc_size
         self.UPSAMPLE_SIZE = upsample_size
+        self.NUM_STACKS = num_stacks
 
-        self.convolutions = WaveNet(self.RECEPTIVE_FIELD, mgc_size, filter_size)
+        self.convolutions = torch.nn.ModuleList(
+            [WaveNet(self.RECEPTIVE_FIELD, mgc_size, filter_size) for ii in range(num_stacks)])
 
         self.conditioning = nn.Sequential(nn.Linear(mgc_size, mgc_size * upsample_size), nn.Tanh())
 
-        self.pre_output = nn.Linear(filter_size, 256)
-        self.mean_layer = nn.Linear(256, 1)
-        self.stdev_layer = nn.Linear(256, 1)
-        self.conditioning_out = nn.Linear(mgc_size, 1)
-
-        self.act = nn.Softmax(dim=1)
-        self.softsign = torch.nn.Softsign()
+        self.pre_output = torch.nn.ModuleList([nn.Linear(filter_size, 256) for ii in range(num_stacks)])
+        self.mean_layer = torch.nn.ModuleList([nn.Linear(256, 1) for ii in range(num_stacks)])
+        self.stdev_layer = torch.nn.ModuleList([nn.Linear(256, 1) for ii in range(num_stacks)])
 
     def reparameterize(self, mu, logvar, rand):
         std = torch.exp(0.5 * logvar)
@@ -426,28 +424,37 @@ class ParallelVocoderNetwork(nn.Module):
         return eps.mul(std).add_(mu)
 
     def forward(self, mgc, noise):
-        # prepare the input
-        x_list = []
-        for ii in range(len(noise) - self.RECEPTIVE_FIELD):
-            x_list.append(noise[ii:ii + self.RECEPTIVE_FIELD])
-
-        x = torch.Tensor(x_list).to(device)
-        x = x.reshape(x.shape[0], 1, x.shape[1])
-
         conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, 1, self.MGC_SIZE))
         conditioning = conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_SIZE)
 
-        pre = self.convolutions(x, conditioning)
-        pre = pre.reshape(pre.shape[0], pre.shape[1])
-        pre = torch.relu(self.pre_output(pre))
+        prepend = torch.tensor(noise[:self.RECEPTIVE_FIELD]).to(device)
+        prev_x = torch.tensor(noise).to(device)
 
-        mean = self.mean_layer(pre)
-        logvar = self.stdev_layer(pre)
+        for iStack in range(self.NUM_STACKS):
 
-        return self.reparameterize(mean, logvar,
-                                   torch.tensor(noise[self.RECEPTIVE_FIELD:]).to(device).reshape(mean.shape[0],
-                                                                                                 mean.shape[1])), \
-               mean, logvar
+            # prepare the input
+            x_list = []
+            for ii in range(len(prev_x) - self.RECEPTIVE_FIELD):
+                x_list.append(prev_x[ii:ii + self.RECEPTIVE_FIELD])
+            # from ipdb import set_trace
+            # set_trace()
+            x = torch.stack(x_list)
+            x = x.reshape(len(mgc) * self.UPSAMPLE_SIZE, 1, x_list[0].shape[0])
+
+            pre = self.convolutions[iStack](x, conditioning)
+            pre = pre.reshape(pre.shape[0], pre.shape[1])
+            pre = torch.relu(self.pre_output[iStack](pre))
+
+            mean = self.mean_layer[iStack](pre)
+            logvar = self.stdev_layer[iStack](pre)
+
+            prev_x = self.reparameterize(mean, logvar,
+                                         torch.tensor(noise[self.RECEPTIVE_FIELD:]).to(device).reshape(mean.shape[0],
+                                                                                                       mean.shape[1]))
+            if ii != self.NUM_STACKS - 1:
+                prev_x = torch.cat((prepend, prev_x.reshape((prev_x.shape[0]))))
+
+        return prev_x, mean, logvar
 
 
 class VocoderNetwork(nn.Module):
