@@ -115,10 +115,14 @@ class ParallelWavenetVocoder:
                     # from ipdb import set_trace
                     # set_trace()
                     y_pred, mean, logvar = self.network(mgc_list, noise[start:stop])
+
+                    # from ipdb import set_trace
+                    # set_trace()
                     for zz in y_pred:
                         signal.append(zz.item())
 
                     t_mean, t_logvar, t_logits = self._compute_wavenet_target(signal[start:stop], mgc_list)
+
                     loss, loss_iaf, loss_power = self._compute_iaf_loss(y_pred, mean, logvar, t_mean, t_logvar,
                                                                         t_logits,
                                                                         torch.tensor(
@@ -449,9 +453,8 @@ class ParallelVocoderNetwork(nn.Module):
             logvar = self.stdev_layer[iStack](pre)
 
             prev_x = self.reparameterize(mean, logvar,
-                                         torch.tensor(noise[self.RECEPTIVE_FIELD:]).to(device).reshape(mean.shape[0],
-                                                                                                       mean.shape[1]))
-            if ii != self.NUM_STACKS - 1:
+                                         prev_x[self.RECEPTIVE_FIELD:].reshape(mean.shape[0], mean.shape[1]))
+            if iStack != self.NUM_STACKS - 1:
                 prev_x = torch.cat((prepend, prev_x.reshape((prev_x.shape[0]))))
 
         return prev_x, mean, logvar
