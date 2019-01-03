@@ -62,6 +62,7 @@ class ParallelWavenetVocoder:
         noise = np.random.normal(0, 1, (self.RECEPTIVE_SIZE + len(mgc) * self.UPSAMPLE_COUNT))
         noise = np.array(noise, dtype=np.float32)
         mgc_list = []
+        tail = None
         for mgc_index in range(len(mgc)):
             mgc_list.append(mgc[mgc_index])
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
@@ -74,7 +75,7 @@ class ParallelWavenetVocoder:
                 start = (mgc_index - batch_size + 1) * self.UPSAMPLE_COUNT
                 stop = start + len(mgc_list) * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE
                 with torch.no_grad():
-                    [signal, means, logvars] = self.network(mgc_list, noise[start:stop])
+                    [signal, means, logvars, tail] = self.network(mgc_list, noise[start:stop], tail=tail)
                     for zz in signal:
                         synth.append(zz.item())
 
@@ -83,7 +84,7 @@ class ParallelWavenetVocoder:
             start = (mgc_index - batch_size + 1) * self.UPSAMPLE_COUNT
             stop = start + len(mgc_list) * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE
             with torch.no_grad():
-                [signal, means, logvars] = self.network(mgc_list, noise[start:stop])
+                [signal, means, logvars, tail] = self.network(mgc_list, noise[start:stop], tail=tail)
                 for zz in signal:
                     synth.append(zz.item())
 
@@ -106,7 +107,7 @@ class ParallelWavenetVocoder:
         noise = np.array(noise, dtype=np.float32)
 
         start = 0
-
+        tail = None
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 10 == 0 and curr_proc != last_proc:
@@ -124,7 +125,7 @@ class ParallelWavenetVocoder:
                     stop = start + len(mgc_list) * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE
                     # from ipdb import set_trace
                     # set_trace()
-                    y_pred, mean, logvar = self.network(mgc_list, noise[start:stop])
+                    y_pred, mean, logvar, tail = self.network(mgc_list, noise[start:stop], tail=tail)
 
                     # from ipdb import set_trace
                     # set_trace()
@@ -437,13 +438,13 @@ class ParallelVocoderNetwork(nn.Module):
         eps = rand
         return eps.mul(std).add_(mu)
 
-    def forward(self, mgc, noise):
+    def forward(self, mgc, noise, tail=None):
         conditioning = self.conditioning(torch.Tensor(mgc).to(device).reshape(len(mgc), 1, 1, self.MGC_SIZE))
         conditioning = conditioning.reshape(len(mgc) * self.UPSAMPLE_SIZE, self.MGC_SIZE)
 
         prepend = torch.tensor(noise[:self.RECEPTIVE_FIELD]).to(device)
         prev_x = torch.tensor(noise).to(device)
-
+        new_tail = []
         for iStack in range(self.NUM_STACKS):
 
             # prepare the input
@@ -464,10 +465,15 @@ class ParallelVocoderNetwork(nn.Module):
 
             prev_x = self.reparameterize(mean, logvar,
                                          prev_x[self.RECEPTIVE_FIELD:].reshape(mean.shape[0], mean.shape[1]))
-            if iStack != self.NUM_STACKS - 1:
-                prev_x = torch.cat((prepend, prev_x.reshape((prev_x.shape[0]))))
+            new_tail.append(prev_x[-self.RECEPTIVE_FIELD:].detach())
 
-        return prev_x, mean, logvar
+            if iStack != self.NUM_STACKS - 1:
+                if tail is None:
+                    prev_x = torch.cat((prepend, prev_x.reshape((prev_x.shape[0]))))
+                else:
+                    prev_x = torch.cat((tail[iStack].reshape(tail[iStack].shape[0]), prev_x.reshape((prev_x.shape[0]))))
+
+        return prev_x, mean, logvar, new_tail
 
 
 class VocoderNetwork(nn.Module):
