@@ -61,21 +61,31 @@ class ParallelWavenetVocoder:
 
         noise = np.random.normal(0, 1, (self.RECEPTIVE_SIZE + len(mgc) * self.UPSAMPLE_COUNT))
         noise = np.array(noise, dtype=np.float32)
-
+        mgc_list = []
         for mgc_index in range(len(mgc)):
+            mgc_list.append(mgc[mgc_index])
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
                 while last_proc < curr_proc:
                     last_proc += 5
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
+            if len(mgc_list) == batch_size:
+                start = (mgc_index - batch_size + 1) * self.UPSAMPLE_COUNT
+                stop = start + len(mgc_list) * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE
+                with torch.no_grad():
+                    [signal, means, logvars] = self.network(mgc_list, noise[start:stop])
+                    for zz in signal:
+                        synth.append(zz.item())
 
-            input = mgc[mgc_index]
-            start = mgc_index * self.UPSAMPLE_COUNT
-            stop = mgc_index * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE + self.UPSAMPLE_COUNT
-            [signal, means, logvars] = self.network([input], noise[start:stop])
-            for zz in signal:
-                synth.append(zz.item())
+                mgc_list = []
+        if len(mgc_list) != 0:
+            start = (mgc_index - batch_size + 1) * self.UPSAMPLE_COUNT
+            stop = start + len(mgc_list) * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE
+            with torch.no_grad():
+                [signal, means, logvars] = self.network(mgc_list, noise[start:stop])
+                for zz in signal:
+                    synth.append(zz.item())
 
         synth = np.array(synth, dtype=np.float32)
         synth = np.clip(synth * 32768, -32767, 32767)
