@@ -123,12 +123,8 @@ class ParallelWavenetVocoder:
                     num_batches += 1
 
                     stop = start + len(mgc_list) * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE
-                    # from ipdb import set_trace
-                    # set_trace()
                     y_pred, mean, logvar, tail = self.network(mgc_list, noise[start:stop], tail=tail)
 
-                    # from ipdb import set_trace
-                    # set_trace()
                     for zz in y_pred:
                         signal.append(zz.item())
 
@@ -150,7 +146,6 @@ class ParallelWavenetVocoder:
                     mgc_list = []
 
         total_loss = total_loss.item()
-        # self.cnt += 1
         total_loss_iaf = total_loss_iaf.item() / num_batches
         total_loss_power = total_loss_power.item() / num_batches
 
@@ -185,8 +180,6 @@ class ParallelWavenetVocoder:
 
     def _compute_loss_by_sampling(self, p_mean, p_logvar, t_mean, t_logvar):
         # generate random samples and estimate their probability using student and teacher
-        # from ipdb import set_trace
-        # set_trace()
         loss = 0
         NUM_SAMPLES = 20
         std = torch.exp(0.5 * t_logvar)
@@ -201,51 +194,17 @@ class ParallelWavenetVocoder:
 
         return loss / NUM_SAMPLES
 
-    def _compute_iaf_loss(self, p_y, p_mean, p_logvar, t_mean, t_logvar, t_logits, t_y):
+    def _kl_loss(self, mu_q, logs_q, mu_p, logs_p, log_std_min=-7.0):
+        # KL (q || p)
+        # q ~ N(mu_q, logs_q.exp_()), p ~ N(mu_p, logs_p.exp_())
+        logs_q = torch.clamp(logs_q, min=log_std_min)
+        logs_p = torch.clamp(logs_p, min=log_std_min)
+        kl_loss = (logs_p - logs_q) + 0.5 * (
+                (torch.exp(2. * logs_q) + torch.pow(mu_p - mu_q, 2)) * torch.exp(-2. * logs_p) - 1.)
+        reg_loss = torch.pow(logs_q - logs_p, 2)
+        return kl_loss + 4.0 * reg_loss
 
-        log_scale_min = -7.0
-
-        temp = t_logits.data.new(t_logits.size()).uniform_(1e-5, 1.0 - 1e-5)
-        temp = t_logits.data - torch.log(- torch.log(temp))
-        _, argmax = temp.max(dim=-1)
-
-        one_hot = to_one_hot(argmax, self.wavenet.network.NUM_MIXTURES)
-        sel_mean = torch.sum(t_mean * one_hot, dim=-1)
-        sel_logvar = torch.clamp(torch.sum(
-            t_logvar * one_hot, dim=-1), min=log_scale_min)
-
-        # from ipdb import set_trace
-        # set_trace()
-
-        p_mean = p_mean.reshape((p_mean.shape[0]))
-        p_logvar = p_logvar.reshape((p_logvar.shape[0]))
-        m0 = p_mean
-        m1 = sel_mean.detach()
-        logv0 = p_logvar
-        logv1 = sel_logvar.detach()
-        v0 = torch.exp(logv0)
-        v1 = torch.exp(logv1)
-        # loss_iaf = torch.sum(torch.pow(m0 - m1, 2) / (2 * torch.pow(v1, 2)) + 0.5 * (
-        #        torch.pow(v0, 2) / torch.pow(v1, 2) - 1 - torch.log(torch.pow(v0, 2) / torch.pow(v1, 2))))/p_y.shape[0]
-        # from ipdb import set_trace
-        # set_trace()
-        # loss_iaf = torch.mean(
-        #    logv1 - logv0 + (torch.pow(v0, 2) + torch.pow(m0 - m1, 2)) / (2.0 * torch.pow(v1, 2)) - 0.5)
-
-        loss_iaf1 = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
-        # loss_iaf1 = torch.mean(4 * torch.pow(logv1 - logv0, 2))
-        # loss_iaf2 = torch.sum(torch.log(v1 / v0) \
-        #                      + (torch.pow(v0, 2) - torch.pow(v1, 2)
-        #                         + torch.pow((m0 - m1), 2)) / (2 * torch.pow(v1, 2))) / p_y.shape[0]
-        # loss_iaf = loss_iaf1 + loss_iaf2
-        # prob_mean=1.0-np.tanh(np.abs(x-m)/(2*s))
-
-        # prob_mean_m0 = torch.clamp(1.0 - torch.tanh(torch.abs(m1 - m0) / (2 * torch.exp(logv0))), 1e-8, 1.0 - 1e-8)
-        # prob_mean_m1 = torch.clamp(1.0 - torch.tanh(torch.abs(m0 - m1) / (2 * torch.exp(logv1))), 1e-8, 1.0 - 1e-8)
-        loss_iaf = self._compute_loss_by_sampling(p_mean, p_logvar, m1, logv1) + loss_iaf1
-        # loss_iaf = loss_iaf1 + loss_iaf2
-        # loss_iaf = torch.mean(-torch.log(prob_mean_m0) - torch.log(prob_mean_m1) + torch.pow(logv0 - logv1, 2))
-
+    def _power_loss(self, p_y, t_y):
         fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
         fft_pred = torch.stft(p_y.reshape(p_y.shape[0]), n_fft=512,
@@ -256,26 +215,40 @@ class ParallelWavenetVocoder:
         real_pred = fft_pred[:, :, 0]
         im_pred = fft_pred[:, :, 1]
         power_pred = torch.sqrt(torch.pow(real_pred, 2) + torch.pow(im_pred, 2))
-        loss_power1 = torch.sum(torch.pow(torch.norm(torch.abs(power_pred) - torch.abs(power_orig), p=2, dim=1), 2)) / (
+        return torch.sum(torch.pow(torch.norm(torch.abs(power_pred) - torch.abs(power_orig), p=2, dim=1), 2)) / (
                 power_pred.shape[0] * power_pred.shape[1])
 
-        # freq1 = int(3000 / (self.params.target_sample_rate * 0.5) * 257)
-        # fft_pred = torch.stft(p_y.reshape(p_y.shape[0]), n_fft=512,
-        #                       window=torch.hann_window(window_length=512).to(device))[freq1:, :]
-        # fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
-        #                       window=torch.hann_window(window_length=512).to(device))[freq1:, :]
-        # real_orig = fft_orig[:, :, 0]
-        # im_org = fft_orig[:, :, 1]
-        # power_orig = torch.sqrt(torch.pow(real_orig, 2) + torch.pow(im_org, 2))
-        # real_pred = fft_pred[:, :, 0]
-        # im_pred = fft_pred[:, :, 1]
-        # power_pred = torch.sqrt(torch.pow(real_pred, 2) + torch.pow(im_pred, 2))
-        #
-        # loss_power2 = torch.mean(torch.pow(torch.norm(torch.abs(power_pred) - torch.abs(power_orig), p=2, dim=1), 2))
-        # from ipdb import set_trace
-        # set_trace()
+    def _compute_iaf_loss(self, p_y, p_mean, p_logvar, t_mean, t_logvar, t_logits, t_y):
 
-        return loss_iaf + loss_power1, loss_iaf, loss_power1
+        log_scale_min = -7.0
+
+        temp = t_logits.data.new(t_logits.size()).uniform_(1e-5, 1.0 - 1e-5)
+        temp = t_logits.data - torch.log(- torch.log(temp))
+        _, argmax = temp.max(dim=-1)
+
+        one_hot = to_one_hot(argmax, self.wavenet.network.NUM_MIXTURES)
+        sel_mean = torch.sum(t_mean * one_hot, dim=-1).detach()
+        sel_logvar = torch.clamp(torch.sum(
+            t_logvar * one_hot, dim=-1), min=log_scale_min).detach()
+
+        p_mean = p_mean.reshape((p_mean.shape[0]))
+        p_logvar = p_logvar.reshape((p_logvar.shape[0]))
+
+        # loss V1
+        m0 = p_mean
+        m1 = sel_mean
+        logv0 = p_logvar
+        logv1 = sel_logvar
+        loss_teacher1 = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
+        loss_teacher2 = self._compute_loss_by_sampling(p_mean, p_logvar, m1, logv1)
+        loss_teacher = loss_teacher1 + loss_teacher2
+
+        # loss_V2
+        # loss_teacher = torch.mean(self._kl_loss(sel_mean, sel_logvar, p_mean, p_logvar))
+
+        loss_power = self._power_loss(p_y, t_y)
+
+        return loss_teacher + loss_power, loss_teacher, loss_power
 
     def store(self, output_base):
         torch.save(self.network.state_dict(), output_base + ".network")
