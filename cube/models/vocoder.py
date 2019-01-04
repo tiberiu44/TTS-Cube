@@ -235,16 +235,16 @@ class ParallelWavenetVocoder:
         p_logvar = p_logvar.reshape((p_logvar.shape[0]))
 
         # loss V1
-        # m0 = p_mean
-        # m1 = sel_mean
-        # logv0 = p_logvar
-        # logv1 = sel_logvar
-        # loss_teacher1 = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
-        # loss_teacher2 = self._compute_loss_by_sampling(p_mean, p_logvar, m1, logv1)
-        # loss_teacher = loss_teacher1 + loss_teacher2
+        m0 = p_mean
+        m1 = sel_mean
+        logv0 = p_logvar
+        logv1 = sel_logvar
+        loss_teacher1 = torch.sum(torch.pow(m1 - m0, 2) + torch.pow(logv1 - logv0, 2)) / p_y.shape[0]
+        loss_teacher2 = self._compute_loss_by_sampling(p_mean, p_logvar, m1, logv1)
+        loss_teacher = loss_teacher1 + loss_teacher2
 
         # loss_V2
-        loss_teacher = torch.mean(self._kl_loss(sel_mean, sel_logvar, p_mean, p_logvar))
+        # loss_teacher = torch.mean(self._kl_loss(sel_mean, sel_logvar, p_mean, p_logvar))
 
         loss_power = self._power_loss(p_y, t_y)
 
