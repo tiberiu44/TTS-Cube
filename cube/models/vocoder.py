@@ -347,7 +347,7 @@ class WavenetVocoder:
         return -torch.sum(log_sum_exp(log_probs)) / y_target.shape[0]
 
     def _compute_gaussian_loss(self, target, mean, logvar):
-        log_std_min=-7
+        log_std_min = -7
         logvar = torch.clamp(logvar, min=log_std_min)
         import math
         return torch.mean(
@@ -514,39 +514,51 @@ class VocoderNetwork(nn.Module):
                     prev_x = torch.cat((torch.tensor(signal[:self.RECEPTIVE_FIELD], dtype=torch.float32).to(device),
                                         torch.squeeze(new_x)))
                 else:
-                    #from ipdb import set_trace
-                    #set_trace()
+                    # from ipdb import set_trace
+                    # set_trace()
                     prev_x = torch.cat((torch.squeeze(tail[iStack]), torch.squeeze(new_x)))
 
         else:
-            signal = prev[-self.RECEPTIVE_FIELD:]
-            prev_x = torch.tensor(signal, dtype=torch.float32).to(device)
-            for iStack in range(self.NUM_BLOCKS):
-                for zz in range(len(mgc)):
-                    conditioning = self.conditioning(torch.Tensor(mgc[zz]).to(device).reshape(1, 1, 1, self.MGC_SIZE))
-                    conditioning = conditioning.reshape(self.UPSAMPLE_SIZE, self.MGC_SIZE)
-                    x = prev_x[-self.RECEPTIVE_FIELD:]
-                    x = x.reshape(1, 1, x.shape[0])
-                    for ii in range(self.UPSAMPLE_SIZE):
+            cnt = 0
+            signal = torch.tensor(prev, dtype=torch.float32).to(device)
+            for zz in range(len(mgc)):
+                conditioning = self.conditioning(torch.Tensor(mgc[zz]).to(device).reshape(1, 1, 1, self.MGC_SIZE))
+                conditioning = conditioning.reshape(self.UPSAMPLE_SIZE, self.MGC_SIZE)
+                for ii in range(self.UPSAMPLE_SIZE):
+                    for iStack in range(self.NUM_BLOCKS):
+                        if iStack == 0:
+                            prev_x = signal[-self.RECEPTIVE_FIELD:]
+                        else:
+                            if cnt >= self.RECEPTIVE_FIELD:
+                                prev_x = new_tail[iStack][-self.RECEPTIVE_FIELD:]
+                            else:
+                                if tail is None:
+                                    prev_x = torch.cat((signal[-self.RECEPTIVE_FIELD:][cnt + 1:], new_tail[iStack - 1][-cnt - 1:]))
+                                else:
+                                    prev_x = torch.cat((tail[iStack - 1][cnt + 1:], new_tail[iStack - 1][-cnt - 1:]))
 
-                        pre = self.convolutions[iStack](x, conditioning[ii].reshape(1, self.MGC_SIZE))
+                        if prev_x.shape[0] == 513:
+                            from ipdb import set_trace
+                            set_trace()
+                        prev_x = prev_x.reshape(1, 1, self.RECEPTIVE_FIELD)
+                        pre = self.convolutions[iStack](prev_x, conditioning[ii].reshape(1, self.MGC_SIZE))
                         pre = pre.reshape(pre.shape[0], pre.shape[1])
                         pre = torch.relu(self.pre_output[iStack](pre))
 
                         mean = self.mean_layer[iStack](pre)
                         stdev = self.stdev_layer[iStack](pre)
                         new_sample = self._reparameterize(mean, stdev, None)
-                        #from ipdb import set_trace
-                        #set_trace()
-                        prev_x = torch.cat((torch.squeeze(prev_x[1:]), new_sample.reshape((1))))
-                        if iStack == self.NUM_BLOCKS - 1:
-                            signal.append(new_sample)
-                if tail is None:
-                    prev_x = torch.cat((torch.squeeze(torch.tensor(signal[-self.RECEPTIVE_FIELD:], dtype=torch.float32)).to(device), torch.squeeze(prev_x)))
-                else:
-                    prev_x = torch.cat((torch.squeeze(tail[iStack]), torch.squeeze(prev_x)))
 
-                new_tail.append(prev_x[-self.RECEPTIVE_FIELD:].detach())
+                        if iStack == self.NUM_BLOCKS - 1:
+                            signal = torch.cat((signal, new_sample.reshape((1))))
+                        else:
+                            if cnt == 0:
+                                new_tail.append(new_sample.reshape((1)))
+                            else:
+                                new_tail[iStack] = torch.cat((new_tail[iStack], new_sample.reshape((1))))
+                    cnt += 1
+            for iStack in range(self.NUM_BLOCKS-1):
+                new_tail[iStack] = new_tail[iStack][-self.RECEPTIVE_FIELD:].detach()
 
         return signal[self.RECEPTIVE_FIELD:], mean, stdev, new_tail
 
