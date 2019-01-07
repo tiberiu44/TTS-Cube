@@ -80,6 +80,7 @@ class ParallelWavenetVocoder:
                         synth.append(zz.item())
 
                 mgc_list = []
+
         if len(mgc_list) != 0:
             start = (mgc_index - batch_size + 1) * self.UPSAMPLE_COUNT
             stop = start + len(mgc_list) * self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE
@@ -281,7 +282,8 @@ class WavenetVocoder:
     def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None, return_residual=False):
         last_proc = 0
         synth = [0 for ii in range(self.RECEPTIVE_SIZE)]
-
+        tail = None
+        mgc_list = []
         for mgc_index in range(len(mgc)):
             curr_proc = int((mgc_index + 1) * 100 / len(mgc))
             if curr_proc % 5 == 0 and curr_proc != last_proc:
@@ -290,13 +292,25 @@ class WavenetVocoder:
                     sys.stdout.write(' ' + str(last_proc))
                     sys.stdout.flush()
 
-            input = mgc[mgc_index]
+            # input = mgc[mgc_index]
+            mgc_list.append(mgc[mgc_index])
+            if len(mgc_list) == batch_size:
+                with torch.no_grad():
+                    [signal, means, logvars, tail] = self.network(mgc_list, prev=synth[-self.RECEPTIVE_SIZE:], tail=tail)
 
-            [signal, means, logvars, logits] = self.network([input], prev=synth)
+                    #
+                    for zz in signal:
+                        synth.append(zz.item())
+                mgc_list = []
 
-            #
-            for zz in signal:
-                synth.append(zz.item())
+        if len(mgc_list) != 0:
+            with torch.no_grad():
+                [signal, means, logvars, tail] = self.network(mgc_list, prev=synth[-self.RECEPTIVE_SIZE:], tail=tail)
+
+                #
+                for zz in signal:
+                    synth.append(zz.item())
+            mgc_list = []
 
         synth = np.array(synth[self.RECEPTIVE_SIZE:], dtype=np.float32)
         synth = np.clip(synth * 32768, -32767, 32767)
@@ -522,6 +536,8 @@ class VocoderNetwork(nn.Module):
             cnt = 0
             signal = torch.tensor(prev, dtype=torch.float32).to(device)
             for zz in range(len(mgc)):
+                # from ipdb import set_trace
+                # set_trace()
                 conditioning = self.conditioning(torch.Tensor(mgc[zz]).to(device).reshape(1, 1, 1, self.MGC_SIZE))
                 conditioning = conditioning.reshape(self.UPSAMPLE_SIZE, self.MGC_SIZE)
                 for ii in range(self.UPSAMPLE_SIZE):
@@ -530,10 +546,11 @@ class VocoderNetwork(nn.Module):
                             prev_x = signal[-self.RECEPTIVE_FIELD:]
                         else:
                             if cnt >= self.RECEPTIVE_FIELD:
-                                prev_x = new_tail[iStack][-self.RECEPTIVE_FIELD:]
+                                prev_x = new_tail[iStack - 1][-self.RECEPTIVE_FIELD:]
                             else:
                                 if tail is None:
-                                    prev_x = torch.cat((signal[-self.RECEPTIVE_FIELD:][cnt + 1:], new_tail[iStack - 1][-cnt - 1:]))
+                                    prev_x = torch.cat(
+                                        (signal[-self.RECEPTIVE_FIELD:][cnt + 1:], new_tail[iStack - 1][-cnt - 1:]))
                                 else:
                                     prev_x = torch.cat((tail[iStack - 1][cnt + 1:], new_tail[iStack - 1][-cnt - 1:]))
 
@@ -557,7 +574,7 @@ class VocoderNetwork(nn.Module):
                             else:
                                 new_tail[iStack] = torch.cat((new_tail[iStack], new_sample.reshape((1))))
                     cnt += 1
-            for iStack in range(self.NUM_BLOCKS-1):
+            for iStack in range(self.NUM_BLOCKS - 1):
                 new_tail[iStack] = new_tail[iStack][-self.RECEPTIVE_FIELD:].detach()
 
         return signal[self.RECEPTIVE_FIELD:], mean, stdev, new_tail
