@@ -78,7 +78,7 @@ class Trainer:
         dio = DatasetIO()
         self._render_devset()
         sys.stdout.write("\n")
-        # self.synth_devset(batch_size, target_sample_rate)
+        self.synth_devset(batch_size, target_sample_rate)
         self.vocoder.store(self.target_output_path)
 
         num_files = 0
@@ -110,7 +110,7 @@ class Trainer:
                 sys.stdout.write(' avg loss=' + str(loss) + " execution time=" + str(stop - start))
                 sys.stdout.write('\n')
                 sys.stdout.flush()
-                if file_index % 200 == 0:
+                if file_index % 500 == 0:
                     self.synth_devset(batch_size, target_sample_rate)
                     self.vocoder.store(self.target_output_path)
 
