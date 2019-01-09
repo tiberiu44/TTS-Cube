@@ -223,9 +223,9 @@ if __name__ == '__main__':
 
     def phase_2_train_vocoder(params):
         from io_modules.dataset import Dataset
-        from models.vocoder import WavenetVocoder
+        from models.vocoder import Vocoder
         from trainers.vocoder import Trainer
-        vocoder = WavenetVocoder(params)
+        vocoder = Vocoder(params)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             vocoder.load('data/models/nn_vocoder')

@@ -78,7 +78,7 @@ class Trainer:
         dio = DatasetIO()
         self._render_devset()
         sys.stdout.write("\n")
-        self.synth_devset(batch_size, target_sample_rate)
+        # self.synth_devset(batch_size, target_sample_rate)
         self.vocoder.store(self.target_output_path)
 
         num_files = 0
