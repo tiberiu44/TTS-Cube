@@ -92,7 +92,7 @@ class Trainer:
             for file in self.trainset.files:
                 num_files += 1
                 sys.stdout.write(
-                    "\t" + str(file_index) + "/" + str(len(self.trainset.files)) + " processing file " + file)
+                    "\t" + str(file_index) + "/" + str(len(self.trainset.files)) + " processing file " + file + '\n')
                 sys.stdout.flush()
                 wav_file = file + ".orig.wav"
                 mgc_file = file + ".mgc.npy"
@@ -111,7 +111,7 @@ class Trainer:
                 sys.stdout.write('\n')
                 sys.stdout.flush()
                 if file_index % 500 == 0:
-                    self.synth_devset(batch_size, target_sample_rate)
+                    # self.synth_devset(batch_size, target_sample_rate)
                     self.vocoder.store(self.target_output_path)
 
             self.synth_devset(batch_size, target_sample_rate)

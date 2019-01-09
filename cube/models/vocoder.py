@@ -48,22 +48,34 @@ class Vocoder:
         y_list = []
         c_list = []
 
+        x_batch = []
+        y_batch = []
+        c_batch = []
+
         for mgc_index in range(len(mgc)):
-            c_list.append(mgc[mgc_index])
+            c_batch.append(mgc[mgc_index])
 
             y_start = mgc_index * self.UPSAMPLE_COUNT
             y_stop = mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT
-            y_list.append(y_target[y_start:y_stop])
+            y_batch.append(y_target[y_start:y_stop])
 
-            x_stop = y_stop - 1
-            x_start = y_start - self.RECEPTIVE_SIZE
+            x_stop = y_stop  # y_stop - 1
+            x_start = y_start  # y_start - self.RECEPTIVE_SIZE
             if x_start < 0:
                 x_start = 0
             x_tmp = y_target[x_start:x_stop]
 
-            while x_tmp.shape[0] < self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE - 1:
-                x_tmp = np.insert(x_tmp, 0, 0)
-            x_list.append(x_tmp)
+            # while x_tmp.shape[0] < self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE - 1:
+            #    x_tmp = np.insert(x_tmp, 0, 0)
+            x_batch.append(x_tmp)
+
+            if len(c_batch) == batch_size:
+                x_list.append(np.array(x_batch).reshape(len(x_batch), 1, x_batch[0].shape[0]))
+                y_list.append(np.array(y_batch))
+                c_list.append(np.array(c_batch).reshape(len(c_batch), c_batch[0].shape[0], 1))
+                c_batch = []
+                x_batch = []
+                y_batch = []
 
         return x_list, y_list, c_list
 
@@ -72,13 +84,20 @@ class Vocoder:
         x_list, y_list, c_list = self._create_batches(y_target, mgc, batch_size)
         # learn
         total_loss = 0
-        for x, y, c in tqdm.tqdm(zip(x_list, y_list, c_list)):
-            x, y, c = torch.tensor(x).to(device), torch.tensor(y).to(device), torch.tensor(c).to(device).reshape(1, 1,
-                                                                                                                 60)
+        for x, y, c in tqdm.tqdm(zip(x_list, y_list, c_list), total=len(c_list)):
+            x = torch.tensor(x, dtype=torch.float32).to(device)
+            y = torch.tensor(y, dtype=torch.float32).to(device)
+            c = torch.tensor(c, dtype=torch.float32).to(device)
             self.trainer.zero_grad()
             y_hat = self.model(x, c)
-            loss = self.loss(y_hat[:, :, :-1], y[:, 1:, :], size_average=True)
-            total_loss += loss.item() / len(y)
+            # from ipdb import set_trace
+            # set_trace()
+
+            t_y = y[:, 1:].reshape(y_hat.shape[0], y_hat.shape[2] - 1, 1)
+            p_y = y_hat[:, :, :-1]
+
+            loss = self.loss(p_y, t_y, size_average=True)
+            total_loss += loss.item()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 10.)
             self.trainer.step()
