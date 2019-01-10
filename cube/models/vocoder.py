@@ -109,7 +109,7 @@ class Vocoder:
             c = torch.tensor(mgc, dtype=torch.float32).to(device).reshape(1, mgc[0].shape[0], len(mgc))
             x = self.model.generate(num_samples - 1, c, device=device)
         torch.cuda.synchronize()
-        x = x.squeeze().numpy
+        x = x.squeeze().numpy()
         return x
 
     def store(self, output_base):
