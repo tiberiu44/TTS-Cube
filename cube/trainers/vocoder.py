@@ -111,10 +111,10 @@ class Trainer:
                 sys.stdout.write('\n')
                 sys.stdout.flush()
                 if file_index % 500 == 0:
-                    self.synth_devset(batch_size, target_sample_rate)
                     self.vocoder.store(self.target_output_path)
+                    self.synth_devset(batch_size, target_sample_rate)
 
-            self.synth_devset(batch_size, target_sample_rate)
             self.vocoder.store(self.target_output_path)
+            self.synth_devset(batch_size, target_sample_rate)
 
             epoch += 1
