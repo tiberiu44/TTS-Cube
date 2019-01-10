@@ -48,50 +48,57 @@ class Vocoder:
         y_list = []
         c_list = []
 
-        x_batch = []
-        y_batch = []
-        c_batch = []
-
         mini_batch = 25
 
-        for mgc_index in range(len(mgc)):
-            c_batch.append(mgc[mgc_index])
+        for batch_index in range((len(mgc) - 1) // mini_batch):
+            mgc_start = batch_index * mini_batch
+            mgc_stop = batch_index * mini_batch + mini_batch
+            c_list.append(
+                torch.tensor(mgc[mgc_start:mgc_stop], dtype=torch.float32).to(device).reshape(1, self.params.mgc_order,
+                                                                                              mini_batch))
+            x_start = batch_index * mini_batch * self.UPSAMPLE_COUNT
+            x_stop = batch_index * mini_batch * self.UPSAMPLE_COUNT + mini_batch * self.UPSAMPLE_COUNT
+            x_list.append(
+                torch.tensor(y_target[x_start:x_stop], dtype=torch.float32).to(device).reshape(1, 1, x_stop - x_start))
+            y_list.append(
+                torch.tensor(y_target[x_start:x_stop], dtype=torch.float32).to(device).reshape(1, x_stop - x_start, 1))
 
-            y_start = mgc_index * self.UPSAMPLE_COUNT
-            y_stop = mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT
-            y_batch.append(y_target[y_start:y_stop])
-
-            x_stop = y_stop  # y_stop - 1
-            x_start = y_start  # y_start - self.RECEPTIVE_SIZE
-            if x_start < 0:
-                x_start = 0
-            x_tmp = y_target[x_start:x_stop]
-
-            # while x_tmp.shape[0] < self.UPSAMPLE_COUNT + self.RECEPTIVE_SIZE - 1:
-            #    x_tmp = np.insert(x_tmp, 0, 0)
-            x_batch.append(x_tmp)
-
-            if len(c_batch) == mini_batch:
-                x_list.append(np.array(x_batch).reshape(1, 1, len(x_batch) * x_batch[0].shape[0]))
-                y_list.append(np.array(y_batch).reshape(1, len(x_batch) * x_batch[0].shape[0], 1))
-                c_list.append(np.array(c_batch).reshape(1, c_batch[0].shape[0], len(c_batch)))
-                c_batch = []
-                x_batch = []
-                y_batch = []
+        # for mgc_index in range(len(mgc) - 1):
+        #     c_batch.append(mgc[mgc_index])
+        #
+        #     y_start = mgc_index * self.UPSAMPLE_COUNT
+        #     y_stop = mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT
+        #     y_batch.append(y_target[y_start:y_stop])
+        #
+        #     x_stop = y_stop
+        #     x_start = y_start
+        #     x_tmp = y_target[x_start:x_stop]
+        #
+        #     x_batch.append(x_tmp)
+        #
+        #     if len(c_batch) == mini_batch:
+        #         x_list.append(np.array(x_batch).reshape(1, 1, len(x_batch) * x_batch[0].shape[0]))
+        #         y_list.append(np.array(y_batch).reshape(1, len(x_batch) * x_batch[0].shape[0], 1))
+        #         c_list.append(np.array(c_batch).reshape(1, c_batch[0].shape[0], len(c_batch)))
+        #         c_batch = []
+        #         x_batch = []
+        #         y_batch = []
 
         return x_list, y_list, c_list
 
     def learn(self, y_target, mgc, batch_size):
         # prepare batches
         x_list, y_list, c_list = self._create_batches(y_target, mgc, batch_size)
+        if len(x_list) == 0:
+            return 0
         # learn
         total_loss = 0
         for x, y, c in tqdm.tqdm(zip(x_list, y_list, c_list), total=len(c_list)):
             x = torch.tensor(x, dtype=torch.float32).to(device)
             y = torch.tensor(y, dtype=torch.float32).to(device)
             c = torch.tensor(c, dtype=torch.float32).to(device)
-            #from ipdb import set_trace
-            #set_trace()
+            # from ipdb import set_trace
+            # set_trace()
             self.trainer.zero_grad()
             y_hat = self.model(x, c)
 
