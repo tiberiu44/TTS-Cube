@@ -104,7 +104,13 @@ class Vocoder:
         return total_loss / len(x_list)
 
     def synthesize(self, mgc, batch_size):
-        pass
+        num_samples = len(mgc) * self.UPSAMPLE_COUNT
+        with torch.no_grad():
+            c = torch.tensor(mgc, dtype=torch.float32).to(device).reshape(1, mgc[0].shape[0], len(mgc))
+            x = self.model.generate(num_samples - 1, c, device=device)
+        torch.cuda.synchronize()
+        x = x.squeeze().numpy
+        return x
 
     def store(self, output_base):
         torch.save(self.model.state_dict(), output_base + ".network")

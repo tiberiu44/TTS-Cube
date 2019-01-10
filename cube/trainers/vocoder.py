@@ -32,7 +32,7 @@ class Trainer:
         file_index = 1
         for file in self.devset.files[:5]:
             sys.stdout.write(
-                "\t\t" + str(file_index) + "/" + str(len(self.devset.files)) + " processing file " + file)
+                "\t\t" + str(file_index) + "/" + str(len(self.devset.files)) + " processing file " + file + "\n")
             sys.stdout.flush()
             file_index += 1
             mgc_file = file + ".mgc.npy"
@@ -111,7 +111,7 @@ class Trainer:
                 sys.stdout.write('\n')
                 sys.stdout.flush()
                 if file_index % 500 == 0:
-                    # self.synth_devset(batch_size, target_sample_rate)
+                    self.synth_devset(batch_size, target_sample_rate)
                     self.vocoder.store(self.target_output_path)
 
             self.synth_devset(batch_size, target_sample_rate)

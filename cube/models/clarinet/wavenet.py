@@ -1,4 +1,5 @@
 import torch
+import tqdm
 from torch import nn
 from models.clarinet.modules import Conv, ResBlock
 from models.clarinet.loss import sample_from_gaussian
@@ -9,7 +10,7 @@ class Wavenet(nn.Module):
                  residual_channels=512, gate_channels=512, skip_channels=512,
                  kernel_size=2, cin_channels=128,
                  upsample_scales=None, causal=True):
-        super(Wavenet, self). __init__()
+        super(Wavenet, self).__init__()
 
         self.causal = causal
         self.num_blocks = num_blocks
@@ -31,7 +32,7 @@ class Wavenet(nn.Module):
         for b in range(self.num_blocks):
             for n in range(self.num_layers):
                 self.res_blocks.append(ResBlock(self.residual_channels, self.gate_channels, self.skip_channels,
-                                                self.kernel_size, dilation=self.kernel_size**n,
+                                                self.kernel_size, dilation=self.kernel_size ** n,
                                                 cin_channels=self.cin_channels, local_conditioning=True,
                                                 causal=self.causal, mode='SAME'))
 
@@ -55,22 +56,29 @@ class Wavenet(nn.Module):
         out = self.wavenet(x, c)
         return out
 
-    def generate(self, num_samples, c=None):
+    def generate(self, num_samples, c=None, device='cpu'):
         # Only a waveform generation
         x = torch.zeros(1, 1, num_samples + 1)
         c = self.upsample(c)
-        for i in range(num_samples):
-            if i % 100 == 0:
-                print(i)
+        cond_index = 0
+        for i in tqdm.tqdm(range(num_samples)):
+            # if i % 100 == 0:
+            #    print(i)
             if i >= self.receptive_field_size():
                 start_idx = i - self.receptive_field_size() + 1
             else:
                 start_idx = 0
-            x_in = x[:, :, start_idx:i+1].to(torch.device("cuda"))
+            x_in = x[:, :, start_idx:i + 1].to(device)
             if c is not None:
                 cond = c[:, :, start_idx:i + 1]
             else:
                 cond = None
+            #cond_index = i // 200
+            #cond_temp = cond[0:cond_index + 1].reshape(cond_index + 1, 60, cond.shape[-1])
+
+            # if cond_index == 1:
+            # from ipdb import set_trace
+            # set_trace()
             out = self.wavenet(x_in, cond)
             # sampling input
             x[:, :, i + 1] = sample_from_gaussian(out[:, :, -1:]).to(torch.device("cpu"))
