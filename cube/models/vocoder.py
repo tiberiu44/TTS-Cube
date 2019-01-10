@@ -37,7 +37,7 @@ class Vocoder:
                              skip_channels=128,
                              kernel_size=3,
                              cin_channels=60,
-                             upsample_scales=[10, 20]).to(device)
+                             upsample_scales=[20, 10]).to(device)
 
         self.loss = GaussianLoss()
 
@@ -48,41 +48,34 @@ class Vocoder:
         y_list = []
         c_list = []
 
+        x_mini_list = []
+        y_mini_list = []
+        c_mini_list = []
         mini_batch = 25
 
         for batch_index in range((len(mgc) - 1) // mini_batch):
             mgc_start = batch_index * mini_batch
             mgc_stop = batch_index * mini_batch + mini_batch
-            c_list.append(
-                torch.tensor(mgc[mgc_start:mgc_stop], dtype=torch.float32).to(device).reshape(1, self.params.mgc_order,
-                                                                                              mini_batch))
+            c_mini_list.append(mgc[mgc_start:mgc_stop].reshape(self.params.mgc_order, mini_batch))
             x_start = batch_index * mini_batch * self.UPSAMPLE_COUNT
             x_stop = batch_index * mini_batch * self.UPSAMPLE_COUNT + mini_batch * self.UPSAMPLE_COUNT
-            x_list.append(
-                torch.tensor(y_target[x_start:x_stop], dtype=torch.float32).to(device).reshape(1, 1, x_stop - x_start))
-            y_list.append(
-                torch.tensor(y_target[x_start:x_stop], dtype=torch.float32).to(device).reshape(1, x_stop - x_start, 1))
+            x_mini_list.append(y_target[x_start:x_stop].reshape(1, x_stop - x_start))
+            y_mini_list.append(y_target[x_start:x_stop].reshape(x_stop - x_start, 1))
 
-        # for mgc_index in range(len(mgc) - 1):
-        #     c_batch.append(mgc[mgc_index])
-        #
-        #     y_start = mgc_index * self.UPSAMPLE_COUNT
-        #     y_stop = mgc_index * self.UPSAMPLE_COUNT + self.UPSAMPLE_COUNT
-        #     y_batch.append(y_target[y_start:y_stop])
-        #
-        #     x_stop = y_stop
-        #     x_start = y_start
-        #     x_tmp = y_target[x_start:x_stop]
-        #
-        #     x_batch.append(x_tmp)
-        #
-        #     if len(c_batch) == mini_batch:
-        #         x_list.append(np.array(x_batch).reshape(1, 1, len(x_batch) * x_batch[0].shape[0]))
-        #         y_list.append(np.array(y_batch).reshape(1, len(x_batch) * x_batch[0].shape[0], 1))
-        #         c_list.append(np.array(c_batch).reshape(1, c_batch[0].shape[0], len(c_batch)))
-        #         c_batch = []
-        #         x_batch = []
-        #         y_batch = []
+            if len(c_mini_list) == batch_size:
+                x_list.append(torch.tensor(x_mini_list).to(device))
+                y_list.append(torch.tensor(y_mini_list).to(device))
+                c_list.append(torch.tensor(c_mini_list).to(device))
+                c_mini_list = []
+                x_mini_list = []
+                y_mini_list = []
+
+        if len(c_mini_list) != 0:
+            x_list.append(torch.tensor(x_mini_list).to(device))
+            y_list.append(torch.tensor(y_mini_list).to(device))
+            c_list.append(torch.tensor(c_mini_list).to(device))
+        # from ipdb import set_trace
+        # set_trace()
 
         return x_list, y_list, c_list
 
@@ -102,7 +95,7 @@ class Vocoder:
             self.trainer.zero_grad()
             y_hat = self.model(x, c)
 
-            t_y = y[:, 1:].reshape(1, y_hat.shape[0] * y_hat.shape[2] - 1, 1)
+            t_y = y[:, 1:]  # .reshape(1, y_hat.shape[0] * y_hat.shape[2] - 1, 1)
             p_y = y_hat[:, :, :-1]
 
             loss = self.loss(p_y, t_y, size_average=True)

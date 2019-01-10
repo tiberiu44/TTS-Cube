@@ -63,7 +63,7 @@ class ResBlock(nn.Module):
             h_filter += self.filter_conv_c(c)
             h_gate += self.gate_conv_c(c)
 
-        out = F.tanh(h_filter) * F.sigmoid(h_gate)
+        out = torch.tanh(h_filter) * torch.sigmoid(h_gate)
 
         res = self.res_conv(out)
         skip = self.skip_conv(out)

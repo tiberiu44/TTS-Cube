@@ -60,10 +60,7 @@ class Wavenet(nn.Module):
         # Only a waveform generation
         x = torch.zeros(1, 1, num_samples + 1)
         c = self.upsample(c)
-        cond_index = 0
         for i in tqdm.tqdm(range(num_samples)):
-            # if i % 100 == 0:
-            #    print(i)
             if i >= self.receptive_field_size():
                 start_idx = i - self.receptive_field_size() + 1
             else:
@@ -73,11 +70,6 @@ class Wavenet(nn.Module):
                 cond = c[:, :, start_idx:i + 1]
             else:
                 cond = None
-            # cond_index = i // 200
-            # cond_temp = cond[0:cond_index + 1].reshape(cond_index + 1, 60, cond.shape[-1])
-
-            # if cond_index == 1:
-
             out = self.wavenet(x_in, cond)
             # sampling input
             x[:, :, i + 1] = sample_from_gaussian(out[:, :, -1:]).to(torch.device("cpu"))
