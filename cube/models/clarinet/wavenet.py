@@ -58,6 +58,8 @@ class Wavenet(nn.Module):
 
     def generate(self, num_samples, c=None, device='cpu'):
         # Only a waveform generation
+        from ipdb import set_trace
+        set_trace()
         x = torch.zeros(1, 1, num_samples + 1)
         c = self.upsample(c)
         cond_index = 0
@@ -73,12 +75,11 @@ class Wavenet(nn.Module):
                 cond = c[:, :, start_idx:i + 1]
             else:
                 cond = None
-            #cond_index = i // 200
-            #cond_temp = cond[0:cond_index + 1].reshape(cond_index + 1, 60, cond.shape[-1])
+            # cond_index = i // 200
+            # cond_temp = cond[0:cond_index + 1].reshape(cond_index + 1, 60, cond.shape[-1])
 
             # if cond_index == 1:
-            # from ipdb import set_trace
-            # set_trace()
+
             out = self.wavenet(x_in, cond)
             # sampling input
             x[:, :, i + 1] = sample_from_gaussian(out[:, :, -1:]).to(torch.device("cpu"))

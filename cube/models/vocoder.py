@@ -52,6 +52,8 @@ class Vocoder:
         y_batch = []
         c_batch = []
 
+        mini_batch = 25
+
         for mgc_index in range(len(mgc)):
             c_batch.append(mgc[mgc_index])
 
@@ -69,10 +71,10 @@ class Vocoder:
             #    x_tmp = np.insert(x_tmp, 0, 0)
             x_batch.append(x_tmp)
 
-            if len(c_batch) == batch_size:
-                x_list.append(np.array(x_batch).reshape(len(x_batch), 1, x_batch[0].shape[0]))
-                y_list.append(np.array(y_batch))
-                c_list.append(np.array(c_batch).reshape(len(c_batch), c_batch[0].shape[0], 1))
+            if len(c_batch) == mini_batch:
+                x_list.append(np.array(x_batch).reshape(1, 1, len(x_batch) * x_batch[0].shape[0]))
+                y_list.append(np.array(y_batch).reshape(1, len(x_batch) * x_batch[0].shape[0], 1))
+                c_list.append(np.array(c_batch).reshape(1, c_batch[0].shape[0], len(c_batch)))
                 c_batch = []
                 x_batch = []
                 y_batch = []
@@ -88,12 +90,12 @@ class Vocoder:
             x = torch.tensor(x, dtype=torch.float32).to(device)
             y = torch.tensor(y, dtype=torch.float32).to(device)
             c = torch.tensor(c, dtype=torch.float32).to(device)
+            #from ipdb import set_trace
+            #set_trace()
             self.trainer.zero_grad()
             y_hat = self.model(x, c)
-            # from ipdb import set_trace
-            # set_trace()
 
-            t_y = y[:, 1:].reshape(y_hat.shape[0], y_hat.shape[2] - 1, 1)
+            t_y = y[:, 1:].reshape(1, y_hat.shape[0] * y_hat.shape[2] - 1, 1)
             p_y = y_hat[:, :, :-1]
 
             loss = self.loss(p_y, t_y, size_average=True)
