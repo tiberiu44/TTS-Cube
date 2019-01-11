@@ -30,13 +30,15 @@ class Trainer:
     def synth_devset(self, batch_size, target_sample_rate, sample=True, temperature=1.0):
         sys.stdout.write('\tSynthesizing devset\n')
         file_index = 1
+        mean = np.load('data/mean.npy')
+        stdev = np.load('data/stdev.npy')
         for file in self.devset.files[:5]:
             sys.stdout.write(
                 "\t\t" + str(file_index) + "/" + str(len(self.devset.files)) + " processing file " + file + "\n")
             sys.stdout.flush()
             file_index += 1
             mgc_file = file + ".mgc.npy"
-            mgc = np.load(mgc_file)
+            mgc = (np.load(mgc_file) - mean) / stdev
             import time
             start = time.time()
             synth = self.vocoder.synthesize(mgc, batch_size)
@@ -78,8 +80,10 @@ class Trainer:
         dio = DatasetIO()
         self._render_devset()
         sys.stdout.write("\n")
-        # self.synth_devset(batch_size, target_sample_rate)
+        #self.synth_devset(batch_size, target_sample_rate)
         self.vocoder.store(self.target_output_path)
+        mean = np.load('data/mean.npy')
+        stdev = np.load('data/stdev.npy')
 
         num_files = 0
         while left_itt > 0:
@@ -96,7 +100,7 @@ class Trainer:
                 sys.stdout.flush()
                 wav_file = file + ".orig.wav"
                 mgc_file = file + ".mgc.npy"
-                mgc = np.load(mgc_file)
+                mgc = (np.load(mgc_file) - mean) / stdev
                 file_index += 1
                 data, sample_rate = dio.read_wave(wav_file)
                 # wave_disc = data * 32768

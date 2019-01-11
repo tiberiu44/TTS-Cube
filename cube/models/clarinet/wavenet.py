@@ -58,6 +58,8 @@ class Wavenet(nn.Module):
 
     def generate(self, num_samples, c=None, device='cpu'):
         # Only a waveform generation
+        # from ipdb import set_trace
+        # set_trace()
         x = torch.zeros(1, 1, num_samples + 1)
         c = self.upsample(c)
         for i in tqdm.tqdm(range(num_samples)):
