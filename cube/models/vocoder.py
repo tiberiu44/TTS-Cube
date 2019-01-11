@@ -27,7 +27,7 @@ class Vocoder:
 
         self.params = params
 
-        self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
+        self.UPSAMPLE_COUNT = int(16 * params.target_sample_rate / 1000)
         self.RECEPTIVE_SIZE = 3 * 3 * 3 * 3 * 3 * 3
         self.model = Wavenet(out_channels=2,
                              num_blocks=4,
@@ -37,7 +37,7 @@ class Vocoder:
                              skip_channels=128,
                              kernel_size=3,
                              cin_channels=60,
-                             upsample_scales=[20, 10]).to(device)
+                             upsample_scales=[16, 16]).to(device)
 
         self.loss = GaussianLoss()
 
@@ -90,8 +90,6 @@ class Vocoder:
             x = torch.tensor(x, dtype=torch.float32).to(device)
             y = torch.tensor(y, dtype=torch.float32).to(device)
             c = torch.tensor(c, dtype=torch.float32).to(device)
-            # from ipdb import set_trace
-            # set_trace()
             self.trainer.zero_grad()
             y_hat = self.model(x, c)
 

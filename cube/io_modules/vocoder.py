@@ -25,14 +25,14 @@ class WorldVocoder:
 
     def extract_spectrum(self, x, sample_rate):
         x = np.asarray(x)
-        _f0, t = pw.dio(x, sample_rate, frame_period=12.5)  # raw pitch extractor
+        _f0, t = pw.dio(x, sample_rate, frame_period=16)  # raw pitch extractor
         f0 = pw.stonemask(x, _f0, t, sample_rate)  # pitch refinement
         sp = pw.cheaptrick(x, f0, t, sample_rate)  # extract smoothed spectrogram
         ap = pw.d4c(x, f0, t, sample_rate)
         return sp, ap, f0
 
     def synthesize(self, sp, ap, f0, sample_rate):
-        y = pw.synthesize(f0, sp, ap, sample_rate, frame_period=12.5)
+        y = pw.synthesize(f0, sp, ap, sample_rate, frame_period=16)
         return y
 
 
@@ -84,12 +84,13 @@ class MelVocoder:
 
     def _stft_parameters(self, sample_rate):
         n_fft = (513 - 1) * 2
-        hop_length = int(12.5 / 1000 * sample_rate)
-        win_length = int(50.0 / 1000 * sample_rate)
+        hop_length = int(16 / 1000 * sample_rate)
+        win_length = int(32 / 1000 * sample_rate)
         return n_fft, hop_length, win_length
 
     def _amp_to_db(self, x):
-        return 20 * np.log10(np.maximum(1e-5, x))
+        reference = 20.0
+        return 20 * np.log10(np.maximum(1e-5, x)) - reference
 
     def griffinlim(self, spectrogram, n_iter=100, sample_rate=16000):
         n_fft, hop_length, win_length = self._stft_parameters(sample_rate)
