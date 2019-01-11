@@ -36,7 +36,7 @@ class Trainer:
             sys.stdout.flush()
             file_index += 1
             mgc_file = file + ".mgc.npy"
-            mgc = np.clip((np.load(mgc_file) - 0.2) / 0.8, 0, 1.0)
+            mgc = np.load(mgc_file)
             import time
             start = time.time()
             synth = self.vocoder.synthesize(mgc, batch_size)
@@ -59,7 +59,7 @@ class Trainer:
             sys.stdout.flush()
             file_index += 1
             mgc_file = file + ".mgc.npy"
-            mgc = np.load(mgc_file)  # np.clip((np.load(mgc_file) - 0.2) / 0.8, 0, 1.0)
+            mgc = np.load(mgc_file)
             # print mgc.shape
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
@@ -96,7 +96,7 @@ class Trainer:
                 sys.stdout.flush()
                 wav_file = file + ".orig.wav"
                 mgc_file = file + ".mgc.npy"
-                mgc = np.clip((np.load(mgc_file) - 0.2) / 0.8, 0, 1.0)
+                mgc = np.load(mgc_file)
                 file_index += 1
                 data, sample_rate = dio.read_wave(wav_file)
                 # wave_disc = data * 32768

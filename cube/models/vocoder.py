@@ -56,7 +56,7 @@ class Vocoder:
         for batch_index in range((len(mgc) - 1) // mini_batch):
             mgc_start = batch_index * mini_batch
             mgc_stop = batch_index * mini_batch + mini_batch
-            c_mini_list.append(mgc[mgc_start:mgc_stop].reshape(self.params.mgc_order, mini_batch))
+            c_mini_list.append(mgc[mgc_start:mgc_stop].reshape( mini_batch, self.params.mgc_order).transpose())
             x_start = batch_index * mini_batch * self.UPSAMPLE_COUNT
             x_stop = batch_index * mini_batch * self.UPSAMPLE_COUNT + mini_batch * self.UPSAMPLE_COUNT
             x_mini_list.append(y_target[x_start:x_stop].reshape(1, x_stop - x_start))
@@ -105,8 +105,10 @@ class Vocoder:
 
     def synthesize(self, mgc, batch_size):
         num_samples = len(mgc) * self.UPSAMPLE_COUNT
+        #from ipdb import set_trace
+        #set_trace()
         with torch.no_grad():
-            c = torch.tensor(mgc, dtype=torch.float32).to(device).reshape(1, mgc[0].shape[0], len(mgc))
+            c = torch.tensor(mgc.transpose(), dtype=torch.float32).to(device).reshape(1, mgc[0].shape[0], len(mgc))
             x = self.model.generate(num_samples - 1, c, device=device)
         torch.cuda.synchronize()
         x = x.squeeze().numpy() * 32768
