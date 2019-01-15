@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from cube.models.clarinet.modules import Conv, ResBlock
+from models.clarinet.modules import Conv, ResBlock
 
 
 class Wavenet_Student(nn.Module):
@@ -42,7 +42,7 @@ class Wavenet_Student(nn.Module):
             receptive_field += iaf.receptive_field_size() - 1
         return receptive_field
 
-    def generate(self, z, c_up):
+    def generate(self, z, c_up, device='cpu'):
         x, _, _ = self.iaf(z, c_up)
         return x
 

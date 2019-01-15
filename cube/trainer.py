@@ -285,13 +285,13 @@ if __name__ == '__main__':
 
     def phase_4_train_pvocoder(params):
         from io_modules.dataset import Dataset
-        from models.vocoder import WavenetVocoder
-        from models.vocoder import ParallelWavenetVocoder
+        from models.vocoder import Vocoder
+        from models.vocoder import ParallelVocoder
         from trainers.vocoder import Trainer
-        vocoder_wavenet = WavenetVocoder(params)
+        vocoder_wavenet = Vocoder(params)
         sys.stdout.write('Loading wavenet vocoder\n')
         vocoder_wavenet.load('data/models/nn_vocoder')
-        vocoder = ParallelWavenetVocoder(params, vocoder_wavenet)
+        vocoder = ParallelVocoder(params, vocoder_wavenet)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             vocoder.load('data/models/pnn_vocoder')
