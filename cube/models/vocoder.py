@@ -147,6 +147,8 @@ class ParallelVocoder:
         self.criterion_t = KL_Loss().to(device)
         self.criterion_frame = torch.nn.MSELoss().to(device)
         self.trainer = torch.optim.Adam(self.model_s.parameters(), lr=self.params.learning_rate)
+        self.model_t.eval()
+        self.model_s.train()
 
     def learn(self, y_target, mgc, batch_size):
         # prepare batches
