@@ -142,7 +142,7 @@ class DatasetIO:
             encoded_d = int((encoded + 1) * 127)
             encoded = np.clip(encoded, -1.0, 1.0)
             encoded_d = np.clip(encoded_d, 0, 255)
-            out_discreete.append(encoded_d)
+            out_discreete.append(int(encoded_d))
             out_continous.append(encoded)
 
         return [out_discreete, out_continous]

@@ -51,7 +51,11 @@ TTS-Cube is based on concepts described in Tacotron (1 and 2), Char2Wav and Wave
     - uses the guided attention trick [(Tachibana et al., 2017)](https://arxiv.org/pdf/1710.08969), which provides incredibly fast convergence of the attention module (in our experiments we were unable to reach an acceptable model without this trick)
     - does not employ any CNN/pre-net or post-net
     - uses a simple highway connection from the attention to the output of the decoder (which we observed that forces the encoder to actually learn how to produce the mean-values of the mel-log spectrum for particular phones/characters)
-- The Vocoder is similar to WaveRNN[(Kalchbrenner et al., 2018)](https://arxiv.org/pdf/1802.08435), but instead of modifying the RNN cells (as proposed in their paper), we used two coupled neural networks
+- The initail vocoder was similar to WaveRNN[(Kalchbrenner et al., 2018)](https://arxiv.org/pdf/1802.08435), but instead of modifying the RNN cells (as proposed in their paper), we used two coupled neural networks
+- We are now using [Clarinet (Ping et al., 2018)](https://arxiv.org/abs/1807.07281)
+
     
-    
+## References
+
+The ParallelWavenet/ClariNet code is adapted from this [ClariNet repo](https://github.com/ksw0306/ClariNet).    
 

@@ -24,9 +24,9 @@ if __name__ == '__main__':
     parser.add_option('--cleanup', action='store_true', dest='cleanup',
                       help='Cleanup temporary training files and start from fresh')
     parser.add_option('--phase', action='store', dest='phase',
-                      choices=['1', '2', '3', '4', '5', '6', '7'],
-                      help='select phase: 1 - prepare corpus; 2 - train vocoder; 3 - train encoder; 4 - end-to-end; '
-                           '5 - test vocoder; 6 - convert to SparseLSTM; 7 - train SparseLSTM')
+                      choices=['1', '2', '3', '4'],
+                      help='select phase: 1 - prepare corpus; 2 - train sequential vocoder; 3 - train encoder; '
+                           '4 - train parallel vocoder')
     parser.add_option("--batch-size", action='store', dest='batch_size', default='1000', type='int',
                       help='number of samples in a single batch (default=1000)')
     parser.add_option("--set-mem", action='store', dest='memory', default='2048', type='int',
@@ -223,9 +223,9 @@ if __name__ == '__main__':
 
     def phase_2_train_vocoder(params):
         from io_modules.dataset import Dataset
-        from models.vocoder import BeeCoder
+        from models.vocoder import Vocoder
         from trainers.vocoder import Trainer
-        vocoder = BeeCoder(params)
+        vocoder = Vocoder(params)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             vocoder.load('data/models/nn_vocoder')
@@ -283,91 +283,25 @@ if __name__ == '__main__':
         trainer.start_training(10, 1000, params)
 
 
-    def phase_5_test_vocoder(params):
+    def phase_4_train_pvocoder(params):
         from io_modules.dataset import Dataset
         from models.vocoder import Vocoder
+        from models.vocoder import ParallelVocoder
         from trainers.vocoder import Trainer
-        vocoder = Vocoder(params, runtime=True)
-        vocoder.load('data/models/rnn')
-        trainset = Dataset("data/processed/train")
-        devset = Dataset("data/processed/dev")
-        sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
-            len(devset.files)) + ' development files\n')
-        trainer = Trainer(vocoder, trainset, devset)
-        trainer.synth_devset(params.batch_size, target_sample_rate=params.target_sample_rate, sample=True,
-                             temperature=0.8)
-
-
-    def phase_6_convert_to_sparse_lstm(params):
-        sys.stdout.write('Converting existing vocoder to SparseLSTM...\n')
-        sys.stdout.flush()
-        f = open('data/models/rnn_vocoder.network')
-        lines = f.readlines()
-        f.close()
-        f = open('data/models/rnn_vocoder_sparse.network', 'w')
-
-        index = 0
-        while index < len(lines):
-            line = lines[index]
-            if not line.startswith('#Parameter# /vanilla-lstm-builder'):
-                f.write(line)
-            else:
-                # write the standard LSTM part
-                for zz in range(4):  # there are 4 lines per VanillaLSTM for the Weights
-                    f.write(lines[index + zz])
-
-                # get the size of P1
-                sz = lines[index].split(" ")[2]
-                sz = sz.replace("{", "").replace("}", "").replace(",", " ").split(" ")
-                print("\tfound VanillaLSTM paramter with size", sz)
-                f.write(lines[index].replace("/_0", "/_2"))
-                p_size = int(sz[0]) * int(sz[1])
-                for x in range(p_size):
-                    f.write("+1.00000000e+00 ")
-                f.write("\n")
-
-                sz = lines[index + 2].split(" ")[2]
-                sz = sz.replace("{", "").replace("}", "").replace(",", " ").split(" ")
-                print("\tfound VanillaLSTM paramter with size", sz)
-                f.write(lines[index + 2].replace("/_1", "/_3"))
-                p_size = int(sz[0]) * int(sz[1])
-                for x in range(p_size):
-                    f.write("+1.00000000e+00 ")
-
-                f.write("\n")
-
-                index += 4
-
-                # rename the bias parameter and write it to the file
-                f.write(lines[index].replace("/_2", "/_4"))
-                f.write(lines[index + 1])
-                index += 1
-
-            index += 1
-
-        f.close()
-        sys.stdout.write('done\n')
-
-
-    def phase_7_train_sparse(params):
-        sys.stdout.write("Starting sparsification for VanillaLSTM\n")
-        from io_modules.dataset import Dataset
-        from models.vocoder import Vocoder
-        from trainers.vocoder import Trainer
-        vocoder = Vocoder(params, use_sparse_lstm=True)
-
-        sys.stdout.write('Resuming from previous checkpoint\n')
-        vocoder.load('data/models/rnn_vocoder_sparse')
-        sys.stdout.write("Reading datasets\n")
-        sys.stdout.flush()
+        vocoder_wavenet = Vocoder(params)
+        sys.stdout.write('Loading wavenet vocoder\n')
+        vocoder_wavenet.load('data/models/nn_vocoder')
+        vocoder = ParallelVocoder(params, vocoder_wavenet)
+        if params.resume:
+            sys.stdout.write('Resuming from previous checkpoint\n')
+            vocoder.load('data/models/pnn_vocoder')
 
         trainset = Dataset("data/processed/train")
         devset = Dataset("data/processed/dev")
         sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
             len(devset.files)) + ' development files\n')
-        sys.stdout.flush()
-        trainer = Trainer(vocoder, trainset, devset)
-        trainer.start_training(20, params.batch_size, params.target_sample_rate, params=params)
+        trainer = Trainer(vocoder, trainset, devset, target_output_path='data/models/pnn_vocoder')
+        trainer.start_training(20, params.batch_size, params.target_sample_rate)
 
 
     if params.phase and params.phase == '1':
@@ -377,10 +311,4 @@ if __name__ == '__main__':
     if params.phase and params.phase == '3':
         phase_3_train_encoder(params)
     if params.phase and params.phase == '4':
-        print("Not yet implemented. Still wondering if this is really required")
-    if params.phase and params.phase == '5':
-        phase_5_test_vocoder(params)
-    if params.phase and params.phase == '6':
-        phase_6_convert_to_sparse_lstm(params)
-    if params.phase and params.phase == '7':
-        phase_7_train_sparse(params)
+        phase_4_train_pvocoder(params)

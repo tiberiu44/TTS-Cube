@@ -13,436 +13,202 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
-import numpy as np
-import sys
-from io_modules.dataset import DatasetIO
-from io_modules.vocoder import MelVocoder
 import torch
-import torch.nn as nn
+import tqdm
+import numpy as np
+from models.clarinet.wavenet import Wavenet
+from models.clarinet.modules import GaussianLoss, STFT, KL_Loss
+from models.clarinet.wavenet_iaf import Wavenet_Student
+from torch.distributions.normal import Normal
 
-# Device configuration
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
-class BeeCoder:
-    def __init__(self, params, model=None, runtime=False):
+def _create_batches(y_target, mgc, batch_size, UPSAMPLE_COUNT=256, mgc_order=60):
+    x_list = []
+    y_list = []
+    c_list = []
+
+    x_mini_list = []
+    y_mini_list = []
+    c_mini_list = []
+    mini_batch = 25
+
+    for batch_index in range((len(mgc) - 1) // mini_batch):
+        mgc_start = batch_index * mini_batch
+        mgc_stop = batch_index * mini_batch + mini_batch
+        c_mini_list.append(mgc[mgc_start:mgc_stop].reshape(mini_batch, mgc_order).transpose())
+        x_start = batch_index * mini_batch * UPSAMPLE_COUNT
+        x_stop = batch_index * mini_batch * UPSAMPLE_COUNT + mini_batch * UPSAMPLE_COUNT
+        x_mini_list.append(y_target[x_start:x_stop].reshape(1, x_stop - x_start))
+        y_mini_list.append(y_target[x_start:x_stop].reshape(x_stop - x_start, 1))
+
+        if len(c_mini_list) == batch_size:
+            x_list.append(torch.tensor(x_mini_list).to(device))
+            y_list.append(torch.tensor(y_mini_list).to(device))
+            c_list.append(torch.tensor(c_mini_list).to(device))
+            c_mini_list = []
+            x_mini_list = []
+            y_mini_list = []
+
+    if len(c_mini_list) != 0:
+        x_list.append(torch.tensor(x_mini_list).to(device))
+        y_list.append(torch.tensor(y_mini_list).to(device))
+        c_list.append(torch.tensor(c_mini_list).to(device))
+    # from ipdb import set_trace
+    # set_trace()
+
+    return x_list, y_list, c_list
+
+
+class Vocoder:
+    def __init__(self, params):
+
         self.params = params
-        self.HIDDEN_SIZE = [1000, 1000]
 
-        self.FFT_SIZE = 513
-        self.UPSAMPLE_COUNT = int(12.5 * params.target_sample_rate / 1000)
-        self.FILTER_SIZE = 128
+        self.UPSAMPLE_COUNT = int(16 * params.target_sample_rate / 1000)
+        self.RECEPTIVE_SIZE = 3 * 3 * 3 * 3 * 3 * 3
+        self.model = Wavenet(out_channels=2,
+                             num_blocks=4,
+                             num_layers=6,
+                             residual_channels=128,
+                             gate_channels=256,
+                             skip_channels=128,
+                             kernel_size=3,
+                             cin_channels=params.mgc_order,
+                             upsample_scales=[16, 16]).to(device)
 
-        self.sparse = False
-        self.dio = DatasetIO()
-        self.vocoder = MelVocoder()
+        self.loss = GaussianLoss()
 
-        self.network = VocoderNetwork(self.params.mgc_order, self.UPSAMPLE_COUNT).to(device)
-        self.trainer = torch.optim.Adam(self.network.parameters(), lr=self.params.learning_rate)
+        self.trainer = torch.optim.Adam(self.model.parameters(), lr=self.params.learning_rate)
 
-    def synthesize(self, mgc, batch_size, sample=True, temperature=1.0, path=None):
-        last_proc = 0
-        synth = []
-        x = []
-        for mgc_index in range(len(mgc)):
-            curr_proc = int((mgc_index + 1) * 100 / len(mgc))
-            if curr_proc % 5 == 0 and curr_proc != last_proc:
-                while last_proc < curr_proc:
-                    last_proc += 5
-                    sys.stdout.write(' ' + str(last_proc))
-                    sys.stdout.flush()
+    def learn(self, y_target, mgc, batch_size):
+        # prepare batches
+        x_list, y_list, c_list = _create_batches(y_target, mgc, batch_size, UPSAMPLE_COUNT=self.UPSAMPLE_COUNT,
+                                                 mgc_order=self.params.mgc_order)
+        if len(x_list) == 0:
+            return 0
+        # learn
+        total_loss = 0
+        for x, y, c in tqdm.tqdm(zip(x_list, y_list, c_list), total=len(c_list)):
+            x = torch.tensor(x, dtype=torch.float32).to(device)
+            y = torch.tensor(y, dtype=torch.float32).to(device)
+            c = torch.tensor(c, dtype=torch.float32).to(device)
+            self.trainer.zero_grad()
+            y_hat = self.model(x, c)
 
-            prev_mgc = mgc[mgc_index]
-            if mgc_index > 0:
-                prev_mgc = mgc[mgc_index - 1]
-            next_mgc = mgc[mgc_index]
-            if mgc_index < len(mgc) - 1:
-                next_mgc = mgc[mgc_index + 1]  # always ok
+            t_y = y[:, 1:]  # .reshape(1, y_hat.shape[0] * y_hat.shape[2] - 1, 1)
+            p_y = y_hat[:, :, :-1]
 
-            input = [prev_mgc, mgc[mgc_index], next_mgc]
+            loss = self.loss(p_y, t_y, size_average=True)
+            total_loss += loss.item()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 10.)
+            self.trainer.step()
+        return total_loss / len(x_list)
 
-            x.append(input)
-
-            if len(x) == batch_size:
-                inp = torch.tensor(x).reshape(batch_size, 3, 60).float().to(device)
-                output = self.network(inp).reshape(self.UPSAMPLE_COUNT * batch_size)
-                for zz in output:
-                    synth.append(zz.item())
-                x = []
-
-        if len(x) != 0:
-            inp = torch.tensor(x).reshape(len(x), 3, 60).float().to(device)
-            output = self.network(inp).reshape(self.UPSAMPLE_COUNT * len(x))
-            for x in output:
-                synth.append(x.item())
-
-        # synth = self.dio.ulaw_decode(synth, discreete=False)
-        synth = np.array(synth, dtype=np.float32)
-        synth = np.clip(synth * 32768, -32767, 32767)
-        synth = np.array(synth, dtype=np.int16)
-
-        return synth
+    def synthesize(self, mgc, batch_size):
+        num_samples = len(mgc) * self.UPSAMPLE_COUNT
+        # from ipdb import set_trace
+        # set_trace()
+        with torch.no_grad():
+            c = torch.tensor(mgc.transpose(), dtype=torch.float32).to(device).reshape(1, mgc[0].shape[0], len(mgc))
+            x = self.model.generate(num_samples - 1, c, device=device)
+        torch.cuda.synchronize()
+        x = x.squeeze().numpy() * 32768
+        return x
 
     def store(self, output_base):
-        torch.save(self.network.state_dict(), output_base + ".network")
-        # self.model.save(output_base + ".network")
-        x = 0
+        torch.save(self.model.state_dict(), output_base + ".network")
 
     def load(self, output_base):
         if torch.cuda.is_available():
-            self.network.load_state_dict(torch.load(output_base + ".network"))
+            if torch.cuda.device_count() == 1:
+                self.model.load_state_dict(torch.load(output_base + ".network", map_location='cuda:0'))
+            else:
+                self.model.load_state_dict(torch.load(output_base + ".network"))
         else:
-            self.network.load_state_dict(
+            self.model.load_state_dict(
                 torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
-        self.network.to(device)
-        # self.model.populate(output_base + ".network")
+        self.model.to(device)
 
-    def _predict_one(self, mgc, noise):
 
-        return None
+class ParallelVocoder:
+    def __init__(self, params, vocoder=None):
+        self.UPSAMPLE_COUNT = int(16 * params.target_sample_rate / 1000)
+        self.RECEPTIVE_SIZE = 3 * 3 * 3 * 3 * 3 * 3
+        self.params = params
+        self.model_t = vocoder.model
+        self.model_s = Wavenet_Student(num_blocks_student=[1, 1, 1, 4],
+                                       num_layers=6, cin_channels=self.params.mgc_order)
+        self.model_s.to(device)
 
-    def _get_loss(self, signal_orig, signal_pred, batch_size):
-        if batch_size < 4:
-            return None
-        # from ipdb import set_trace
-        # set_trace()
-        fft_orig = torch.stft(signal_orig.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
-                              window=torch.hann_window(window_length=512).to(device))
-        fft_pred = torch.stft(signal_pred.reshape(batch_size * self.UPSAMPLE_COUNT), n_fft=512,
-                              window=torch.hann_window(window_length=512).to(device))
-        loss = torch.abs(torch.abs(fft_orig) - torch.abs(fft_pred)).sum() / (batch_size * 512)
+        self.stft = STFT(filter_length=1024, hop_length=256).to(device)
+        self.criterion_t = KL_Loss().to(device)
+        self.criterion_frame = torch.nn.MSELoss().to(device)
+        self.trainer = torch.optim.Adam(self.model_s.parameters(), lr=self.params.learning_rate)
+        self.model_t.eval()
+        self.model_s.train()
 
-        angle_orig = torch.atan(fft_orig)
-        angle_pred = torch.atan(fft_pred)
-
-        power_orig = torch.abs(fft_orig)
-        power_pred = torch.abs(fft_pred)
-        # real_orig = torch.sin(angle_orig) * power_orig
-        # imag_orig = torch.cos(angle_orig) * power_orig
-        # real_pred = torch.sin(angle_pred) * power_pred
-        # imag_pred = torch.cos(angle_pred) * power_pred
-        # loss += 0.2 * torch.abs(power_orig * power_pred - real_orig * real_pred - imag_orig * imag_pred).sum() / (
-        #        batch_size * 512)
-
-        loss += 0.4 * torch.abs(signal_orig - signal_pred).sum() / (batch_size * self.UPSAMPLE_COUNT)
-
-        loss += 0.4 * torch.abs(angle_pred - angle_orig).sum() / (batch_size * 512)
-
-        return loss
-
-    def learn(self, wave, mgc, batch_size):
-        last_proc = 0
+    def learn(self, y_target, mgc, batch_size):
+        # prepare batches
+        x_list, y_list, c_list = _create_batches(y_target, mgc, batch_size, UPSAMPLE_COUNT=self.UPSAMPLE_COUNT,
+                                                 mgc_order=self.params.mgc_order)
+        if len(x_list) == 0:
+            return 0
+        # learn
         total_loss = 0
-        losses = []
-        cnt = 0
-        noise = np.random.normal(0, 1.0, (len(wave) + self.UPSAMPLE_COUNT))
-        x = []
-        y = []
-        num_batches = 0
-        for mgc_index in range(len(mgc)):
-            curr_proc = int((mgc_index + 1) * 100 / len(mgc))
-            if curr_proc % 5 == 0 and curr_proc != last_proc:
-                while last_proc < curr_proc:
-                    last_proc += 5
-                    sys.stdout.write(' ' + str(last_proc))
-                    sys.stdout.flush()
-
-            if mgc_index < len(mgc) - 1:
-                cnt += 1
-                prev_mgc = mgc[mgc_index]
-                if mgc_index > 0:
-                    prev_mgc = mgc[mgc_index - 1]
-                next_mgc = mgc[mgc_index + 1]  # always ok
-
-                input = [prev_mgc, mgc[mgc_index], next_mgc]
-                output = wave[self.UPSAMPLE_COUNT * mgc_index:self.UPSAMPLE_COUNT * mgc_index + self.UPSAMPLE_COUNT]
-                x.append(input)
-                y.append(output)
-
-            if len(x) == batch_size:
-                self.trainer.zero_grad()
-                batch_x = torch.tensor(x).reshape(batch_size, 3, 60).float().to(device)
-                batch_y = torch.tensor(y).reshape(batch_size, self.UPSAMPLE_COUNT).to(device)
-                y_pred = self.network(batch_x)
-
-                loss = self._get_loss(batch_y, y_pred, batch_size)
-                loss.backward()
-                self.trainer.step()
-                total_loss += loss
-                x = []
-                y = []
-                num_batches += 1
-
-        if len(x) > 0:
+        for x, y, c in tqdm.tqdm(zip(x_list, y_list, c_list), total=len(c_list)):
+            x = torch.tensor(x, dtype=torch.float32).to(device)
+            y = torch.tensor(y, dtype=torch.float32).to(device)
+            c = torch.tensor(c, dtype=torch.float32).to(device)
             self.trainer.zero_grad()
-            batch_x = torch.tensor(x).reshape(len(x), 3, 60).float().to(device)
-            batch_y = torch.tensor(y).reshape(len(x), self.UPSAMPLE_COUNT).to(device)
-            y_pred = self.network(batch_x)
+            q_0 = Normal(x.new_zeros(x.size()), x.new_ones(x.size()))
+            z = q_0.sample()
+            # with torch.no_grad():
+            c_up = self.model_t.upsample(c)
 
-            loss = self._get_loss(batch_y, y_pred, len(x))
-            if loss is not None:
-                loss.backward()
-                self.trainer.step()
-                total_loss += loss
-                num_batches += 1
+            x_student, mu_s, logs_s = self.model_s(z, c_up)
+            mu_logs_t = self.model_t(x_student, c)
 
-        total_loss = total_loss.item()
-        return total_loss / num_batches
+            loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1])
+            stft_student, _ = self.stft(x_student[:, :, 1:])
+            stft_truth, _ = self.stft(x[:, :, 1:])
+            loss_frame = self.criterion_frame(stft_student, stft_truth)
+            loss_tot = loss_t + loss_frame
+            total_loss += loss_tot.item()
+            loss_tot.backward()
 
+            torch.nn.utils.clip_grad_norm_(self.model_s.parameters(), 10.)
+            self.trainer.step()
 
-class VocoderNetwork(nn.Module):
-    def __init__(self, input_size, output_size):
-        super(VocoderNetwork, self).__init__()
+        return total_loss / len(x_list)
 
-        self.net1 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
-            # nn.ELU()
-        )
-        torch.nn.init.xavier_uniform_(self.net1[0].weight)
-        torch.nn.init.xavier_uniform_(self.net1[2].weight)
-        torch.nn.init.xavier_uniform_(self.net1[4].weight)
-        torch.nn.init.xavier_uniform_(self.net1[6].weight)
-        torch.nn.init.xavier_uniform_(self.net1[8].weight)
-        torch.nn.init.xavier_uniform_(self.net1[10].weight)
-        torch.nn.init.xavier_uniform_(self.net1[12].weight)
-        torch.nn.init.xavier_uniform_(self.net1[14].weight)
+    def synthesize(self, mgc, batch_size):
+        num_samples = len(mgc) * self.UPSAMPLE_COUNT
+        zeros = np.zeros((1, 1, num_samples))
+        ones = np.ones((1, 1, num_samples))
+        with torch.no_grad():
+            c = torch.tensor(mgc.transpose(), dtype=torch.float32).to(device).reshape(1, mgc[0].shape[0], len(mgc))
+            c_up = self.model_t.upsample(c)
+            q_0 = Normal(torch.tensor(zeros, dtype=torch.float32).to(device),
+                         torch.tensor(ones, dtype=torch.float32).to(device))
+            z = q_0.sample()
+            x = self.model_s.generate(z, c_up, device=device)
+        torch.cuda.synchronize()
+        x = x.squeeze().cpu().numpy() * 32768
+        return x
 
-        self.net2 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
-            # nn.ELU()
+    def store(self, output_base):
+        torch.save(self.model_s.state_dict(), output_base + ".network")
 
-        )
-        torch.nn.init.xavier_uniform_(self.net2[0].weight)
-        torch.nn.init.xavier_uniform_(self.net2[2].weight)
-        torch.nn.init.xavier_uniform_(self.net2[4].weight)
-        torch.nn.init.xavier_uniform_(self.net2[6].weight)
-        torch.nn.init.xavier_uniform_(self.net2[8].weight)
-        torch.nn.init.xavier_uniform_(self.net2[10].weight)
-        torch.nn.init.xavier_uniform_(self.net2[12].weight)
-        torch.nn.init.xavier_uniform_(self.net2[14].weight)
-
-        self.net3 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
-            # nn.ELU()
-
-        )
-        torch.nn.init.xavier_uniform_(self.net3[0].weight)
-        torch.nn.init.xavier_uniform_(self.net3[2].weight)
-        torch.nn.init.xavier_uniform_(self.net3[4].weight)
-        torch.nn.init.xavier_uniform_(self.net3[6].weight)
-        torch.nn.init.xavier_uniform_(self.net3[8].weight)
-        torch.nn.init.xavier_uniform_(self.net3[10].weight)
-        torch.nn.init.xavier_uniform_(self.net3[12].weight)
-        torch.nn.init.xavier_uniform_(self.net3[14].weight)
-
-        self.net4 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
-            # nn.ELU()
-
-        )
-        torch.nn.init.xavier_uniform_(self.net4[0].weight)
-        torch.nn.init.xavier_uniform_(self.net4[2].weight)
-        torch.nn.init.xavier_uniform_(self.net4[4].weight)
-        torch.nn.init.xavier_uniform_(self.net4[6].weight)
-        torch.nn.init.xavier_uniform_(self.net4[8].weight)
-        torch.nn.init.xavier_uniform_(self.net4[10].weight)
-        torch.nn.init.xavier_uniform_(self.net4[12].weight)
-        torch.nn.init.xavier_uniform_(self.net4[14].weight)
-
-        self.net5 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
-            # nn.ELU()
-
-        )
-        torch.nn.init.xavier_uniform_(self.net5[0].weight)
-        torch.nn.init.xavier_uniform_(self.net5[2].weight)
-        torch.nn.init.xavier_uniform_(self.net5[4].weight)
-        torch.nn.init.xavier_uniform_(self.net5[6].weight)
-        torch.nn.init.xavier_uniform_(self.net5[8].weight)
-        torch.nn.init.xavier_uniform_(self.net5[10].weight)
-        torch.nn.init.xavier_uniform_(self.net5[12].weight)
-        torch.nn.init.xavier_uniform_(self.net5[14].weight)
-
-        self.net6 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
-            # nn.ELU()
-
-        )
-        torch.nn.init.xavier_uniform_(self.net6[0].weight)
-        torch.nn.init.xavier_uniform_(self.net6[2].weight)
-        torch.nn.init.xavier_uniform_(self.net6[4].weight)
-        torch.nn.init.xavier_uniform_(self.net6[6].weight)
-        torch.nn.init.xavier_uniform_(self.net6[8].weight)
-        torch.nn.init.xavier_uniform_(self.net6[10].weight)
-        torch.nn.init.xavier_uniform_(self.net6[12].weight)
-        torch.nn.init.xavier_uniform_(self.net6[14].weight)
-
-        self.net7 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
-            # nn.ELU()
-
-        )
-        torch.nn.init.xavier_uniform_(self.net7[0].weight)
-        torch.nn.init.xavier_uniform_(self.net7[2].weight)
-        torch.nn.init.xavier_uniform_(self.net7[4].weight)
-        torch.nn.init.xavier_uniform_(self.net7[6].weight)
-        torch.nn.init.xavier_uniform_(self.net7[8].weight)
-        torch.nn.init.xavier_uniform_(self.net7[10].weight)
-        torch.nn.init.xavier_uniform_(self.net7[12].weight)
-        torch.nn.init.xavier_uniform_(self.net7[14].weight)
-
-        self.net8 = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=13, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 256, kernel_size=5, stride=1, padding=0),
-            nn.ELU(),
-            nn.Conv1d(256, 200, kernel_size=16, stride=1, padding=0),
-            # nn.ELU()
-
-        )
-        torch.nn.init.xavier_uniform_(self.net8[0].weight)
-        torch.nn.init.xavier_uniform_(self.net8[2].weight)
-        torch.nn.init.xavier_uniform_(self.net8[4].weight)
-        torch.nn.init.xavier_uniform_(self.net8[6].weight)
-        torch.nn.init.xavier_uniform_(self.net8[8].weight)
-        torch.nn.init.xavier_uniform_(self.net8[10].weight)
-        torch.nn.init.xavier_uniform_(self.net8[12].weight)
-        torch.nn.init.xavier_uniform_(self.net8[14].weight)
-
-        self.act = nn.Softsign()
-
-    def forward(self, x):
-        out1 = self.net1(x)
-        out1 = out1.reshape(out1.size(0), out1.size(1) * out1.size(2))
-
-        out2 = self.net2(x)
-        out2 = out2.reshape(out2.size(0), out2.size(1) * out2.size(2))
-
-        out3 = self.net3(x)
-        out3 = out3.reshape(out3.size(0), out3.size(1) * out3.size(2))
-
-        out4 = self.net4(x)
-        out4 = out4.reshape(out4.size(0), out4.size(1) * out4.size(2))
-
-        out5 = self.net5(x)
-        out5 = out5.reshape(out5.size(0), out5.size(1) * out5.size(2))
-
-        out6 = self.net6(x)
-        out6 = out6.reshape(out6.size(0), out6.size(1) * out6.size(2))
-
-        out7 = self.net7(x)
-        out7 = out7.reshape(out7.size(0), out7.size(1) * out7.size(2))
-
-        out8 = self.net8(x)
-        out8 = out8.reshape(out8.size(0), out8.size(1) * out8.size(2))
-
-        return self.act(out1 + out2 + out3 + out4 + out5 + out6 + out7 + out8)
+    def load(self, output_base):
+        if torch.cuda.is_available():
+            if torch.cuda.device_count() == 1:
+                self.model_s.load_state_dict(torch.load(output_base + ".network", map_location='cuda:0'))
+            else:
+                self.model_s.load_state_dict(torch.load(output_base + ".network"))
+        else:
+            self.model_s.load_state_dict(
+                torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
+        self.model_s.to(device)

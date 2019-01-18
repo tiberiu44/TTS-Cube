@@ -71,6 +71,8 @@ def _render_spectrogram(mgc, output_file):
 
 
 def synthesize(speaker, input_file, output_file, params):
+    from models.vocoder import device
+    print(device)
     print("[Encoding]")
     from io_modules.dataset import Dataset
     from io_modules.dataset import Encodings
@@ -86,21 +88,24 @@ def synthesize(speaker, input_file, output_file, params):
     _render_spectrogram(mgc, output_file + '.png')
 
     print("[Vocoding]")
-    from models.vocoder import BeeCoder
-    from trainers.vocoder import Trainer
-    vocoder = BeeCoder(params, runtime=True)
+    from models.vocoder import ParallelVocoder
+    from models.vocoder import Vocoder
+    vocoder = Vocoder(params)
     vocoder.load('data/models/nn_vocoder')
+    pvocoder = ParallelVocoder(params, vocoder=vocoder)
+    pvocoder.load('data/models/pnn_vocoder')
 
     import time
     start = time.time()
-    signal = vocoder.synthesize(mgc, batch_size=params.batch_size, temperature=params.temperature, sample=params.sample)
+    import torch
+    with torch.no_grad():
+        signal = pvocoder.synthesize(mgc, batch_size=params.batch_size)
     stop = time.time()
     sys.stdout.write(" execution time=" + str(stop - start))
     sys.stdout.write('\n')
     sys.stdout.flush()
     from io_modules.dataset import DatasetIO
     dio = DatasetIO()
-    # enc = dio.b16_dec(signal, discreete=True)
 
     dio.write_wave(output_file, signal, params.target_sample_rate, dtype=signal.dtype)
 
