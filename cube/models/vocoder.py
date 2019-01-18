@@ -165,14 +165,11 @@ class ParallelVocoder:
             self.trainer.zero_grad()
             q_0 = Normal(x.new_zeros(x.size()), x.new_ones(x.size()))
             z = q_0.sample()
-            with torch.no_grad():
-                c_up = self.model_t.upsample(c)
-                
-            c_up = c_up.detach()
+            # with torch.no_grad():
+            c_up = self.model_t.upsample(c)
+
             x_student, mu_s, logs_s = self.model_s(z, c_up)
-            with torch.no_grad():
-                mu_logs_t = self.model_t(x_student, c)
-            mu_logs_t = mu_logs_t.detach()
+            mu_logs_t = self.model_t(x_student, c)
 
             loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1])
             stft_student, _ = self.stft(x_student[:, :, 1:])
