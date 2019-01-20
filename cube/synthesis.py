@@ -107,7 +107,7 @@ def synthesize(speaker, input_file, output_file, params):
     from io_modules.dataset import DatasetIO
     dio = DatasetIO()
 
-    dio.write_wave(output_file, signal, params.target_sample_rate, dtype=signal.dtype)
+    dio.write_wave(output_file, signal / 32768.0, params.target_sample_rate, dtype=signal.dtype)
 
 
 if __name__ == '__main__':
