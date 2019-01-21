@@ -226,10 +226,10 @@ class Encoder:
             if index % 3 == 0:
                 # attention loss
                 if guided_att:
-                    att = output_attention[index / 3]
-                    losses.append(self._compute_guided_attention(att, index / 3, len(characters) + 2, num_mgc / 3))
+                    att = output_attention[index // 3]
+                    losses.append(self._compute_guided_attention(att, index // 3, len(characters) + 2, num_mgc // 3))
                 # EOS loss
-                stop = output_stop[index / 3]
+                stop = output_stop[index // 3]
                 if index >= num_mgc - 6:
                     losses.append(dy.l1_distance(stop, dy.scalarInput(-0.8)))
                 else:

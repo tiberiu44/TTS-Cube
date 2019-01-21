@@ -146,7 +146,7 @@ class Trainer:
                 sys.stdout.write(' avg loss=' + str(loss) + " execution time=" + str(stop - start))
                 sys.stdout.write('\n')
                 sys.stdout.flush()
-                if file_index % 200 == 0:
+                if file_index % 500 == 0:
                     self.synth_devset(max_size=max_mgc)
                     self.vocoder.store('data/models/rnn_encoder')
 
