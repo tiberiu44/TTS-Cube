@@ -84,8 +84,8 @@ class MelVocoder:
 
     def _stft_parameters(self, sample_rate):
         n_fft = (513 - 1) * 2
-        hop_length = int(16 / 1000 * sample_rate)
-        win_length = int(32 / 1000 * sample_rate)
+        hop_length = 256 # int(16 / 1000 * sample_rate)
+        win_length = 512 # int(32 / 1000 * sample_rate)
         return n_fft, hop_length, win_length
 
     def _amp_to_db(self, x):
