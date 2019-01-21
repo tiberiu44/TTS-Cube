@@ -127,11 +127,11 @@ if __name__ == '__main__':
     parser.add_option("--sample", action='store_true', dest='sample',
                       help='Use random sampling')
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
-                      help='Order of MGC parameters (default=60)', default=60)
+                      help='Order of MGC parameters (default=80)', default=80)
     parser.add_option('--temperature', action='store', dest='temperature', type='float',
                       help='Exploration parameter (max 1.0, default 0.8)', default=0.8)
     parser.add_option('--target-sample-rate', action='store', dest='target_sample_rate',
-                      help='Resample input files at this rate (default=16000)', type='int', default=16000)
+                      help='Resample input files at this rate (default=24000)', type='int', default=24000)
 
     (params, _) = parser.parse_args(sys.argv)
 

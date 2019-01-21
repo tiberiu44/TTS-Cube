@@ -48,9 +48,9 @@ if __name__ == '__main__':
     parser.add_option('--dev-folder', action='store', dest='dev_folder',
                       help='Location of the development files')
     parser.add_option('--target-sample-rate', action='store', dest='target_sample_rate',
-                      help='Resample input files at this rate (default=16000)', type='int', default=16000)
+                      help='Resample input files at this rate (default=24000)', type='int', default=24000)
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
-                      help='Order of MGC parameters (default=60)', default=60)
+                      help='Order of MGC parameters (default=80)', default=80)
     parser.add_option('--sparsity-target', action='store', type='int', default='95', dest='sparsity_target',
                       help='Target sparsity rate for LSTM')
     parser.add_option('--sparsity-step', action='store', type='int', default='5', dest='sparsity_step',
