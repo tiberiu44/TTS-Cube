@@ -66,7 +66,7 @@ class Vocoder:
 
         self.params = params
 
-        self.UPSAMPLE_COUNT = int(16 * params.target_sample_rate / 1000)
+        self.UPSAMPLE_COUNT = 256
         self.RECEPTIVE_SIZE = 3 * 3 * 3 * 3 * 3 * 3
         self.model = Wavenet(out_channels=2,
                              num_blocks=4,
@@ -135,7 +135,7 @@ class Vocoder:
 
 class ParallelVocoder:
     def __init__(self, params, vocoder=None):
-        self.UPSAMPLE_COUNT = int(16 * params.target_sample_rate / 1000)
+        self.UPSAMPLE_COUNT = 256
         self.RECEPTIVE_SIZE = 3 * 3 * 3 * 3 * 3 * 3
         self.params = params
         self.model_t = vocoder.model
