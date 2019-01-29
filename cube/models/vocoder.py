@@ -151,9 +151,9 @@ class ParallelVocoder:
         self.model_s.train()
 
     def _power_loss(self, p_y, t_y):
-        fft_orig = torch.stft(t_y.reshape(t_y.shape[0]), n_fft=512,
+        fft_orig = torch.stft(t_y.reshape(t_y.shape[0]*t_y.shape[1]*t_y.shape[2]), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
-        fft_pred = torch.stft(p_y.reshape(p_y.shape[0]), n_fft=512,
+        fft_pred = torch.stft(p_y.reshape(p_y.shape[0]*p_y.shape[1]*p_y.shape[2]), n_fft=512,
                               window=torch.hann_window(window_length=512).to(device))
         real_orig = fft_orig[:, :, 0]
         im_org = fft_orig[:, :, 1]
@@ -161,7 +161,7 @@ class ParallelVocoder:
         real_pred = fft_pred[:, :, 0]
         im_pred = fft_pred[:, :, 1]
         power_pred = torch.sqrt(torch.pow(real_pred, 2) + torch.pow(im_pred, 2))
-        return torch.sum(torch.pow(torch.norm(torch.abs(power_pred) - torch.abs(power_orig), p=2, dim=1), 2)) / (
+        return torch.sum(torch.pow(power_pred - power_orig, 2)) / (
                 power_pred.shape[0] * power_pred.shape[1])
 
     def learn(self, y_target, mgc, batch_size):
