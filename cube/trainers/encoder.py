@@ -65,7 +65,7 @@ class Trainer:
                 for y in range(mgc.shape[1]):
                     val = mgc[x, y]
                     color = np.clip(val * 255, 0, 255)
-                    bitmap[y, x] = [color, color, color]
+                    bitmap[mgc.shape[1] - y - 1, x] = [color, color, color]#bitmap[y, x] = [color, color, color]
             import scipy.misc as smp
             img = smp.toimage(bitmap)
             img.save(output_file)

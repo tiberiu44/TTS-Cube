@@ -24,9 +24,9 @@ class Encoder:
         self.params = params
         self.PHONE_EMBEDDINGS_SIZE = 100
         self.SPEAKER_EMBEDDINGS_SIZE = 200
-        self.ENCODER_SIZE = 200
-        self.ENCODER_LAYERS = 2
-        self.DECODER_SIZE = 400
+        self.ENCODER_SIZE = 256
+        self.ENCODER_LAYERS = 1
+        self.DECODER_SIZE = 1024
         self.DECODER_LAYERS = 2
         self.MGC_PROJ_SIZE = 100
         self.encodings = encodings
@@ -201,7 +201,7 @@ class Encoder:
         t1 = float(decoder_step) / num_mgcs
 
         for encoder_step in range(num_characters):
-            target_probs.append(1.0 - np.exp(-((float(encoder_step) / num_characters - t1) ** 2) / 0.08))
+            target_probs.append(1.0 - np.exp(-((float(encoder_step) / num_characters - t1) ** 2) / 0.1))
 
         # print target_probs
         target_probs = dy.inputVector(target_probs)

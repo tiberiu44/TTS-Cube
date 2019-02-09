@@ -55,14 +55,14 @@ def create_lab_input(txt_file, speaker_ident):
 
 def _render_spectrogram(mgc, output_file):
     bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
-    mgc_min = mgc.min()
-    mgc_max = mgc.max()
+    # mgc_min = mgc.min()
+    # mgc_max = mgc.max()
 
     for x in range(mgc.shape[0]):
         for y in range(mgc.shape[1]):
-            val = (mgc[x, y] - mgc_min) / (mgc_max - mgc_min)
+            val = np.clip(mgc[x, y] * 255, 0, 255)  # (mgc[x, y] - mgc_min) / (mgc_max - mgc_min)
 
-            color = val * 255
+            color = val
             bitmap[mgc.shape[1] - y - 1, x] = [color, color, color]
     import scipy.misc as smp
 
