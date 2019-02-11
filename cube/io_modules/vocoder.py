@@ -67,7 +67,7 @@ class MelVocoder:
 
     def _stft(self, y, sample_rate):
         n_fft, hop_length, win_length = self._stft_parameters(sample_rate)
-        return librosa.stft(y=y, n_fft=n_fft, hop_length=hop_length, win_length=win_length)
+        return librosa.stft(y=y, n_fft=n_fft, hop_length=hop_length, win_length=win_length, window='hann')
 
     def _linear_to_mel(self, spectrogram, sample_rate, num_mels):
         if self._mel_basis is None:
@@ -75,7 +75,7 @@ class MelVocoder:
         return np.dot(self._mel_basis, spectrogram)
 
     def _build_mel_basis(self, sample_rate, num_mels):
-        n_fft = (513 - 1) * 2
+        n_fft = 1024
         return librosa.filters.mel(sample_rate, n_fft, n_mels=num_mels)
 
     def _normalize(self, S):
@@ -83,13 +83,13 @@ class MelVocoder:
         return np.clip((S - min_level_db) / -min_level_db, 0, 1)
 
     def _stft_parameters(self, sample_rate):
-        n_fft = (513 - 1) * 2
-        hop_length = 256 # int(16 / 1000 * sample_rate)
-        win_length = 512 # int(32 / 1000 * sample_rate)
+        n_fft = 1024
+        hop_length = 256
+        win_length = n_fft
         return n_fft, hop_length, win_length
 
     def _amp_to_db(self, x):
-        reference = 20.0
+        reference = 0.0
         return 20 * np.log10(np.maximum(1e-5, x)) - reference
 
     def griffinlim(self, spectrogram, n_iter=100, sample_rate=16000):
