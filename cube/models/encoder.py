@@ -247,6 +247,8 @@ class Encoder:
         mgc_output = [mgc.npvalue() for mgc in output_mgc]
         import numpy as np
         mgc_final = np.zeros((len(mgc_output), mgc_output[-1].shape[0]))
+        #from ipdb import set_trace
+        #set_trace()
         for i in range(len(mgc_output)):
             for j in range(mgc_output[-1].shape[0]):
                 mgc_final[i, j] = mgc_output[i][j]
