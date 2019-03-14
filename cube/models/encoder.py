@@ -151,11 +151,16 @@ class Encoder:
             last_att_pos = 0
 
         stationed_count = 0
+        first = 4
         # stationed_index = 0
         while True:
             att, align = self._attend(encoder, decoder, last_att_pos)
             if gold_mgc is None:
                 last_att_pos = np.argmax(align.value())
+            if runtime and first > 0:
+                last_att_pos = 0
+                first -= 1
+
             if runtime and last_att_pos == len(characters) - 1:
                 stationed_count += 1
                 if stationed_count > 5:
@@ -163,18 +168,26 @@ class Encoder:
 
             output_att.append(align)
             # main output
-            mgc_proj = dy.tanh(self.last_mgc_proj_w.expr(update=True) * last_mgc + self.last_mgc_proj_b.expr(update=True))
+            mgc_proj = dy.tanh(
+                self.last_mgc_proj_w.expr(update=True) * last_mgc + self.last_mgc_proj_b.expr(update=True))
             decoder = decoder.add_input(dy.concatenate([mgc_proj, att]))
             hidden = dy.tanh(self.hid_w.expr(update=True) * decoder.output() + self.hid_b.expr(update=True))
 
-            output = dy.logistic(self.highway_w.expr(update=True) * att + self.proj_w_1.expr(update=True) * hidden + self.proj_b_1.expr(update=True))
+            output = dy.logistic(
+                self.highway_w.expr(update=True) * att + self.proj_w_1.expr(update=True) * hidden + self.proj_b_1.expr(
+                    update=True))
             output_mgc.append(output)
-            output = dy.logistic(self.highway_w.expr(update=True) * att + self.proj_w_2.expr(update=True) * hidden + self.proj_b_2.expr(update=True))
+            output = dy.logistic(
+                self.highway_w.expr(update=True) * att + self.proj_w_2.expr(update=True) * hidden + self.proj_b_2.expr(
+                    update=True))
             output_mgc.append(output)
-            output = dy.logistic(self.highway_w.expr(update=True) * att + self.proj_w_3.expr(update=True) * hidden + self.proj_b_3.expr(update=True))
+            output = dy.logistic(
+                self.highway_w.expr(update=True) * att + self.proj_w_3.expr(update=True) * hidden + self.proj_b_3.expr(
+                    update=True))
             output_mgc.append(output)
 
-            output_stop.append(dy.tanh(self.stop_w.expr(update=True) * decoder.output() + self.stop_b.expr(update=True)))
+            output_stop.append(
+                dy.tanh(self.stop_w.expr(update=True) * decoder.output() + self.stop_b.expr(update=True)))
 
             if runtime:
                 if max_size != -1 and mgc_index > max_size:
@@ -247,8 +260,8 @@ class Encoder:
         mgc_output = [mgc.npvalue() for mgc in output_mgc]
         import numpy as np
         mgc_final = np.zeros((len(mgc_output), mgc_output[-1].shape[0]))
-        #from ipdb import set_trace
-        #set_trace()
+        # from ipdb import set_trace
+        # set_trace()
         for i in range(len(mgc_output)):
             for j in range(mgc_output[-1].shape[0]):
                 mgc_final[i, j] = mgc_output[i][j]
@@ -275,7 +288,7 @@ class Encoder:
         # force incremental attention if this is runtime
         if last_pos is not None:
             current_pos = np.argmax(attention_weights.value())
-            if current_pos < last_pos or current_pos >= last_pos + 3:
+            if current_pos < last_pos or current_pos >= last_pos + 2:
                 current_pos = last_pos + 1
                 if current_pos >= len(input_list):
                     current_pos = len(input_list) - 1
