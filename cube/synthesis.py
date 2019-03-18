@@ -20,37 +20,49 @@ import sys
 import numpy as np
 
 
-def create_lab_input(txt_file, speaker_ident):
-    seq = []
+def get_file_input_old(txt_file):
     fin = open(txt_file, 'r')
     line = fin.readline().strip().replace('\t', ' ')
+
     while True:
         nl = line.replace('  ', ' ')
         if nl == line:
             break
         line = nl
 
-    # fout.write('START\n')
+    fin.close()
+    return line
+
+
+def get_file_input(txt_file):
+    with open(txt_file, 'rt', encoding='utf-8') as f:
+        return ' '.join(' '.join(f.readlines()).split())
+
+
+def get_phone_input_from_text(text, speaker_identity):
     from io_modules.dataset import PhoneInfo
 
-    seq.append(PhoneInfo('START', [], 0, 0))
-    # sys.stdout.write('START\n')
-    for char in line:
+    seq = [PhoneInfo('START', [], 0, 0)]
+
+    for char in text:
         l_char = char.lower()
         style = 'CASE:lower'
         if l_char == l_char.upper():
             style = 'CASE:symb'
         elif l_char != char:
             style = 'CASE:upper'
-        speaker = 'SPEAKER:' + speaker_ident
+        speaker = 'SPEAKER:' + speaker_identity
         seq.append(PhoneInfo(l_char, [speaker, style], 0, 0))
-        # sys.stdout.write(l_char + '\t' + speaker + '\t' + style + '\n')
 
     seq.append(PhoneInfo('STOP', [], 0, 0))
-    # sys.stdout.write('STOP\n')
 
-    fin.close()
     return seq
+
+
+def create_lab_input(txt_file, speaker_ident):
+    line = get_file_input(txt_file)
+
+    return get_phone_input_from_text(line, speaker_ident)
 
 
 def _render_spectrogram(mgc, output_file):
@@ -70,44 +82,84 @@ def _render_spectrogram(mgc, output_file):
     img.save(output_file)
 
 
-def synthesize(speaker, input_file, output_file, params):
-    from models.vocoder import device
-    print(device)
-    print("[Encoding]")
-    from io_modules.dataset import Dataset
+def load_encoder(params, base_path='data/models'):
     from io_modules.dataset import Encodings
     from models.encoder import Encoder
-    from trainers.encoder import Trainer
-    encodings = Encodings()
-    encodings.load('data/models/encoder.encodings')
-    encoder = Encoder(params, encodings, runtime=True)
-    encoder.load('data/models/rnn_encoder')
 
-    seq = create_lab_input(input_file, speaker)
+    encodings = Encodings()
+    encodings.load('%s/encoder.encodings' % base_path)
+
+    encoder = Encoder(params, encodings, runtime=True)
+    encoder.load('%s/rnn_encoder' % base_path)
+
+    return encoder
+
+
+def load_vocoder(params, base_path='data/models'):
+    from models.vocoder import ParallelVocoder
+    from models.vocoder import Vocoder
+
+    vocoder = Vocoder(params)
+    vocoder.load('%s/nn_vocoder' % base_path)
+
+    pvocoder = ParallelVocoder(params, vocoder=vocoder)
+    pvocoder.load('%s/pnn_vocoder' % base_path)
+
+    return pvocoder
+
+
+def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file):
+    print("[Encoding]")
+    seq = get_phone_input_from_text(text, speaker)
     mgc, att = encoder.generate(seq)
     _render_spectrogram(mgc, output_file + '.png')
 
     print("[Vocoding]")
-    from models.vocoder import ParallelVocoder
-    from models.vocoder import Vocoder
-    vocoder = Vocoder(params)
-    vocoder.load('data/models/nn_vocoder')
-    pvocoder = ParallelVocoder(params, vocoder=vocoder)
-    pvocoder.load('data/models/pnn_vocoder')
 
     import time
     start = time.time()
     import torch
     with torch.no_grad():
-        signal = pvocoder.synthesize(mgc, batch_size=params.batch_size)
+        signal = vocoder.synthesize(mgc, batch_size=params.batch_size)
     stop = time.time()
     sys.stdout.write(" execution time=" + str(stop - start))
     sys.stdout.write('\n')
     sys.stdout.flush()
+
+    return signal
+
+
+def synthesize_text(text, encoder, vocoder, speaker_identity):
+    seq = get_phone_input_from_text(text, speaker_identity)
+    mgc, _ = encoder.generate(seq)
+
+    import torch
+    with torch.no_grad():
+        signal = vocoder.synthesize(mgc, batch_size=32)
+
+    return signal
+
+
+def write_signal_to_file(signal, output_file, params):
     from io_modules.dataset import DatasetIO
     dio = DatasetIO()
 
     dio.write_wave(output_file, signal / 32768.0, params.target_sample_rate, dtype=signal.dtype)
+
+
+def synthesize(speaker, input_file, output_file, params):
+    from models.vocoder import device
+    print(device)
+    print(params)
+
+    encoder = load_encoder(params)
+    vocoder = load_vocoder(params)
+
+    text = get_file_input(input_file)
+
+    signal = synthesize_text_old(text, encoder, vocoder, speaker, params, output_file)
+
+    write_signal_to_file(signal, output_file, params)
 
 
 if __name__ == '__main__':
