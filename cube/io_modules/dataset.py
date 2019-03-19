@@ -35,7 +35,7 @@ class Encodings:
         f.close()
 
     def load(self, filename):
-        f = open(filename)
+        f = open(filename, encoding='utf-8')
         num_symbols = int(f.readline().split('\t')[1])
         for x in range(num_symbols):
             parts = f.readline().split('\t')
