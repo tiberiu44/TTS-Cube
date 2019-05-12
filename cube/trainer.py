@@ -57,6 +57,8 @@ if __name__ == '__main__':
                       help='Step size when increasing sparsity')
     parser.add_option('--sparsity-increase-at', action='store', type='int', default='200', dest='sparsity_increase',
                       help='Number of files to train on between sparsity increase')
+    parser.add_option('--speaker', action='store', dest='speaker', help='Import data under given speaker')
+    parser.add_option('--prefix', action='store', dest='prefix', help='Use this prefix when importing files')
 
     (params, _) = parser.parse_args(sys.argv)
 
@@ -96,7 +98,7 @@ if __name__ == '__main__':
         img.save(output_file)
 
 
-    def create_lab_file(txt_file, lab_file):
+    def create_lab_file(txt_file, lab_file, speaker_name=None):
         fin = open(txt_file, 'r')
         fout = open(lab_file, 'w')
         line = fin.readline().strip().replace('\t', ' ')
@@ -114,7 +116,9 @@ if __name__ == '__main__':
                 style = 'CASE:symb'
             elif l_char != char:
                 style = 'CASE:upper'
-            if len(txt_file.replace('\\', '/').split('/')[-1].split('_')) != 1:
+            if speaker_name is not None:
+                speaker = 'SPEAKER:' + speaker_name
+            elif len(txt_file.replace('\\', '/').split('/')[-1].split('_')) != 1:
                 speaker = 'SPEAKER:' + txt_file.replace('\\', '/').split('_')[0].split('/')[-1]
             else:
                 speaker = 'SPEAKER:none'
@@ -132,7 +136,10 @@ if __name__ == '__main__':
         from os.path import isfile, join
         from os.path import exists
         train_files_tmp = [f for f in listdir(params.train_folder) if isfile(join(params.train_folder, f))]
-        dev_files_tmp = [f for f in listdir(params.dev_folder) if isfile(join(params.dev_folder, f))]
+        if params.dev_folder is not None:
+            dev_files_tmp = [f for f in listdir(params.dev_folder) if isfile(join(params.dev_folder, f))]
+        else:
+            dev_files_tmp = []
 
         sys.stdout.write("Scanning training files...")
         sys.stdout.flush()
@@ -164,11 +171,12 @@ if __name__ == '__main__':
         from io_modules.dataset import DatasetIO
         from io_modules.vocoder import MelVocoder
         from shutil import copyfile
-        import pysptk
         dio = DatasetIO()
         vocoder = MelVocoder()
         base_folder = params.train_folder
+        total_files = 0
         for index in range(len(train_files)):
+            total_files += 1
             sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(train_files)))
             sys.stdout.flush()
             base_name = train_files[index]
@@ -177,24 +185,40 @@ if __name__ == '__main__':
             spc_name = base_name + '.png'
             lab_name = base_name + '.lab'
 
+            tgt_txt_name = txt_name
+            tgt_spc_name = spc_name
+            tgt_lab_name = lab_name
+            if params.prefix is not None:
+                tgt_txt_name = params.prefix + "_{:05d}".format(total_files) + '.txt'
+                tgt_spc_name = params.prefix + "_{:05d}".format(total_files) + '.png'
+                tgt_lab_name = params.prefix + "_{:05d}".format(total_files) + '.lab'
+
             # LAB - copy or create
             if exists(join(base_folder, lab_name)):
-                copyfile(join(base_folder, lab_name), join('data/processed/train', lab_name))
+                copyfile(join(base_folder, lab_name), join('data/processed/train', tgt_lab_name))
             else:
-                create_lab_file(join(base_folder, txt_name), join('data/processed/train', lab_name))
+                create_lab_file(join(base_folder, txt_name),
+                                join('data/processed/train', tgt_lab_name), speaker_name=params.speaker)
             # TXT
-            copyfile(join(base_folder, txt_name), join('data/processed/train', txt_name))
+            copyfile(join(base_folder, txt_name), join('data/processed/train', tgt_txt_name))
             # WAVE
             data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
             mgc = vocoder.melspectrogram(data, sample_rate=params.target_sample_rate, num_mels=params.mgc_order)
             # SPECT
-            render_spectrogram(mgc, join('data/processed/train', spc_name))
-            dio.write_wave(join('data/processed/train', base_name + '.orig.wav'), data, sample_rate)
-            array2file(mgc, join('data/processed/train', base_name + '.mgc'))
+            render_spectrogram(mgc, join('data/processed/train', tgt_spc_name))
+            if params.prefix is None:
+                dio.write_wave(join('data/processed/train', base_name + '.orig.wav'), data, sample_rate)
+                array2file(mgc, join('data/processed/train', base_name + '.mgc'))
+            else:
+                tgt_wav_name = params.prefix + "_{:05d}".format(total_files) + '.orig.wav'
+                tgt_mgc_name = params.prefix + "_{:05d}".format(total_files) + '.mgc'
+                dio.write_wave(join('data/processed/train', tgt_wav_name), data, sample_rate)
+                array2file(mgc, join('data/processed/train', tgt_mgc_name))
 
         sys.stdout.write('\n')
         base_folder = params.dev_folder
         for index in range(len(dev_files)):
+            total_files += 1
             sys.stdout.write("\r\tprocessing file " + str(index + 1) + "/" + str(len(dev_files)))
             sys.stdout.flush()
             base_name = dev_files[index]
@@ -203,20 +227,35 @@ if __name__ == '__main__':
             spc_name = base_name + '.png'
             lab_name = base_name + '.lab'
 
+            tgt_txt_name = txt_name
+            tgt_spc_name = spc_name
+            tgt_lab_name = lab_name
+            if params.prefix is not None:
+                tgt_txt_name = params.prefix + "_{:05d}".format(total_files) + '.txt'
+                tgt_spc_name = params.prefix + "_{:05d}".format(total_files) + '.png'
+                tgt_lab_name = params.prefix + "_{:05d}".format(total_files) + '.lab'
+
             # LAB - copy or create
             if exists(join(base_folder, lab_name)):
-                copyfile(join(base_folder, lab_name), join('data/processed/dev', lab_name))
+                copyfile(join(base_folder, lab_name), join('data/processed/dev', tgt_lab_name))
             else:
-                create_lab_file(join(base_folder, txt_name), join('data/processed/dev', lab_name))
+                create_lab_file(join(base_folder, txt_name),
+                                join('data/processed/dev', tgt_lab_name), speaker_name=params.speaker)
             # TXT
-            copyfile(join(base_folder, txt_name), join('data/processed/dev/', txt_name))
+            copyfile(join(base_folder, txt_name), join('data/processed/dev', tgt_txt_name))
             # WAVE
             data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
             mgc = vocoder.melspectrogram(data, sample_rate=params.target_sample_rate, num_mels=params.mgc_order)
             # SPECT
-            render_spectrogram(mgc, join('data/processed/dev', spc_name))
-            dio.write_wave(join('data/processed/dev', base_name + '.orig.wav'), data, sample_rate)
-            array2file(mgc, join('data/processed/dev', base_name + '.mgc'))
+            render_spectrogram(mgc, join('data/processed/dev', tgt_spc_name))
+            if params.prefix is None:
+                dio.write_wave(join('data/processed/dev', base_name + '.orig.wav'), data, sample_rate)
+                array2file(mgc, join('data/processed/dev', base_name + '.mgc'))
+            else:
+                tgt_wav_name = params.prefix + "_{:05d}".format(total_files) + '.orig.wav'
+                tgt_mgc_name = params.prefix + "_{:05d}".format(total_files) + '.mgc'
+                dio.write_wave(join('data/processed/dev', tgt_wav_name), data, sample_rate)
+                array2file(mgc, join('data/processed/dev', tgt_mgc_name))
 
         sys.stdout.write('\n')
 
@@ -235,7 +274,6 @@ if __name__ == '__main__':
             len(devset.files)) + ' development files\n')
         trainer = Trainer(vocoder, trainset, devset)
         trainer.start_training(20, params.batch_size, params.target_sample_rate)
-
 
     def phase_3_train_encoder(params):
         from io_modules.dataset import Dataset

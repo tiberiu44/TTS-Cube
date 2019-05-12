@@ -56,7 +56,7 @@ class Wavenet(nn.Module):
         out = self.wavenet(x, c)
         return out
 
-    def generate(self, num_samples, c=None, device='cpu'):
+    def generate(self, num_samples, c=None, device='cpu', temperature=1.0):
         # Only a waveform generation
         # from ipdb import set_trace
         # set_trace()

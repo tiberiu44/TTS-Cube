@@ -107,13 +107,13 @@ class Vocoder:
             self.trainer.step()
         return total_loss / len(x_list)
 
-    def synthesize(self, mgc, batch_size):
+    def synthesize(self, mgc, batch_size, temperature=1.0):
         num_samples = len(mgc) * self.UPSAMPLE_COUNT
         # from ipdb import set_trace
         # set_trace()
         with torch.no_grad():
             c = torch.tensor(mgc.transpose(), dtype=torch.float32).to(device).reshape(1, mgc[0].shape[0], len(mgc))
-            x = self.model.generate(num_samples - 1, c, device=device)
+            x = self.model.generate(num_samples - 1, c, device=device, temperature=temperature)
         torch.cuda.synchronize()
         x = x.squeeze().numpy() * 32768
         return x
@@ -184,7 +184,7 @@ class ParallelVocoder:
 
         return total_loss / len(x_list)
 
-    def synthesize(self, mgc, batch_size):
+    def synthesize(self, mgc, batch_size, temperature=1.0):
         num_samples = len(mgc) * self.UPSAMPLE_COUNT
         zeros = np.zeros((1, 1, num_samples))
         ones = np.ones((1, 1, num_samples))
@@ -193,7 +193,7 @@ class ParallelVocoder:
             c_up = self.model_t.upsample(c)
             q_0 = Normal(torch.tensor(zeros, dtype=torch.float32).to(device),
                          torch.tensor(ones, dtype=torch.float32).to(device))
-            z = q_0.sample()
+            z = q_0.sample() * temperature
             x = self.model_s.generate(z, c_up, device=device)
         torch.cuda.synchronize()
         x = x.squeeze().cpu().numpy() * 32768

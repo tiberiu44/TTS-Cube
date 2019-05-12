@@ -120,7 +120,7 @@ def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file):
     start = time.time()
     import torch
     with torch.no_grad():
-        signal = vocoder.synthesize(mgc, batch_size=params.batch_size)
+        signal = vocoder.synthesize(mgc, batch_size=params.batch_size, temperature=params.temperature)
     stop = time.time()
     sys.stdout.write(" execution time=" + str(stop - start))
     sys.stdout.write('\n')
@@ -143,6 +143,7 @@ def synthesize_text(text, encoder, vocoder, speaker_identity):
 def write_signal_to_file(signal, output_file, params):
     from io_modules.dataset import DatasetIO
     dio = DatasetIO()
+
 
     dio.write_wave(output_file, signal / 32768.0, params.target_sample_rate, dtype=signal.dtype)
 
@@ -181,7 +182,7 @@ if __name__ == '__main__':
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
                       help='Order of MGC parameters (default=80)', default=80)
     parser.add_option('--temperature', action='store', dest='temperature', type='float',
-                      help='Exploration parameter (max 1.0, default 0.8)', default=0.8)
+                      help='Exploration parameter (max 1.0, default 0.7)', default=0.7)
     parser.add_option('--target-sample-rate', action='store', dest='target_sample_rate',
                       help='Resample input files at this rate (default=24000)', type='int', default=24000)
 
