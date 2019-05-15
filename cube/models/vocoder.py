@@ -176,7 +176,7 @@ class ParallelVocoder:
             loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1])
             stft_student, _ = self.stft(x_student[:, :, 1:])
             stft_truth, _ = self.stft(x[:, :, 1:])
-            loss_frame = self.criterion_frame(stft_student, stft_truth)
+            loss_frame = self.criterion_frame(stft_student, stft_truth.detach())
             loss_tot = loss_t + loss_frame
             total_loss += loss_tot.item()
             loss_tot.backward()
