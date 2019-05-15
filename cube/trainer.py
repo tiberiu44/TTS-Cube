@@ -342,7 +342,7 @@ if __name__ == '__main__':
         sys.stdout.write('Found ' + str(len(trainset.files)) + ' training files and ' + str(
             len(devset.files)) + ' development files\n')
         trainer = Trainer(vocoder, trainset, devset, target_output_path='data/models/pnn_vocoder')
-        trainer.start_training(20, params.batch_size, params.target_sample_rate)
+        trainer.start_training(20, params.batch_size, params.target_sample_rate, params=params)
 
 
     if params.phase and params.phase == '1':

@@ -187,7 +187,7 @@ class ParallelVocoder:
             self.trainer.step()
             del loss_tot, loss_frame, loss_KL, loss_reg, loss_t, x, y, c, c_up, stft_student, stft_truth, q_0, z
             del x_student, mu_s, logs_s, mu_logs_t
-            
+
         return total_loss / len(x_list)
 
     def synthesize(self, mgc, batch_size, temperature=1.0):
