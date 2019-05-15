@@ -152,6 +152,8 @@ class ParallelVocoder:
 
     def learn(self, y_target, mgc, batch_size):
         # prepare batches
+        self.model_t.eval()
+        self.model_s.train()
         x_list, y_list, c_list = _create_batches(y_target, mgc, batch_size, UPSAMPLE_COUNT=self.UPSAMPLE_COUNT,
                                                  mgc_order=self.params.mgc_order)
         if len(x_list) == 0:
