@@ -17,7 +17,7 @@ import torch
 import tqdm
 import numpy as np
 from models.clarinet.wavenet import Wavenet
-from models.clarinet.modules import GaussianLoss, STFT, KL_Loss
+from models.clarinet.modules import GaussianLoss, stft, KL_Loss
 from models.clarinet.wavenet_iaf import Wavenet_Student
 from torch.distributions.normal import Normal
 
@@ -143,7 +143,7 @@ class ParallelVocoder:
                                        num_layers=6, cin_channels=self.params.mgc_order)
         self.model_s.to(device)
 
-        self.stft = STFT(filter_length=1024, hop_length=256).to(device)
+        #self.stft = STFT(filter_length=1024, hop_length=256).to(device)
         self.criterion_t = KL_Loss().to(device)
         self.criterion_frame = torch.nn.MSELoss().to(device)
         self.trainer = torch.optim.Adam(self.model_s.parameters(), lr=self.params.learning_rate)
@@ -174,8 +174,10 @@ class ParallelVocoder:
             mu_logs_t = self.model_t(x_student, c)
 
             loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1])
-            stft_student, _ = self.stft(x_student[:, :, 1:])
-            stft_truth, _ = self.stft(x[:, :, 1:])
+            #stft_student, _ = #self.stft(x_student[:, :, 1:])
+            #stft_truth, _ = #self.stft(x[:, :, 1:])
+            stft_student = stft(x_student[:, 0, 1:], scale='linear')
+            stft_truth = stft(x[:, 0, 1:], scale='linear')
             loss_frame = self.criterion_frame(stft_student, stft_truth.detach())
             loss_tot = loss_t + loss_frame
             total_loss += loss_tot.item()
