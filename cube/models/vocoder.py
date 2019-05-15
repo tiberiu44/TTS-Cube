@@ -168,7 +168,7 @@ class ParallelVocoder:
             q_0 = Normal(x.new_zeros(x.size()), x.new_ones(x.size()))
             z = q_0.sample()
             # with torch.no_grad():
-            c_up = self.model_t.upsample(c)
+            c_up = self.model_t.upsample(c).detach()
 
             x_student, mu_s, logs_s = self.model_s(z, c_up)
             mu_logs_t = self.model_t(x_student, c)
