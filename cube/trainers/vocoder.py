@@ -110,7 +110,7 @@ class Trainer:
                 sys.stdout.write(' avg loss=' + str(loss) + " execution time=" + str(stop - start))
                 sys.stdout.write('\n')
                 sys.stdout.flush()
-                if file_index % 5000 == 0:
+                if file_index % params.output_at == 0:
                     self.vocoder.store(self.target_output_path)
                     self.synth_devset(batch_size, target_sample_rate)
 

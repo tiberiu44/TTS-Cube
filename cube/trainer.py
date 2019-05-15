@@ -59,6 +59,8 @@ if __name__ == '__main__':
                       help='Number of files to train on between sparsity increase')
     parser.add_option('--speaker', action='store', dest='speaker', help='Import data under given speaker')
     parser.add_option('--prefix', action='store', dest='prefix', help='Use this prefix when importing files')
+    parser.add_option('--output-at', type='int', dest='output_at', action='store', default=5000,
+                      help='Synthesize after every N files')
 
     (params, _) = parser.parse_args(sys.argv)
 
@@ -274,6 +276,7 @@ if __name__ == '__main__':
             len(devset.files)) + ' development files\n')
         trainer = Trainer(vocoder, trainset, devset)
         trainer.start_training(20, params.batch_size, params.target_sample_rate)
+
 
     def phase_3_train_encoder(params):
         from io_modules.dataset import Dataset
