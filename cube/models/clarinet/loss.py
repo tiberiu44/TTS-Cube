@@ -30,14 +30,17 @@ def sample_from_gaussian(y_hat, log_std_min=-7.0, scale_factor=1.):
     return sample
 
 
-def KL_gaussians(mu_q, logs_q, mu_p, logs_p, log_std_min=-7.0, regularization=True):
+def KL_gaussians(mu_q, logs_q, mu_p, logs_p, log_std_min=-6.0, regularization=True):
     # KL (q || p)
     # q ~ N(mu_q, logs_q.exp_()), p ~ N(mu_p, logs_p.exp_())
+    logs_q_org = logs_q
+    logs_p_org = logs_p
     logs_q = torch.clamp(logs_q, min=log_std_min)
     logs_p = torch.clamp(logs_p, min=log_std_min)
-    KL_loss = (logs_p - logs_q) + 0.5 * ((torch.exp(2. * logs_q) + torch.pow(mu_p - mu_q, 2)) * torch.exp(-2. * logs_p) - 1.)
+    KL_loss = (logs_p - logs_q) + 0.5 * (
+                (torch.exp(2. * logs_q) + torch.pow(mu_p - mu_q, 2)) * torch.exp(-2. * logs_p) - 1.)
     if regularization:
-        reg_loss = torch.pow(logs_q - logs_p, 2)
+        reg_loss = torch.pow(logs_q_org - logs_p_org, 2)
     else:
         reg_loss = None
     return KL_loss, reg_loss

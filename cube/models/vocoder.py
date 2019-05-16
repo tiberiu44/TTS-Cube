@@ -121,7 +121,7 @@ class Vocoder:
     def store(self, output_base):
         torch.save(self.model.state_dict(), output_base + ".network")
 
-    def load(self, output_base):        
+    def load(self, output_base):
         self.model.load_state_dict(torch.load(output_base + ".network", map_location=device))
         self.model.to(device)
 
@@ -136,7 +136,7 @@ class ParallelVocoder:
                                        num_layers=6, cin_channels=self.params.mgc_order)
         self.model_s.to(device)
 
-        #self.stft = STFT(filter_length=1024, hop_length=256).to(device)
+        # self.stft = STFT(filter_length=1024, hop_length=256).to(device)
         self.criterion_t = KL_Loss().to(device)
         self.criterion_frame = torch.nn.MSELoss().to(device)
         self.trainer = torch.optim.Adam(self.model_s.parameters(), lr=self.params.learning_rate)
@@ -162,17 +162,21 @@ class ParallelVocoder:
             z = q_0.sample()
             # with torch.no_grad():
             c_up = self.model_t.upsample(c).detach()
-
+            # from ipdb import set_trace
+            # set_trace()
             x_student, mu_s, logs_s = self.model_s(z, c_up)
             mu_logs_t = self.model_t(x_student, c)
 
-            # loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1])
-            loss_t, loss_KL, loss_reg = self.criterion_t(mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1], mu_s, logs_s)
-            #stft_student, _ = #self.stft(x_student[:, :, 1:])
-            #stft_truth, _ = #self.stft(x[:, :, 1:])
+            loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1],
+                                                         size_average=True)
+            # loss_t, loss_KL, loss_reg = self.criterion_t(mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1], mu_s, logs_s, size_average=False)
+            # stft_student, _ = #self.stft(x_student[:, :, 1:])
+            # stft_truth, _ = #self.stft(x[:, :, 1:])
             stft_student = stft(x_student[:, 0, 1:], scale='linear')
             stft_truth = stft(x[:, 0, 1:], scale='linear')
             loss_frame = self.criterion_frame(stft_student, stft_truth.detach())
+            # from ipdb import set_trace
+            # set_trace()
             loss_tot = loss_t + loss_frame
             total_loss += loss_tot.item()
             loss_tot.backward()
