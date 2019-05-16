@@ -121,15 +121,8 @@ class Vocoder:
     def store(self, output_base):
         torch.save(self.model.state_dict(), output_base + ".network")
 
-    def load(self, output_base):
-        if torch.cuda.is_available():
-            if torch.cuda.device_count() == 1:
-                self.model.load_state_dict(torch.load(output_base + ".network", map_location='cuda:0'))
-            else:
-                self.model.load_state_dict(torch.load(output_base + ".network"))
-        else:
-            self.model.load_state_dict(
-                torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
+    def load(self, output_base):        
+        self.model.load_state_dict(torch.load(output_base + ".network", map_location=device))
         self.model.to(device)
 
 
@@ -209,12 +202,5 @@ class ParallelVocoder:
         torch.save(self.model_s.state_dict(), output_base + ".network")
 
     def load(self, output_base):
-        if torch.cuda.is_available():
-            if torch.cuda.device_count() == 1:
-                self.model_s.load_state_dict(torch.load(output_base + ".network", map_location='cuda:0'))
-            else:
-                self.model_s.load_state_dict(torch.load(output_base + ".network"))
-        else:
-            self.model_s.load_state_dict(
-                torch.load(output_base + '.network', map_location=lambda storage, loc: storage))
+        self.model_s.load_state_dict(torch.load(output_base + ".network", map_location=device))
         self.model_s.to(device)
