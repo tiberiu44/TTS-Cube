@@ -166,7 +166,8 @@ class ParallelVocoder:
             x_student, mu_s, logs_s = self.model_s(z, c_up)
             mu_logs_t = self.model_t(x_student, c)
 
-            loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1])
+            # loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1])
+            loss_t, loss_KL, loss_reg = criterion_t(mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1], mu_s, logs_s)
             #stft_student, _ = #self.stft(x_student[:, :, 1:])
             #stft_truth, _ = #self.stft(x[:, :, 1:])
             stft_student = stft(x_student[:, 0, 1:], scale='linear')
