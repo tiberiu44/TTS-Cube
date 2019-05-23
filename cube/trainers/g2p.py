@@ -121,6 +121,7 @@ class G2PTrainer:
                 model.save(output_base + '-bestAcc.network')
                 best_w_acc = w_acc
                 best_p_acc = p_acc
+                itt_left = patience
 
             model.save(output_base + '-last.network')
 

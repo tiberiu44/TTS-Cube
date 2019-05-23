@@ -30,6 +30,7 @@ class G2P:
         self.ENCODER_SIZE = 100
         self.CHAR_EMB_SIZE = 100
         self.HIDDEN_SIZE = 100
+        self.lexicon = {}
 
         self.char_lookup = self.model.add_lookup_parameters((len(self.encodings.char2int), self.CHAR_EMB_SIZE))
         self.phoneme_lookup = self.model.add_lookup_parameters(
@@ -214,3 +215,7 @@ class G2P:
     def load(self, output_base):
         sys.stdout.write('\tLoading ' + output_base + '\n')
         self.model.populate(output_base)
+
+    def load_lexicon(self, path):
+        sys.stdout.write('\tLoading ' + path + '\n')
+
