@@ -29,6 +29,8 @@ class Encoder:
         self.DECODER_SIZE = 1024
         self.DECODER_LAYERS = 2
         self.MGC_PROJ_SIZE = 100
+        self.NUM_STYLE_TOKENS = 10
+        self.STYLE_EMBEDDINGS_SIZE = 100
         self.encodings = encodings
         from models.utils import orthonormal_VanillaLSTMBuilder
         lstm_builder = orthonormal_VanillaLSTMBuilder
@@ -45,6 +47,15 @@ class Encoder:
         self.feature_lookup = self.model.add_lookup_parameters((len(encodings.context2int), self.PHONE_EMBEDDINGS_SIZE))
         self.speaker_lookup = self.model.add_lookup_parameters(
             (len(encodings.speaker2int), self.SPEAKER_EMBEDDINGS_SIZE))
+        self.style_lookup = self.model.add_parameters((self.NUM_STYLE_TOKENS, self.STYLE_EMBEDDINGS_SIZE))
+
+        # style embeddings - used only during training
+        self.att_style_w1 = self.model.add_parameters((100, 100))
+        self.att_style_w2 = self.model.add_parameters((100, 400))
+        self.att_style_v = self.model.add_parameters((1, 100))
+        self.style_encoder_fw = [lstm_builder(1, params.mgc_order, 200, self.model)]
+        self.style_encoder_bw = [lstm_builder(1, params.mgc_order, 200, self.model)]
+        # synthesis
         self.encoder_fw = []
         self.encoder_bw = []
 
@@ -60,13 +71,8 @@ class Encoder:
                 lstm_builder(1, self.ENCODER_SIZE * 2, self.ENCODER_SIZE, self.model))
 
         self.decoder = lstm_builder(self.DECODER_LAYERS,
-                                    self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE,
+                                    self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE + self.STYLE_EMBEDDINGS_SIZE,
                                     self.DECODER_SIZE, self.model)
-
-        # self.aux_hid_w = self.model.add_parameters((500, self.ENCODER_SIZE * 2))
-        # self.aux_hid_b = self.model.add_parameters((500))
-        # self.aux_proj_w = self.model.add_parameters((params.mgc_order, 500))
-        # self.aux_proj_b = self.model.add_parameters((params.mgc_order))
 
         self.hid_w = self.model.add_parameters((500, self.DECODER_SIZE))
         self.hid_b = self.model.add_parameters((500))
@@ -78,8 +84,8 @@ class Encoder:
         self.proj_w_3 = self.model.add_parameters((params.mgc_order, 500))
         self.proj_b_3 = self.model.add_parameters((params.mgc_order))
 
-        self.highway_w = self.model.add_parameters(
-            (params.mgc_order, self.ENCODER_SIZE * 2 + self.SPEAKER_EMBEDDINGS_SIZE))
+        # self.highway_w = self.model.add_parameters(
+        #    (params.mgc_order, self.ENCODER_SIZE * 2 + self.SPEAKER_EMBEDDINGS_SIZE))
 
         self.last_mgc_proj_w = self.model.add_parameters((self.MGC_PROJ_SIZE, self.params.mgc_order))
         self.last_mgc_proj_b = self.model.add_parameters((self.MGC_PROJ_SIZE))
@@ -119,7 +125,7 @@ class Encoder:
                     return self.speaker_lookup[self.encodings.speaker2int[feature]]
         return None
 
-    def _predict(self, characters, gold_mgc=None, max_size=-1):
+    def _predict(self, characters, gold_mgc=None, max_size=-1, style_tokens=None):
         if gold_mgc is None:
             runtime = True
         else:
@@ -140,9 +146,14 @@ class Encoder:
             x_input = [dy.concatenate([fw, bw]) for fw, bw in zip(x_fw, reversed(x_bw))]
 
         x_speaker = self._get_speaker_embedding(characters)
+
+        x_style = dy.esum(
+            [self.style_lookup[i] * attention_weight for i, attention_weight in
+             zip(range(self.STYLE_EMBEDDINGS_SIZE), style_tokens)])
+
         final_input = []
         for x in x_input:
-            final_input.append(dy.concatenate([x, x_speaker]))
+            final_input.append(dy.concatenate([x, x_speaker, x_style]))
         encoder = final_input
 
         decoder = self.decoder.initial_state().add_input(self.decoder_start_lookup[0])
@@ -173,17 +184,11 @@ class Encoder:
             decoder = decoder.add_input(dy.concatenate([mgc_proj, att]))
             hidden = dy.tanh(self.hid_w.expr(update=True) * decoder.output() + self.hid_b.expr(update=True))
 
-            output = dy.logistic(
-                self.highway_w.expr(update=True) * att + self.proj_w_1.expr(update=True) * hidden + self.proj_b_1.expr(
-                    update=True))
+            output = dy.logistic(self.proj_w_1.expr(update=True) * hidden + self.proj_b_1.expr(update=True))
             output_mgc.append(output)
-            output = dy.logistic(
-                self.highway_w.expr(update=True) * att + self.proj_w_2.expr(update=True) * hidden + self.proj_b_2.expr(
-                    update=True))
+            output = dy.logistic(self.proj_w_2.expr(update=True) * hidden + self.proj_b_2.expr(update=True))
             output_mgc.append(output)
-            output = dy.logistic(
-                self.highway_w.expr(update=True) * att + self.proj_w_3.expr(update=True) * hidden + self.proj_b_3.expr(
-                    update=True))
+            output = dy.logistic(self.proj_w_3.expr(update=True) * hidden + self.proj_b_3.expr(update=True))
             output_mgc.append(output)
 
             output_stop.append(
@@ -208,15 +213,10 @@ class Encoder:
         return output_mgc, output_stop, output_att
 
     def _compute_guided_attention(self, att_vect, decoder_step, num_characters, num_mgcs):
-
         target_probs = []
-
         t1 = float(decoder_step) / num_mgcs
-
         for encoder_step in range(num_characters):
             target_probs.append(1.0 - np.exp(-((float(encoder_step) / num_characters - t1) ** 2) / 0.1))
-
-        # print target_probs
         target_probs = dy.inputVector(target_probs)
 
         return dy.transpose(target_probs) * att_vect
@@ -224,11 +224,29 @@ class Encoder:
     def _compute_binary_divergence(self, pred, target):
         return dy.binary_log_loss(pred, target)
 
+    def _compute_gold_style_probs(self, target_mgc):
+        gold_mgc = [dy.inputVector(mgc) for mgc in target_mgc]
+
+        hidden = gold_mgc
+        for fw, bw in zip(self.style_encoder_fw, self.style_encoder_bw):
+            fw_out = fw.initial_state().transduce(hidden)
+            bw_out = list(reversed(bw.initial_state().transduce(reversed(hidden))))
+            hidden = [dy.concatenate([x_fw, x_bw]) for x_fw, x_bw in zip(fw_out, bw_out)]
+            summary = dy.concatenate([fw_out[-1], bw_out[0]])
+
+        _, style_probs = self._attend_classic([self.style_lookup[i] for i in range(self.NUM_STYLE_TOKENS)], summary,
+                                              self.att_style_w1.expr(update=True), self.att_style_w2.exp
+                                              (update=True), self.att_style_v.expr(update=True))
+        return style_probs
+
     def learn(self, characters, target_mgc, guided_att=True):
         num_mgc = target_mgc.shape[0]
         # print num_mgc
         dy.renew_cg()
-        output_mgc, output_stop, output_attention = self._predict(characters, target_mgc)
+
+        style_probs = self._compute_gold_style_probs(target_mgc)
+
+        output_mgc, output_stop, output_attention = self._predict(characters, target_mgc, style_probs=style_probs)
         losses = []
         index = 0
         for mgc, real_mgc in zip(output_mgc, target_mgc):
@@ -254,14 +272,12 @@ class Encoder:
         self.trainer.update()
         return loss_val
 
-    def generate(self, characters, max_size=-1):
+    def generate(self, characters, max_size=-1, style_probs=None):
         dy.renew_cg()
-        output_mgc, ignore1, att = self._predict(characters, max_size=max_size)
+        output_mgc, ignore1, att = self._predict(characters, max_size=max_size, style_probs=dy.inputVector(style_probs))
         mgc_output = [mgc.npvalue() for mgc in output_mgc]
         import numpy as np
         mgc_final = np.zeros((len(mgc_output), mgc_output[-1].shape[0]))
-        # from ipdb import set_trace
-        # set_trace()
         for i in range(len(mgc_output)):
             for j in range(mgc_output[-1].shape[0]):
                 mgc_final[i, j] = mgc_output[i][j]
@@ -297,6 +313,21 @@ class Encoder:
                 simulated_att[current_pos] = 1.0
                 new_att_vec = dy.inputVector(simulated_att)
                 return output_vectors, new_att_vec
+
+        output_vectors = dy.esum(
+            [vector * attention_weight for vector, attention_weight in zip(input_list, attention_weights)])
+
+        return output_vectors, attention_weights
+
+    def _attend_classic(self, input_list, decoder_state, w1, w2, v):
+        attention_weights = []
+
+        w2dt = w2 * decoder_state
+        for input_vector in input_list:
+            attention_weight = v * dy.tanh(w1 * input_vector + w2dt)
+            attention_weights.append(attention_weight)
+
+        attention_weights = dy.softmax(dy.concatenate(attention_weights))
 
         output_vectors = dy.esum(
             [vector * attention_weight for vector, attention_weight in zip(input_list, attention_weights)])
