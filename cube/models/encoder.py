@@ -95,13 +95,14 @@ class Encoder:
         self.stop_w = self.model.add_parameters((1, self.DECODER_SIZE))
         self.stop_b = self.model.add_parameters((1))
 
-        self.att_w1 = self.model.add_parameters((100, self.ENCODER_SIZE * 2 + self.SPEAKER_EMBEDDINGS_SIZE))
+        self.att_w1 = self.model.add_parameters(
+            (100, self.ENCODER_SIZE * 2 + self.SPEAKER_EMBEDDINGS_SIZE + self.STYLE_EMBEDDINGS_SIZE))
         self.att_w2 = self.model.add_parameters((100, self.DECODER_SIZE))
         self.att_v = self.model.add_parameters((1, 100))
 
         self.start_lookup = self.model.add_lookup_parameters((1, params.mgc_order))
         self.decoder_start_lookup = self.model.add_lookup_parameters(
-            (1, self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE))
+            (1, self.ENCODER_SIZE * 2 + self.MGC_PROJ_SIZE + self.SPEAKER_EMBEDDINGS_SIZE + self.STYLE_EMBEDDINGS_SIZE))
 
     def _make_input(self, seq):
         x_list = [self.phone_lookup[self.encodings.char2int['START']]]
@@ -125,7 +126,7 @@ class Encoder:
                     return self.speaker_lookup[self.encodings.speaker2int[feature]]
         return None
 
-    def _predict(self, characters, gold_mgc=None, max_size=-1, style_tokens=None):
+    def _predict(self, characters, gold_mgc=None, max_size=-1, style_probs=None):
         if gold_mgc is None:
             runtime = True
         else:
@@ -146,10 +147,11 @@ class Encoder:
             x_input = [dy.concatenate([fw, bw]) for fw, bw in zip(x_fw, reversed(x_bw))]
 
         x_speaker = self._get_speaker_embedding(characters)
-
+        if style_probs is None:
+            style_probs = [1.0 / self.NUM_STYLE_TOKENS for ii in range(self.NUM_STYLE_TOKENS)]
         x_style = dy.esum(
             [self.style_lookup[i] * attention_weight for i, attention_weight in
-             zip(range(self.STYLE_EMBEDDINGS_SIZE), style_tokens)])
+             zip(range(self.STYLE_EMBEDDINGS_SIZE), style_probs)])
 
         final_input = []
         for x in x_input:
@@ -224,7 +226,7 @@ class Encoder:
     def _compute_binary_divergence(self, pred, target):
         return dy.binary_log_loss(pred, target)
 
-    def _compute_gold_style_probs(self, target_mgc):
+    def compute_gold_style_probs(self, target_mgc):
         gold_mgc = [dy.inputVector(mgc) for mgc in target_mgc]
 
         hidden = gold_mgc
@@ -235,8 +237,8 @@ class Encoder:
             summary = dy.concatenate([fw_out[-1], bw_out[0]])
 
         _, style_probs = self._attend_classic([self.style_lookup[i] for i in range(self.NUM_STYLE_TOKENS)], summary,
-                                              self.att_style_w1.expr(update=True), self.att_style_w2.exp
-                                              (update=True), self.att_style_v.expr(update=True))
+                                              self.att_style_w1.expr(update=True), self.att_style_w2.expr(update=True),
+                                              self.att_style_v.expr(update=True))
         return style_probs
 
     def learn(self, characters, target_mgc, guided_att=True):
@@ -244,7 +246,7 @@ class Encoder:
         # print num_mgc
         dy.renew_cg()
 
-        style_probs = self._compute_gold_style_probs(target_mgc)
+        style_probs = self.compute_gold_style_probs(target_mgc)
 
         output_mgc, output_stop, output_attention = self._predict(characters, target_mgc, style_probs=style_probs)
         losses = []
@@ -274,7 +276,11 @@ class Encoder:
 
     def generate(self, characters, max_size=-1, style_probs=None):
         dy.renew_cg()
-        output_mgc, ignore1, att = self._predict(characters, max_size=max_size, style_probs=dy.inputVector(style_probs))
+        if style_probs is None:
+            s_probs = None
+        else:
+            s_probs = dy.inputVector(style_probs)
+        output_mgc, ignore1, att = self._predict(characters, max_size=max_size, style_probs=s_probs)
         mgc_output = [mgc.npvalue() for mgc in output_mgc]
         import numpy as np
         mgc_final = np.zeros((len(mgc_output), mgc_output[-1].shape[0]))
