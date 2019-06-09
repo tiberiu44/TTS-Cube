@@ -18,6 +18,7 @@ import dynet_config
 import optparse
 import sys
 import numpy as np
+from os.path import exists
 
 
 def get_file_input_old(txt_file):
@@ -39,20 +40,56 @@ def get_file_input(txt_file):
         return ' '.join(' '.join(f.readlines()).split())
 
 
-def get_phone_input_from_text(text, speaker_identity):
+def get_phone_input_from_text(text, speaker_identity, g2p=None):
     from io_modules.dataset import PhoneInfo
-
+    speaker = 'SPEAKER:' + speaker_identity
     seq = [PhoneInfo('START', [], 0, 0)]
+    if g2p is not None:
+        w = ''
+        for char in text:
+            l_char = char.lower()
+            if l_char == l_char.upper():  # symbol
+                # append word, then symbol
+                if w.strip() != '':
+                    transcription = g2p.transcribe(w)
+                    first = True
+                    for phon in transcription:
+                        if first and w[0].upper() == w[0]:
+                            style = 'CASE:upper'
+                            first = False
+                        else:
+                            style = 'CASE:lower'
 
-    for char in text:
-        l_char = char.lower()
-        style = 'CASE:lower'
-        if l_char == l_char.upper():
-            style = 'CASE:symb'
-        elif l_char != char:
-            style = 'CASE:upper'
-        speaker = 'SPEAKER:' + speaker_identity
-        seq.append(PhoneInfo(l_char, [speaker, style], 0, 0))
+                        # fout.write(phon + '\t' + speaker + '\t' + style + '\n')
+                        seq.append(PhoneInfo(phon, [speaker, style], 0, 0))
+                w = ''
+                # fout.write(l_char + '\t' + speaker + '\tCASE:symb\n')
+                seq.append(PhoneInfo(l_char, [speaker, "CASE:symb"], 0, 0))
+            else:
+                w += l_char
+        if w.strip() != '':
+            transcription = g2p.transcribe(w)
+            first = True
+            for phon in transcription:
+                if first and w[0].upper() == w[0]:
+                    style = 'CASE:upper'
+                    first = False
+                else:
+                    style = 'CASE:lower'
+
+                # fout.write(phon + '\t' + speaker + '\t' + style + '\n')
+                seq.append(PhoneInfo(phon, [speaker, style], 0, 0))
+            w = ''
+    else:
+        for char in text:
+            l_char = char.lower()
+            style = 'CASE:lower'
+            if l_char == l_char.upper():
+                style = 'CASE:symb'
+            elif l_char != char:
+                style = 'CASE:upper'
+
+            seq.append(PhoneInfo(l_char, [speaker, style], 0, 0))
 
     seq.append(PhoneInfo('STOP', [], 0, 0))
 
@@ -108,9 +145,9 @@ def load_vocoder(params, base_path='data/models'):
     return pvocoder
 
 
-def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file):
+def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2p=None):
     print("[Encoding]")
-    seq = get_phone_input_from_text(text, speaker)
+    seq = get_phone_input_from_text(text, speaker, g2p=g2p)
     mgc, att = encoder.generate(seq)
     _render_spectrogram(mgc, output_file + '.png')
 
@@ -129,8 +166,8 @@ def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file):
     return signal
 
 
-def synthesize_text(text, encoder, vocoder, speaker_identity):
-    seq = get_phone_input_from_text(text, speaker_identity)
+def synthesize_text(text, encoder, vocoder, speaker_identity, g2p=None):
+    seq = get_phone_input_from_text(text, speaker_identity, g2p=g2p)
     mgc, _ = encoder.generate(seq)
 
     import torch
@@ -144,11 +181,10 @@ def write_signal_to_file(signal, output_file, params):
     from io_modules.dataset import DatasetIO
     dio = DatasetIO()
 
-
     dio.write_wave(output_file, signal / 32768.0, params.target_sample_rate, dtype=signal.dtype)
 
 
-def synthesize(speaker, input_file, output_file, params):
+def synthesize(speaker, input_file, output_file, params, g2p=None):
     from models.vocoder import device
     print(device)
     print(params)
@@ -158,7 +194,7 @@ def synthesize(speaker, input_file, output_file, params):
 
     text = get_file_input(input_file)
 
-    signal = synthesize_text_old(text, encoder, vocoder, speaker, params, output_file)
+    signal = synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2p=g2p)
 
     write_signal_to_file(signal, output_file, params)
 
@@ -185,7 +221,8 @@ if __name__ == '__main__':
                       help='Exploration parameter (max 1.0, default 0.7)', default=0.7)
     parser.add_option('--target-sample-rate', action='store', dest='target_sample_rate',
                       help='Resample input files at this rate (default=24000)', type='int', default=24000)
-
+    parser.add_option('--g2p-model', dest='g2p', action='store',
+                      help='Use this G2P model for processing')
     (params, _) = parser.parse_args(sys.argv)
 
     if not params.speaker:
@@ -202,4 +239,17 @@ if __name__ == '__main__':
     if params.gpu:
         dynet_config.set_gpu()
 
-    synthesize(params.speaker, params.txt_file, params.output_file, params)
+    if params.g2p is not None:
+        from models.g2p import G2P
+        from io_modules.encodings import Encodings
+
+        g2p_encodings = Encodings()
+        g2p_encodings.load(params.g2p + '.encodings')
+        g2p = G2P(g2p_encodings)
+        g2p.load(params.g2p + '-bestAcc.network')
+        if exists(params.g2p + '.lexicon'):
+            g2p.load_lexicon(params.g2p + '.lexicon')
+    else:
+        g2p = None
+
+    synthesize(params.speaker, params.txt_file, params.output_file, params, g2p=g2p)

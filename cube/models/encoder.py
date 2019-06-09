@@ -107,15 +107,18 @@ class Encoder:
     def _make_input(self, seq):
         x_list = [self.phone_lookup[self.encodings.char2int['START']]]
         for pi in seq:
-            char_emb = self.phone_lookup[self.encodings.char2int[pi.char]]
-            context = []
-            for feature in pi.context:
-                if feature in self.encodings.context2int:
-                    context.append(self.feature_lookup[self.encodings.context2int[feature]])
-            if len(context) == 0:
-                x_list.append(char_emb)
+            if pi.char not in self.encodings.char2int:
+                print("Unknown input: '" + pi.char + "'")
             else:
-                x_list.append(char_emb + dy.esum(context) * dy.scalarInput(1.0 / len(context)))
+                char_emb = self.phone_lookup[self.encodings.char2int[pi.char]]
+                context = []
+                for feature in pi.context:
+                    if feature in self.encodings.context2int:
+                        context.append(self.feature_lookup[self.encodings.context2int[feature]])
+                if len(context) == 0:
+                    x_list.append(char_emb)
+                else:
+                    x_list.append(char_emb + dy.esum(context) * dy.scalarInput(1.0 / len(context)))
         x_list.append(self.phone_lookup[self.encodings.char2int['STOP']])
         return x_list
 
@@ -148,7 +151,9 @@ class Encoder:
 
         x_speaker = self._get_speaker_embedding(characters)
         if style_probs is None:
-            style_probs = [1.0 / self.NUM_STYLE_TOKENS for ii in range(self.NUM_STYLE_TOKENS)]
+            style_probs = [1.0 / (self.NUM_STYLE_TOKENS) for ii in range(self.NUM_STYLE_TOKENS)]
+            #style_probs = [0.7 / (self.NUM_STYLE_TOKENS - 1) for ii in range(self.NUM_STYLE_TOKENS)]
+            #style_probs[8] = 0.3
         x_style = dy.esum(
             [self.style_lookup[i] * attention_weight for i, attention_weight in
              zip(range(self.STYLE_EMBEDDINGS_SIZE), style_probs)])
@@ -245,6 +250,11 @@ class Encoder:
         num_mgc = target_mgc.shape[0]
         # print num_mgc
         dy.renew_cg()
+
+        for pi in characters:
+            if pi.char not in self.encodings.char2int:
+                print("Unknown input: '" + pi.char + "' - skipping file")
+                return 0
 
         style_probs = self.compute_gold_style_probs(target_mgc)
 

@@ -31,7 +31,7 @@ class Trainer:
     def synth_devset(self, max_size=-1):
         sys.stdout.write('\tSynthesizing devset\n')
         file_index = 1
-        for file in self.devset.files[:5]:
+        for file in self.devset.files:
             sys.stdout.write(
                 "\t\t" + str(file_index) + "/" + str(len(self.devset.files)) + " processing file " + file)
             sys.stdout.flush()
