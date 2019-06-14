@@ -190,6 +190,8 @@ if __name__ == '__main__':
             g2p.load(params.g2p + '-bestAcc.network')
             if exists(params.g2p + '.lexicon'):
                 g2p.load_lexicon(params.g2p + '.lexicon')
+        else:
+            g2p = None
 
         sys.stdout.write("Scanning training files...")
         sys.stdout.flush()
