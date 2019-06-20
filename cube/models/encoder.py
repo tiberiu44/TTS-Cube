@@ -151,12 +151,12 @@ class Encoder:
 
         x_speaker = self._get_speaker_embedding(characters)
         if style_probs is None:
-            # style_probs = [1.0 / (self.NUM_STYLE_TOKENS) for ii in range(self.NUM_STYLE_TOKENS)]
+            style_probs = [1.0 / (self.NUM_STYLE_TOKENS) for ii in range(self.NUM_STYLE_TOKENS)]
             # style_probs = [0.7 / (self.NUM_STYLE_TOKENS - 1) for ii in range(self.NUM_STYLE_TOKENS)]
             # style_probs[8] = 0.3
-            style_probs = [0.12159170210361481, 0.14546212553977966, 0.19788525998592377, 0.0737539529800415,
-                           0.0603456124663353, 0.03542126715183258, 0.07780874520540237, 0.07060588151216507,
-                           0.1491350680589676, 0.06799030303955078]
+            # style_probs = [0.12159170210361481, 0.14546212553977966, 0.19788525998592377, 0.0737539529800415,
+            #               0.0603456124663353, 0.03542126715183258, 0.07780874520540237, 0.07060588151216507,
+            #               0.1491350680589676, 0.06799030303955078]
         x_style = dy.esum(
             [self.style_lookup[i] * attention_weight for i, attention_weight in
              zip(range(self.STYLE_EMBEDDINGS_SIZE), style_probs)])
