@@ -142,7 +142,10 @@ def load_vocoder(params, base_path='data/models'):
     pvocoder = ParallelVocoder(params, vocoder=vocoder)
     pvocoder.load('%s/pnn_vocoder' % base_path)
 
-    return pvocoder
+    if params.non_parallel:
+        return vocoder
+    else:
+        return pvocoder
 
 
 def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2p=None):
@@ -213,6 +216,8 @@ if __name__ == '__main__':
                       help='preallocate memory for batch training (default 2048)')
     parser.add_option("--use-gpu", action='store_true', dest='gpu',
                       help='turn on/off GPU support')
+    parser.add_option("--non-parallel", action='store_true', dest='non_parallel',
+                      help='Use sequencial speech generation instead of parallel')
     parser.add_option("--sample", action='store_true', dest='sample',
                       help='Use random sampling')
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
