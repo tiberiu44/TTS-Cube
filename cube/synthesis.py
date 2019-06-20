@@ -179,7 +179,7 @@ if __name__ == '__main__':
                       help='preallocate memory for batch training (default 2048)')
     parser.add_option("--use-gpu", action='store_true', dest='gpu',
                       help='turn on/off GPU support')
-     parser.add_option("--non-parallel", action='store_true', dest='non_parallel',
+    parser.add_option("--non-parallel", action='store_true', dest='non_parallel',
                       help='Use sequencial speech generation instead of parallel')
     parser.add_option("--sample", action='store_true', dest='sample',
                       help='Use random sampling')
