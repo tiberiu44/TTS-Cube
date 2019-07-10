@@ -143,21 +143,23 @@ def load_vocoder(params, base_path='data/models'):
         pvocoder = ClarinetVocoder(params, vocoder=vocoder)
         pvocoder.load('%s/pnn_vocoder' % base_path)
 
-        return pvocoder
+        return pvocoder, None
     elif params.vocoder == 'wavenet':
         from models.vocoder import WavenetVocoder
 
         vocoder = WavenetVocoder(params)
         vocoder.load('%s/nn_vocoder' % base_path)
-        return vocoder
+        return vocoder, None
     else:
         from models.vocoder import WaveGlowVocoder
         vocoder = WaveGlowVocoder(params)
         vocoder.load('%s/waveglow_vocoder.network' % base_path)
-        return vocoder
+        from models.denoiser import Denoiser
+        denoiser = Denoiser(vocoder.waveglow)
+        return vocoder, denoiser
 
 
-def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2p=None):
+def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2p=None, denoiser=None):
     print("[Encoding]")
     seq = get_phone_input_from_text(text, speaker, g2p=g2p)
     mgc, att = encoder.generate(seq)
@@ -170,6 +172,10 @@ def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2
     import torch
     with torch.no_grad():
         signal = vocoder.synthesize(mgc, batch_size=params.batch_size, temperature=params.temperature)
+        if denoiser is not None:
+            signal = torch.tensor(signal, dtype=torch.float32) / 32768
+            signal = denoiser(signal.unsqueeze(0), 0.1)
+            signal = (signal.squeeze().cpu().numpy() * 32768).astype('int16')
     stop = time.time()
     sys.stdout.write(" execution time=" + str(stop - start))
     sys.stdout.write('\n')
@@ -202,11 +208,12 @@ def synthesize(speaker, input_file, output_file, params, g2p=None):
     print(params)
 
     encoder = load_encoder(params)
-    vocoder = load_vocoder(params)
+    vocoder, denoiser = load_vocoder(params)
 
     text = get_file_input(input_file)
 
-    signal = synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2p=g2p)
+    signal = synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2p=g2p, denoiser=denoiser)
+    signal = signal.astype('float32') / 32768
 
     write_signal_to_file(signal, output_file, params)
 
@@ -241,7 +248,7 @@ if __name__ == '__main__':
     (params, _) = parser.parse_args(sys.argv)
 
     if not params.speaker:
-        print("Speaker identity is mandatory") 
+        print("Speaker identity is mandatory")
     elif not params.txt_file:
         print("Input file is mandatory")
     elif not params.output_file:
