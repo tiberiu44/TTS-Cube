@@ -196,7 +196,7 @@ class LTSDataset:
         for line in lines:
             line = ''.join([i for i in line if not i.isdigit()]).strip()
             parts = line.replace('\t', ' ').split(' ')
-            word = parts[0]
+            word = parts[0].lower()
             transcription = parts[1:]
             self.entries.append(LSTEntry(word, transcription))
         f.close()

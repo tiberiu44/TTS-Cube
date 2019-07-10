@@ -202,6 +202,8 @@ class G2P:
         self.losses.append(dy.pickneglogsoftmax(output_list[-1], len(self.encodings.phoneme2int)))
 
     def transcribe(self, word):
+        if word.lower() in self.lexicon:
+            return self.lexicon[word.lower()]
         dy.renew_cg()
         output, ignore = self._predict(word)
         transcription = [self.encodings.phoneme_list[np.argmax(value.npvalue())] for value in output]
@@ -218,4 +220,9 @@ class G2P:
 
     def load_lexicon(self, path):
         sys.stdout.write('\tLoading ' + path + '\n')
-
+        f = open(path, 'r')
+        for line in f.readlines():
+            parts = line.replace('\t', ' ').replace('\r', '').replace('\n', '').split(' ')
+            word = parts[0].lower()
+            transcription = parts[1:]
+            self.lexicon[word] = transcription

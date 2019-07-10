@@ -61,6 +61,8 @@ if __name__ == '__main__':
     parser.add_option('--prefix', action='store', dest='prefix', help='Use this prefix when importing files')
     parser.add_option('--output-at', type='int', dest='output_at', action='store', default=5000,
                       help='Synthesize after every N files')
+    parser.add_option('--g2p-model', dest='g2p', action='store',
+                      help='Use this G2P model for processing')
 
     (params, _) = parser.parse_args(sys.argv)
 
@@ -100,7 +102,7 @@ if __name__ == '__main__':
         img.save(output_file)
 
 
-    def create_lab_file(txt_file, lab_file, speaker_name=None):
+    def create_lab_file(txt_file, lab_file, speaker_name=None, g2p=None):
         fin = open(txt_file, 'r')
         fout = open(lab_file, 'w')
         line = fin.readline().strip().replace('\t', ' ')
@@ -110,21 +112,57 @@ if __name__ == '__main__':
                 break
             line = nl
 
+        if speaker_name is not None:
+            speaker = 'SPEAKER:' + speaker_name
+        elif len(txt_file.replace('\\', '/').split('/')[-1].split('_')) != 1:
+            speaker = 'SPEAKER:' + txt_file.replace('\\', '/').split('_')[0].split('/')[-1]
+        else:
+            speaker = 'SPEAKER:none'
+
         fout.write('START\n')
-        for char in line:
-            l_char = char.lower()
-            style = 'CASE:lower'
-            if l_char == l_char.upper():
-                style = 'CASE:symb'
-            elif l_char != char:
-                style = 'CASE:upper'
-            if speaker_name is not None:
-                speaker = 'SPEAKER:' + speaker_name
-            elif len(txt_file.replace('\\', '/').split('/')[-1].split('_')) != 1:
-                speaker = 'SPEAKER:' + txt_file.replace('\\', '/').split('_')[0].split('/')[-1]
-            else:
-                speaker = 'SPEAKER:none'
-            fout.write(l_char + '\t' + speaker + '\t' + style + '\n')
+
+        if g2p is not None:
+            w = ''
+            for char in line:
+                l_char = char.lower()
+                if l_char == l_char.upper():  # symbol
+                    # append word, then symbol
+                    if w.strip() != '':
+                        transcription = g2p.transcribe(w)
+                        first = True
+                        for phon in transcription:
+                            if first and w[0].upper() == w[0]:
+                                style = 'CASE:upper'
+                                first = False
+                            else:
+                                style = 'CASE:lower'
+
+                            fout.write(phon + '\t' + speaker + '\t' + style + '\n')
+                    w = ''
+                    fout.write(l_char + '\t' + speaker + '\tCASE:symb\n')
+                else:
+                    w += l_char
+            if w.strip() != '':
+                transcription = g2p.transcribe(w)
+                first = True
+                for phon in transcription:
+                    if first and w[0].upper() == w[0]:
+                        style = 'CASE:upper'
+                        first = False
+                    else:
+                        style = 'CASE:lower'
+
+                    fout.write(phon + '\t' + speaker + '\t' + style + '\n')
+                w = ''
+        else:
+            for char in line:
+                l_char = char.lower()
+                style = 'CASE:lower'
+                if l_char == l_char.upper():
+                    style = 'CASE:symb'
+                elif l_char != char:
+                    style = 'CASE:upper'
+                fout.write(l_char + '\t' + speaker + '\t' + style + '\n')
 
         fout.write('STOP\n')
 
@@ -142,6 +180,18 @@ if __name__ == '__main__':
             dev_files_tmp = [f for f in listdir(params.dev_folder) if isfile(join(params.dev_folder, f))]
         else:
             dev_files_tmp = []
+
+        if params.g2p is not None:
+            from models.g2p import G2P
+            from io_modules.encodings import Encodings
+            g2p_encodings = Encodings()
+            g2p_encodings.load(params.g2p + '.encodings')
+            g2p = G2P(g2p_encodings)
+            g2p.load(params.g2p + '-bestAcc.network')
+            if exists(params.g2p + '.lexicon'):
+                g2p.load_lexicon(params.g2p + '.lexicon')
+        else:
+            g2p = None
 
         sys.stdout.write("Scanning training files...")
         sys.stdout.flush()
@@ -169,11 +219,11 @@ if __name__ == '__main__':
 
         dev_files = final_list
         sys.stdout.write(" found " + str(len(dev_files)) + " valid development files\n")
-
         from io_modules.dataset import DatasetIO
         from io_modules.vocoder import MelVocoder
         from shutil import copyfile
         dio = DatasetIO()
+
         vocoder = MelVocoder()
         base_folder = params.train_folder
         total_files = 0
@@ -200,7 +250,7 @@ if __name__ == '__main__':
                 copyfile(join(base_folder, lab_name), join('data/processed/train', tgt_lab_name))
             else:
                 create_lab_file(join(base_folder, txt_name),
-                                join('data/processed/train', tgt_lab_name), speaker_name=params.speaker)
+                                join('data/processed/train', tgt_lab_name), speaker_name=params.speaker, g2p=g2p)
             # TXT
             copyfile(join(base_folder, txt_name), join('data/processed/train', tgt_txt_name))
             # WAVE
@@ -242,7 +292,7 @@ if __name__ == '__main__':
                 copyfile(join(base_folder, lab_name), join('data/processed/dev', tgt_lab_name))
             else:
                 create_lab_file(join(base_folder, txt_name),
-                                join('data/processed/dev', tgt_lab_name), speaker_name=params.speaker)
+                                join('data/processed/dev', tgt_lab_name), speaker_name=params.speaker, g2p=g2p)
             # TXT
             copyfile(join(base_folder, txt_name), join('data/processed/dev', tgt_txt_name))
             # WAVE
@@ -264,9 +314,9 @@ if __name__ == '__main__':
 
     def phase_2_train_vocoder(params):
         from io_modules.dataset import Dataset
-        from models.vocoder import Vocoder
+        from models.vocoder import WavenetVocoder
         from trainers.vocoder import Trainer
-        vocoder = Vocoder(params)
+        vocoder = WavenetVocoder(params)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             vocoder.load('data/models/nn_vocoder')
@@ -326,13 +376,13 @@ if __name__ == '__main__':
 
     def phase_4_train_pvocoder(params):
         from io_modules.dataset import Dataset
-        from models.vocoder import Vocoder
-        from models.vocoder import ParallelVocoder
+        from models.vocoder import WavenetVocoder
+        from models.vocoder import ClarinetVocoder
         from trainers.vocoder import Trainer
-        vocoder_wavenet = Vocoder(params)
+        vocoder_wavenet = WavenetVocoder(params)
         sys.stdout.write('Loading wavenet vocoder\n')
         vocoder_wavenet.load('data/models/nn_vocoder')
-        vocoder = ParallelVocoder(params, vocoder_wavenet)
+        vocoder = ClarinetVocoder(params, vocoder_wavenet)
         if params.resume:
             sys.stdout.write('Resuming from previous checkpoint\n')
             vocoder.load('data/models/pnn_vocoder')

@@ -31,7 +31,7 @@ class Trainer:
     def synth_devset(self, max_size=-1):
         sys.stdout.write('\tSynthesizing devset\n')
         file_index = 1
-        for file in self.devset.files[:5]:
+        for file in self.devset.files:
             sys.stdout.write(
                 "\t\t" + str(file_index) + "/" + str(len(self.devset.files)) + " processing file " + file)
             sys.stdout.flush()
@@ -40,9 +40,18 @@ class Trainer:
             dio = DatasetIO()
             lab = dio.read_lab(lab_file)
             phones = lab  # [entry.phoneme for entry in lab]
+            mgc_file = file + ".mgc.npy"
+            mgc = np.load(mgc_file)
             import time
             start = time.time()
-            mgc, att = self.vocoder.generate(phones, max_size=max_size)
+            style_probs = self.vocoder.compute_gold_style_probs(mgc)
+            style_file = 'data/output/' + file[file.rfind('/') + 1:] + ".style"
+            f=open(style_file, 'w')
+            for value in style_probs.value():
+                f.write(str(value)+' ')
+            f.write('\n')
+            f.close()
+            mgc, att = self.vocoder.generate(phones, max_size=max_size, style_probs=style_probs.npvalue())
 
             self.array2file(mgc, 'data/output/' + file[file.rfind('/') + 1:] + '.mgc')
             att = [a.value() for a in att]
@@ -65,7 +74,7 @@ class Trainer:
                 for y in range(mgc.shape[1]):
                     val = mgc[x, y]
                     color = np.clip(val * 255, 0, 255)
-                    bitmap[mgc.shape[1] - y - 1, x] = [color, color, color]#bitmap[y, x] = [color, color, color]
+                    bitmap[mgc.shape[1] - y - 1, x] = [color, color, color]  # bitmap[y, x] = [color, color, color]
             import scipy.misc as smp
             img = smp.toimage(bitmap)
             img.save(output_file)
@@ -84,7 +93,7 @@ class Trainer:
             file_index += 1
             mgc_file = file + ".mgc.npy"
             mgc = np.load(mgc_file)
-            #print mgc.shape
+            # print mgc.shape
             output_file = 'data/output/' + file[file.rfind('/') + 1:] + '.png'
             bitmap = np.zeros((mgc.shape[1], mgc.shape[0], 3), dtype=np.uint8)
             for x in range(mgc.shape[0]):
