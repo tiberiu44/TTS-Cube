@@ -154,8 +154,11 @@ def load_vocoder(params, base_path='data/models'):
         from models.vocoder import WaveGlowVocoder
         vocoder = WaveGlowVocoder(params)
         vocoder.load('%s/waveglow_vocoder.network' % base_path)
-        from models.denoiser import Denoiser
-        denoiser = Denoiser(vocoder.waveglow)
+        if params.vocoder == 'waveglow_denoised':
+            from models.denoiser import Denoiser
+            denoiser = Denoiser(vocoder.waveglow)
+        else:
+            denoiser = None
         return vocoder, denoiser
 
 
@@ -243,8 +246,8 @@ if __name__ == '__main__':
     parser.add_option('--g2p-model', dest='g2p', action='store',
                       help='Use this G2P model for processing')
     parser.add_option('--vocoder', action='store', dest='vocoder', default='clarinet',
-                      choices=['clarinet', 'wavenet', 'waveglow'],
-                      help='What vocoder to use: clarinet, wavenet or waveglow')
+                      choices=['clarinet', 'wavenet', 'waveglow', 'waveglow_denoised'],
+                      help='What vocoder to use: clarinet, wavenet, waveglow or waveglow_denoised')
     (params, _) = parser.parse_args(sys.argv)
 
     if not params.speaker:
