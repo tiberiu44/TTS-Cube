@@ -61,7 +61,7 @@ def _create_batches(y_target, mgc, batch_size, UPSAMPLE_COUNT=256, mgc_order=60)
     return x_list, y_list, c_list
 
 
-class Vocoder:
+class WavenetVocoder:
     def __init__(self, params):
 
         self.params = params
@@ -116,7 +116,7 @@ class Vocoder:
             x = self.model.generate(num_samples - 1, c, device=device, temperature=temperature)
         torch.cuda.synchronize()
         x = x.squeeze().numpy() * 32768
-        return x
+        return x.astype('int16')
 
     def store(self, output_base):
         torch.save(self.model.state_dict(), output_base + ".network")
@@ -126,7 +126,7 @@ class Vocoder:
         self.model.to(device)
 
 
-class ParallelVocoder:
+class ClarinetVocoder:
     def __init__(self, params, vocoder=None):
         self.UPSAMPLE_COUNT = 256
         self.RECEPTIVE_SIZE = 3 * 3 * 3 * 3 * 3 * 3
@@ -201,7 +201,7 @@ class ParallelVocoder:
             x = self.model_s.generate(z, c_up, device=device)
         torch.cuda.synchronize()
         x = x.squeeze().cpu().numpy() * 32768
-        return x
+        return x.astype('int16')
 
     def store(self, output_base):
         torch.save(self.model_s.state_dict(), output_base + ".network")
@@ -209,3 +209,83 @@ class ParallelVocoder:
     def load(self, output_base):
         self.model_s.load_state_dict(torch.load(output_base + ".network", map_location=device))
         self.model_s.to(device)
+
+
+class WaveGlowVocoder:
+    def __init__(self, params):
+        self.waveglow = None
+        self.denoiser = None
+
+    def learn(self, y_target, mgc, batch_size):
+        # prepare batches
+        self.model_t.eval()
+        self.model_s.train()
+        x_list, y_list, c_list = _create_batches(y_target, mgc, batch_size, UPSAMPLE_COUNT=self.UPSAMPLE_COUNT,
+                                                 mgc_order=self.params.mgc_order)
+        if len(x_list) == 0:
+            return 0
+        # learn
+        total_loss = 0
+        for x, y, c in tqdm.tqdm(zip(x_list, y_list, c_list), total=len(c_list)):
+            x = torch.tensor(x, dtype=torch.float32).to(device)
+            y = torch.tensor(y, dtype=torch.float32).to(device)
+            c = torch.tensor(c, dtype=torch.float32).to(device)
+            self.trainer.zero_grad()
+            q_0 = Normal(x.new_zeros(x.size()), x.new_ones(x.size()))
+            z = q_0.sample()
+            # with torch.no_grad():
+            c_up = self.model_t.upsample(c).detach()
+            # from ipdb import set_trace
+            # set_trace()
+            x_student, mu_s, logs_s = self.model_s(z, c_up)
+            mu_logs_t = self.model_t(x_student, c)
+
+            loss_t, loss_KL, loss_reg = self.criterion_t(mu_s, logs_s, mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1],
+                                                         size_average=True)
+            # loss_t, loss_KL, loss_reg = self.criterion_t(mu_logs_t[:, 0:1, :-1], mu_logs_t[:, 1:, :-1], mu_s, logs_s, size_average=False)
+            # stft_student, _ = #self.stft(x_student[:, :, 1:])
+            # stft_truth, _ = #self.stft(x[:, :, 1:])
+            stft_student = stft(x_student[:, 0, 1:], scale='linear')
+            stft_truth = stft(x[:, 0, 1:], scale='linear')
+            loss_frame = self.criterion_frame(stft_student, stft_truth.detach())
+            # from ipdb import set_trace
+            # set_trace()
+            loss_tot = loss_t + loss_frame
+            total_loss += loss_tot.item()
+            loss_tot.backward()
+
+            torch.nn.utils.clip_grad_norm_(self.model_s.parameters(), 10.)
+            self.trainer.step()
+            del loss_tot, loss_frame, loss_KL, loss_reg, loss_t, x, y, c, c_up, stft_student, stft_truth, q_0, z
+            del x_student, mu_s, logs_s, mu_logs_t
+
+        return total_loss / len(x_list)
+
+    def synthesize(self, mgc, batch_size, temperature=1.0):
+        mel = mgc
+        mel = torch.autograd.Variable(torch.tensor(mel).cuda().float()).transpose(0, 1)
+        mel = torch.unsqueeze(mel, 0)
+        mel = torch.log10(mel) * 20
+        # from ipdb import set_trace
+        # set_trace()
+        with torch.no_grad():
+            audio = self.waveglow.infer(mel, sigma=temperature)
+            audio = audio * 32768
+        audio = audio.squeeze()
+        audio = audio.cpu().numpy()
+        from scipy import signal
+        audio = signal.lfilter([1.0], [1.0, -0.97], audio)
+        audio = audio.astype('int16')
+        return audio
+
+    def store(self, output_base):
+        pass  # torch.save(self.model_s.state_dict(), output_base + ".network")
+
+    def load(self, output_base):
+        import sys
+        sys.path.insert(0, 'cube/models/waveglow')
+        self.waveglow = torch.load(output_base)['model']
+        self.waveglow = self.waveglow.remove_weightnorm(self.waveglow)
+        self.waveglow.cuda().eval()
+        # if denoiser_strength > 0:
+        #    self.denoiser = Denoiser(self.waveglow).cuda()

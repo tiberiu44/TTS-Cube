@@ -133,19 +133,28 @@ def load_encoder(params, base_path='data/models'):
 
 
 def load_vocoder(params, base_path='data/models'):
-    from models.vocoder import ParallelVocoder
-    from models.vocoder import Vocoder
+    if params.vocoder == 'clarinet':
+        from models.vocoder import ClarinetVocoder
+        from models.vocoder import WavenetVocoder
 
-    vocoder = Vocoder(params)
-    vocoder.load('%s/nn_vocoder' % base_path)
+        vocoder = WavenetVocoder(params)
+        vocoder.load('%s/nn_vocoder' % base_path)
 
-    pvocoder = ParallelVocoder(params, vocoder=vocoder)
-    pvocoder.load('%s/pnn_vocoder' % base_path)
+        pvocoder = ClarinetVocoder(params, vocoder=vocoder)
+        pvocoder.load('%s/pnn_vocoder' % base_path)
 
-    if params.non_parallel:
+        return pvocoder
+    elif params.vocoder == 'wavenet':
+        from models.vocoder import WavenetVocoder
+
+        vocoder = WavenetVocoder(params)
+        vocoder.load('%s/nn_vocoder' % base_path)
         return vocoder
     else:
-        return pvocoder
+        from models.vocoder import WaveGlowVocoder
+        vocoder = WaveGlowVocoder(params)
+        vocoder.load('%s/waveglow_vocoder.network' % base_path)
+        return vocoder
 
 
 def synthesize_text_old(text, encoder, vocoder, speaker, params, output_file, g2p=None):
@@ -184,7 +193,7 @@ def write_signal_to_file(signal, output_file, params):
     from io_modules.dataset import DatasetIO
     dio = DatasetIO()
 
-    dio.write_wave(output_file, signal / 32768.0, params.target_sample_rate, dtype=signal.dtype)
+    dio.write_wave(output_file, signal, params.target_sample_rate, dtype=signal.dtype)
 
 
 def synthesize(speaker, input_file, output_file, params, g2p=None):
@@ -216,8 +225,6 @@ if __name__ == '__main__':
                       help='preallocate memory for batch training (default 2048)')
     parser.add_option("--use-gpu", action='store_true', dest='gpu',
                       help='turn on/off GPU support')
-    parser.add_option("--non-parallel", action='store_true', dest='non_parallel',
-                      help='Use sequencial speech generation instead of parallel')
     parser.add_option("--sample", action='store_true', dest='sample',
                       help='Use random sampling')
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
@@ -228,6 +235,9 @@ if __name__ == '__main__':
                       help='Resample input files at this rate (default=24000)', type='int', default=24000)
     parser.add_option('--g2p-model', dest='g2p', action='store',
                       help='Use this G2P model for processing')
+    parser.add_option('--vocoder', action='store', dest='vocoder', default='clarinet',
+                      choices=['clarinet', 'wavenet', 'waveglow'],
+                      help='What vocoder to use: clarinet, wavenet or waveglow')
     (params, _) = parser.parse_args(sys.argv)
 
     if not params.speaker:

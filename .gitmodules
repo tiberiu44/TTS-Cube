@@ -1,0 +1,3 @@
+[submodule "cube/models/waveglow"]
+	path = cube/models/waveglow
+	url = https://github.com/NVIDIA/waveglow.git
