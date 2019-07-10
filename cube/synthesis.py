@@ -136,17 +136,14 @@ def load_vocoder(params, base_path='data/models'):
     if params.vocoder == 'clarinet':
         from models.vocoder import ClarinetVocoder
         from models.vocoder import WavenetVocoder
-
         vocoder = WavenetVocoder(params)
         vocoder.load('%s/nn_vocoder' % base_path)
-
         pvocoder = ClarinetVocoder(params, vocoder=vocoder)
         pvocoder.load('%s/pnn_vocoder' % base_path)
-
         return pvocoder, None
+      
     elif params.vocoder == 'wavenet':
         from models.vocoder import WavenetVocoder
-
         vocoder = WavenetVocoder(params)
         vocoder.load('%s/nn_vocoder' % base_path)
         return vocoder, None
@@ -232,6 +229,8 @@ if __name__ == '__main__':
                       help='preallocate memory for batch training (default 2048)')
     parser.add_option("--use-gpu", action='store_true', dest='gpu',
                       help='turn on/off GPU support')
+    parser.add_option("--non-parallel", action='store_true', dest='non_parallel',
+                      help='Use sequencial speech generation instead of parallel')
     parser.add_option("--sample", action='store_true', dest='sample',
                       help='Use random sampling')
     parser.add_option('--mgc-order', action='store', dest='mgc_order', type='int',
