@@ -1,12 +1,17 @@
 ## Introduction
 
+
+**<span style="color:red">New:<span>** Interactive demo using Google Colaboratory can be found [here](https://colab.research.google.com/drive/1cws1INmucRJ702eV4sKNJHzMDvrkg_lh)
+
 TTS-Cube is an end-2-end speech synthesis system that provides a full processing pipeline to train and deploy TTS models.
    
 It is entirely based on neural networks, requires no pre-aligned data and can be trained to produce audio just by using character or phoneme sequences.
 
 Markdown does not allow embedding of audio files. For a better experience [check-out the project's website](https://tiberiu44.github.io/TTS-Cube/).
 
-For installation please follow [these instructions](GETTING_STARTED.md). Training and usage examples can be found [here](TRAINING.md).
+For installation please follow [these instructions](GETTING_STARTED.md). 
+Training and usage examples can be found [here](TRAINING.md). 
+A notebook demo can be found [here](https://raw.githubusercontent.com/tiberiu44/TTS-Cube/master/examples/tts-colab-demo.ipynb). 
 
 ## Output examples
 
