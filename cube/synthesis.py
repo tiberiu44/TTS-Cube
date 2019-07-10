@@ -201,7 +201,6 @@ def write_signal_to_file(signal, output_file, params):
 
     dio.write_wave(output_file, signal, params.target_sample_rate, dtype=signal.dtype)
 
-
 def synthesize(speaker, input_file, output_file, params, g2p=None):
     from models.vocoder import device
     print(device)
@@ -247,6 +246,7 @@ if __name__ == '__main__':
     parser.add_option('--vocoder', action='store', dest='vocoder', default='clarinet',
                       choices=['clarinet', 'wavenet', 'waveglow', 'waveglow_denoised'],
                       help='What vocoder to use: clarinet, wavenet, waveglow or waveglow_denoised')
+
     (params, _) = parser.parse_args(sys.argv)
 
     if not params.speaker:
