@@ -241,7 +241,7 @@ if __name__ == '__main__':
     (params, _) = parser.parse_args(sys.argv)
 
     if not params.speaker:
-        print("Speaker identity is mandatory")
+        print("Speaker identity is mandatory") 
     elif not params.txt_file:
         print("Input file is mandatory")
     elif not params.output_file:
