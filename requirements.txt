@@ -4,6 +4,6 @@ scipy==1.1.0
 pyworld==0.2.4
 pysptk==0.1.11
 Cython==0.27.3
-Pillow==6.2.0
+Pillow==6.2.1
 Flask==1.0.2
 #dynet==2.1
