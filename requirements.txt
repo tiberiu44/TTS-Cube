@@ -3,6 +3,6 @@ librosa==0.6.1
 scipy==1.1.0
 pysptk==0.1.11
 Cython==0.27.3
-Pillow==6.2.0
+Pillow==7.0.0
 Flask==1.0.2
 #dynet==2.1
