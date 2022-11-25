@@ -23,7 +23,7 @@ The order of the words is irrelevant. Also, the numbers used to represent lexica
 Given that you have named your train and development sets `en-train` and respectively `en-dev`, you can use the following command to build your model (*in the TTS-Cube folder*):
 
 ```bash
-python3 cube/g2p.py --train --train-file=en-train --dev-file=en-dev --batch-size=100 --store=data/models/en-g2p --patience=20 
+python3 cube/g2p.py --train --train-file=en-train --dev-file=en-dev --batch-size=100 --store=data/networks/en-g2p --patience=20 
 ```
 
 Your output should look something like this:
@@ -123,7 +123,7 @@ The `TXT` files just contain the sentence or sentences that are uttered in the `
 **Note:** If you are restarting the import process for another corpus, make sure you cleanup your environment before proceeding. In the `TTS-Cube` folder type:
 
 ```bash
-rm data/models/*
+rm data/networks/*
 rm data/processed/train/*
 rm data/processed/dev/*
 rm data/processed/output/*
