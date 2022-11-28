@@ -1,0 +1,52 @@
+import random
+
+import torch
+import librosa
+import pytorch_lightning as pl
+from torch.utils.data.dataset import Dataset
+import sys
+from os import listdir
+from os.path import isfile, join
+from os.path import exists
+import os
+
+sys.path.append('')
+from cube.io_utils.vocoder import MelVocoder
+
+
+class VocoderDataset(Dataset):
+    def __init__(self, path: str, target_sample_rate: int = 22050, max_segment_size=-1):
+        self._examples = []
+        self._sample_rate = target_sample_rate
+        self._max_segment_size = max_segment_size
+        self._mel_vocoder = MelVocoder()
+        train_files_tmp = [join(path, f) for f in listdir(path) if isfile(join(path, f))]
+
+        for file in train_files_tmp:
+            if file[-4:] == '.wav':
+                w_size = os.stat(file).st_size
+                if w_size > 4096 and w_size > max_segment_size:
+                    self._examples.append(file)
+
+    def __len__(self):
+        return len(self._examples)
+
+    def __getitem__(self, item):
+        filename = self._examples[item]
+        wav, sr = librosa.load(filename, sr=self._sample_rate)
+        if self._max_segment_size != -1:
+            start = random.randint(0, len(wav) - self._max_segment_size - 1)
+            x = wav[start:start + self._max_segment_size]
+        else:
+            x = wav
+
+        mel = self._mel_vocoder.melspectrogram(x, sample_rate=self._sample_rate, num_mels=80, use_preemphasis=False)
+        return (x, mel)
+
+
+class VocoderCollate:
+    def __init__(self):
+        pass
+
+    def collate_fn(self, examples):
+        pass

@@ -14,26 +14,25 @@
 # limitations under the License.
 #
 
-# import pyworld as pw
 import numpy as np
 import librosa
 from scipy import signal
 from tqdm import tqdm
 
 
-class WorldVocoder:
-
-    def extract_spectrum(self, x, sample_rate):
-        x = np.asarray(x)
-        _f0, t = pw.dio(x, sample_rate, frame_period=16)  # raw pitch extractor
-        f0 = pw.stonemask(x, _f0, t, sample_rate)  # pitch refinement
-        sp = pw.cheaptrick(x, f0, t, sample_rate)  # extract smoothed spectrogram
-        ap = pw.d4c(x, f0, t, sample_rate)
-        return sp, ap, f0
-
-    def synthesize(self, sp, ap, f0, sample_rate):
-        y = pw.synthesize(f0, sp, ap, sample_rate, frame_period=16)
-        return y
+# class WorldVocoder:
+#
+#     def extract_spectrum(self, x, sample_rate):
+#         x = np.asarray(x)
+#         _f0, t = pw.dio(x, sample_rate, frame_period=16)  # raw pitch extractor
+#         f0 = pw.stonemask(x, _f0, t, sample_rate)  # pitch refinement
+#         sp = pw.cheaptrick(x, f0, t, sample_rate)  # extract smoothed spectrogram
+#         ap = pw.d4c(x, f0, t, sample_rate)
+#         return sp, ap, f0
+#
+#     def synthesize(self, sp, ap, f0, sample_rate):
+#         y = pw.synthesize(f0, sp, ap, sample_rate, frame_period=16)
+#         return y
 
 
 class MelVocoder:
@@ -42,7 +41,7 @@ class MelVocoder:
 
     def fft(self, y, sample_rate, use_preemphasis=True):
         if use_preemphasis:
-            pre_y = self.preemphasis(y)
+            pre_y = self._preemphasis(y)
         else:
             pre_y = y
         D = self._stft(pre_y, sample_rate)
@@ -52,13 +51,19 @@ class MelVocoder:
         y = y.transpose()
         return self._istft(y, sample_rate)
 
-    def melspectrogram(self, y, sample_rate, num_mels):
-        pre_y = self.preemphasis(y)
-        D = self._stft(pre_y, sample_rate)
-        S = self._amp_to_db(self._linear_to_mel(np.abs(D), sample_rate, num_mels))
-        return self._normalize(S).transpose()
+    def melspectrogram(self, y, sample_rate, num_mels, use_preemphasis=False):
+        if use_preemphasis:
+            pre_y = self._preemphasis(y)
+        else:
+            pre_y = y
+        fft = self._stft(pre_y, sample_rate)
+        magn = np.abs(fft)
+        mel = self._linear_to_mel(magn, sample_rate, num_mels)
+        return mel.transpose()
+        # S = self._amp_to_db(self._linear_to_mel(np.abs(D), sample_rate, num_mels))
+        # return self._normalize(S).transpose()
 
-    def preemphasis(self, x):
+    def _preemphasis(self, x):
         return signal.lfilter([1, -0.97], [1], x)
 
     def _istft(self, y, sample_rate):
