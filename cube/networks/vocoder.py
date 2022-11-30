@@ -3,15 +3,25 @@ import torch.nn as nn
 import pytorch_lightning as pl
 
 import sys
+import yaml
 
 sys.path.append('')
 
 from cube.networks.modules import LinearNorm, ConvNorm
 
 
-class Vocoder(pl.LightningModule):
-    def __init__(self):
-        super(self).__init__()
+class CubenetVocoder(pl.LightningModule):
+    def __init__(self, num_layers: int = 2, layer_size: int = 512, psamples: int = 16, stride: int = 16, upsample=256):
+        super(CubenetVocoder, self).__init__()
+
+        self._config = {
+            'num_layers': num_layers,
+            'layer_size': layer_size,
+            'psamples': psamples,
+            'stride': stride,
+            'upsample': upsample
+        }
+        self.w = LinearNorm(10, 10)
 
     def forward(self, X):
         pass
@@ -24,6 +34,9 @@ class Vocoder(pl.LightningModule):
 
     def validation_epoch_end(self, outputs) -> None:
         pass
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     @torch.jit.ignore
     def _get_device(self):
@@ -41,4 +54,3 @@ class Vocoder(pl.LightningModule):
         # set_trace()
         # tmp = torch.load(path, map_location='cpu')
         self.load_state_dict(torch.load(path, map_location='cpu'))
-

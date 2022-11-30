@@ -1,14 +1,13 @@
 import random
-
 import torch
+
 import librosa
-import pytorch_lightning as pl
 from torch.utils.data.dataset import Dataset
 import sys
 from os import listdir
 from os.path import isfile, join
-from os.path import exists
 import os
+import numpy as np
 
 sys.path.append('')
 from cube.io_utils.vocoder import MelVocoder
@@ -49,4 +48,20 @@ class VocoderCollate:
         pass
 
     def collate_fn(self, examples):
-        pass
+        max_audio_size = max([x[0].shape[0] for x in examples])
+        max_mel_size = max([x[1].shape[0] for x in examples])
+        mel = np.zeros((len(examples), max_mel_size, examples[0][1].shape[1]), dtype=np.float)
+        x = np.zeros((len(examples), max_audio_size))
+        for ii in range(len(examples)):
+            cx = examples[ii][0]
+            cmel = examples[ii][1]
+            mel[ii, :cmel.shape[0], :] = cmel
+            x[ii, :cx.shape[0]] = cx
+
+        x = torch.tensor(x, dtype=torch.float)
+        mel = torch.tensor(mel, dtype=torch.float)
+        x = x / torch.max(torch.abs(x))  # normalize
+        return {
+            'x': x,
+            'mel': mel
+        }
