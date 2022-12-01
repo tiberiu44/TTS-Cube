@@ -15,18 +15,19 @@
 #
 
 import torch
+import math
 
 
 def gaussian_loss(y_hat, y, log_std_min=-7.0):
     assert y_hat.dim() == 3
-    assert y_hat.size(1) == 2
+    # assert y_hat.size(1) == 2
 
-    # (B x T x C)
-    y_hat = y_hat.transpose(1, 2)
-
+    ## (B x T x C)
+    # y_hat = y_hat.transpose(1, 2)
+    y = y.unsqueeze(2)
     mean = y_hat[:, :, :1]
     log_std = torch.clamp(y_hat[:, :, 1:], min=log_std_min)
 
     log_probs = -0.5 * (
-            - torch.log(2.0 * torch.pi) - 2. * log_std - torch.pow(y - mean, 2) * torch.exp((-2.0 * log_std)))
+            - math.log(2.0 * torch.pi) - 2. * log_std - torch.pow(y - mean, 2) * torch.exp((-2.0 * log_std)))
     return log_probs.squeeze()

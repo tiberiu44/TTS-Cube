@@ -72,15 +72,33 @@ class CubenetVocoder(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
-        from ipdb import set_trace
-        set_trace()
-        loss = self._loss(output, batch['x'])
-        return loss
+        gs_audio = batch['x']
+        x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
+        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
+        x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
+        x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
+        x = x.transpose(2, 3)
+        target_x = x.reshape(x.shape[0], -1, self._psamples)
+        output = output.reshape(output.shape[0], -1, 2)
+        target_x = target_x.reshape(target_x.shape[0], -1)
+
+        loss = self._loss(output[:, :-self._stride, :], target_x[:, self._stride:])
+        return loss.mean()
 
     def training_step(self, batch, batch_idx):
         output = self.forward(batch)
-        loss = self._loss(output, batch['x'])
-        return loss
+        gs_audio = batch['x']
+        x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
+        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
+        x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
+        x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
+        x = x.transpose(2, 3)
+        target_x = x.reshape(x.shape[0], -1, self._psamples)
+        output = output.reshape(output.shape[0], -1, 2)
+        target_x = target_x.reshape(target_x.shape[0], -1)
+
+        loss = self._loss(output[:, :-self._stride, :], target_x[:, self._stride:])
+        return loss.mean()
 
     def validation_epoch_end(self, outputs) -> None:
         pass
