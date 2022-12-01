@@ -17,7 +17,7 @@ data/
 cube/lib/cube_runtime.cpp
 cube/networks/clarinet/train.py
 cube/networks/clarinet/train_student.py
-
+examples
 # CMake
 cmake-build-debug/
 cmake-build-release/
