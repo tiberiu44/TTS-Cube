@@ -81,7 +81,7 @@ class MelVocoder:
 
     def _build_mel_basis(self, sample_rate, num_mels):
         n_fft = 1024
-        return librosa.filters.mel(sample_rate, n_fft, n_mels=num_mels)
+        return librosa.filters.mel(sr=sample_rate, n_fft=n_fft, n_mels=num_mels)
 
     def _normalize(self, S):
         min_level_db = -100.0
