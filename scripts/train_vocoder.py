@@ -106,6 +106,11 @@ def _train(params):
                            stride=params.stride,
                            upsample=[2, 2, 4])
 
+    if params.resume:
+        sys.stdout.write('Resuming from previous checkpoint\n')
+        sys.stdout.flush()
+        model.load('{0}.last'.format(params.output_base))
+
     if params.gpus == 0:
         acc = 'cpu'
     else:
@@ -153,6 +158,7 @@ if __name__ == '__main__':
                         help='LSTM layer size (default=512)')
     parser.add_argument('--num_layers', dest='num_layers', default=1, type=int,
                         help='Number of LSTM layers (default=1)')
+    parser.add_argument('--resume', dest='resume', action='store_true')
 
     args = parser.parse_args()
 

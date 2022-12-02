@@ -107,8 +107,9 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-
         loss = self._loss(output[:, :-self._stride, :], target_x[:, self._stride:])
+        #from ipdb import set_trace
+        #set_trace()
         return loss.mean()
 
     def training_step(self, batch, batch_idx):

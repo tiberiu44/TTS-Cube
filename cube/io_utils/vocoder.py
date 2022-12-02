@@ -58,7 +58,7 @@ class MelVocoder:
             pre_y = y
         fft = self._stft(pre_y, sample_rate)
         magn = np.abs(fft)
-        mel = self._linear_to_mel(magn, sample_rate, num_mels)
+        mel = self._amp_to_db(self._linear_to_mel(magn, sample_rate, num_mels))
         return mel.transpose()
         # S = self._amp_to_db(self._linear_to_mel(np.abs(D), sample_rate, num_mels))
         # return self._normalize(S).transpose()
@@ -95,7 +95,7 @@ class MelVocoder:
 
     def _amp_to_db(self, x):
         reference = 0.0
-        return 20 * np.log10(np.maximum(1e-5, x)) - reference
+        return np.log10(np.maximum(1e-5, x)) - reference
 
     def griffinlim(self, spectrogram, n_iter=100, sample_rate=16000):
         n_fft, hop_length, win_length = self._stft_parameters(sample_rate)
