@@ -81,7 +81,6 @@ class CubenetVocoder(pl.LightningModule):
 
     def _train_forward(self, mel, gs_audio):
 
-        from ipdb import set_trace
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
         # upsampled_mel = torch.repeat_interleave(upsampled_mel, self._stride, dim=1)
         # get closest gs_size that is multiple of stride
