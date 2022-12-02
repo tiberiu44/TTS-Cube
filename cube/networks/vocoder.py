@@ -154,8 +154,8 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    vocoder = CubenetVocoder()
-    # vocoder.load('data/voc-anca.last')
+    vocoder = CubenetVocoder(num_layers=1,layer_size=512)
+    vocoder.load('data/voc-anca.last')
     import librosa
     from cube.io_utils.vocoder import MelVocoder
 

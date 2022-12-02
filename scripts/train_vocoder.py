@@ -37,7 +37,7 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
         metrics = trainer.callback_metrics
         epoch = trainer.current_epoch
         val_loss = pl_module._val_loss
-        sys.stdout.write('\n\n')
+        sys.stdout.write('\n\n\tVal loss: {0}\n'.format(val_loss))
         sys.stdout.flush()
         if val_loss < self._best_loss:
             self._best_loss = val_loss
