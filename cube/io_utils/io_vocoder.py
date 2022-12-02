@@ -24,7 +24,7 @@ class VocoderDataset(Dataset):
         for file in train_files_tmp:
             if file[-4:] == '.wav':
                 w_size = os.stat(file).st_size
-                if w_size > 4096 and w_size > max_segment_size:
+                if w_size > 4096 and w_size > max_segment_size * 2:
                     self._examples.append(file)
 
     def __len__(self):
@@ -33,7 +33,7 @@ class VocoderDataset(Dataset):
     def __getitem__(self, item):
         filename = self._examples[item]
         wav, sr = librosa.load(filename, sr=self._sample_rate)
-        if self._max_segment_size != -1:
+        if self._max_segment_size != -1 and len(wav) > self._max_segment_size:
             start = random.randint(0, len(wav) - self._max_segment_size - 1)
             x = wav[start:start + self._max_segment_size]
         else:
@@ -50,7 +50,7 @@ class VocoderCollate:
     def collate_fn(self, examples):
         max_audio_size = max([x[0].shape[0] for x in examples])
         max_mel_size = max([x[1].shape[0] for x in examples])
-        mel = np.zeros((len(examples), max_mel_size, examples[0][1].shape[1]), dtype=np.float)
+        mel = np.ones((len(examples), max_mel_size, examples[0][1].shape[1]), dtype=np.float) * -5
         x = np.zeros((len(examples), max_audio_size))
         for ii in range(len(examples)):
             cx = examples[ii][0]
