@@ -44,7 +44,8 @@ class CubenetVocoder(pl.LightningModule):
         self._psamples = psamples
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         self._rnn = nn.LSTM(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
-        self._output = LinearNorm(layer_size, psamples * 2)  # mean+logvars
+        self._preoutput = LinearNorm(layer_size, 512)
+        self._output = LinearNorm(512, psamples * 2)  # mean+logvars
         self._loss = gaussian_loss
         self._val_loss = 9999
 
@@ -65,7 +66,8 @@ class CubenetVocoder(pl.LightningModule):
             for ii in range(upsampled_mel.shape[1]):
                 lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
-                output = self._output(lstm_output)
+                preoutput = torch.tanh(self._preoutput(lstm_output))
+                output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
@@ -92,7 +94,7 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._psamples)
         rnn_input = torch.cat([upsampled_mel, x], dim=-1)
         rnn_output, _ = self._rnn(rnn_input)
-        return self._output(rnn_output)
+        return self._output(torch.tanh(self._preoutput(rnn_output)))
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
@@ -152,8 +154,8 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    vocoder = CubenetVocoder(num_layers=1)
-    vocoder.load('data/voc-anca.last')
+    vocoder = CubenetVocoder()
+    # vocoder.load('data/voc-anca.last')
     import librosa
     from cube.io_utils.vocoder import MelVocoder
 
