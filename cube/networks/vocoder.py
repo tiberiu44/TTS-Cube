@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import time
 
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+import numpy as np
 
 import sys
 
@@ -27,7 +29,8 @@ from cube.networks.loss import gaussian_loss
 
 
 class CubenetVocoder(pl.LightningModule):
-    def __init__(self, num_layers: int = 2, layer_size: int = 512, psamples: int = 16, stride: int = 16, upsample=256):
+    def __init__(self, num_layers: int = 2, layer_size: int = 512, psamples: int = 16, stride: int = 16,
+                 upsample=[2, 2, 4]):
         super(CubenetVocoder, self).__init__()
 
         self._config = {
@@ -51,6 +54,30 @@ class CubenetVocoder(pl.LightningModule):
         else:
             return self._inference(mel)
 
+    def _inference(self, mel):
+        with torch.no_grad():
+            upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
+            last_x = torch.zeros((upsampled_mel.shape[0], 1, self._psamples), device=self._get_device())
+            output_list = np.zeros((upsampled_mel.shape[0], upsampled_mel.shape[1] * self._stride), dtype=np.long)
+            hx = None
+            index = 0
+            for ii in range(upsampled_mel.shape[1]):
+                lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
+                lstm_output, hx = self._rnn(lstm_input, hx=hx)
+                output = self._output(lstm_output)
+                output = output.reshape(output.shape[0], -1, 2)
+                means = output[:, :, 0]
+                logvars = output[:, :, 1]
+                z = torch.rand((output.shape[0], output.shape[1]), device=self._get_device())
+                samples = means + z * logvars
+                last_x = samples.unsqueeze(1)
+                samples = samples.detach().cpu().numpy()
+                offset = (index // self._stride) * (self._stride * self._psamples) + (index % self._stride)
+                for jj in range(samples.shape[1]):
+                    output_list[:, jj * self._stride + offset] = samples[:, jj] * 32767
+                index += 1
+        return output_list
+
     def _train_forward(self, mel, gs_audio):
 
         from ipdb import set_trace
@@ -66,9 +93,6 @@ class CubenetVocoder(pl.LightningModule):
         rnn_input = torch.cat([upsampled_mel, x], dim=-1)
         rnn_output, _ = self._rnn(rnn_input)
         return self._output(rnn_output)
-
-    def _inference(self, mel):
-        pass
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
@@ -108,9 +132,10 @@ class CubenetVocoder(pl.LightningModule):
 
     @torch.jit.ignore
     def _get_device(self):
-        if self.input_emb.weight.device.type == 'cpu':
+        if self._output.linear_layer.weight.device.type == 'cpu':
             return 'cpu'
-        return '{0}:{1}'.format(self.input_emb.weight.device.type, str(self.input_emb.weight.device.index))
+        return '{0}:{1}'.format(self._output.linear_layer.weight.device.type,
+                                str(self._output.linear_layer.weight.device.index))
 
     @torch.jit.ignore
     def save(self, path):
@@ -122,3 +147,13 @@ class CubenetVocoder(pl.LightningModule):
         # set_trace()
         # tmp = torch.load(path, map_location='cpu')
         self.load_state_dict(torch.load(path, map_location='cpu'))
+
+
+if __name__ == '__main__':
+    vocoder = CubenetVocoder()
+    mel = torch.rand((1, int(86.1328125 * 5), 80))
+    vocoder.eval()
+    start = time.time()
+    output = vocoder({'mel': mel})
+    stop = time.time()
+    print("generated 5 seconds of audio in ", stop - start)
