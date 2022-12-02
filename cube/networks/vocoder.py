@@ -46,6 +46,7 @@ class CubenetVocoder(pl.LightningModule):
         self._rnn = nn.LSTM(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
         self._output = LinearNorm(layer_size, psamples * 2)  # mean+logvars
         self._loss = gaussian_loss
+        self._val_loss = 9999
 
     def forward(self, X):
         mel = X['mel']
@@ -125,7 +126,9 @@ class CubenetVocoder(pl.LightningModule):
         return loss.mean()
 
     def validation_epoch_end(self, outputs) -> None:
-        pass
+        loss = sum(outputs) / len(outputs)
+        self.log("val_loss", loss)
+        self._val_loss = loss
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-4)

@@ -27,6 +27,47 @@ from argparse import ArgumentParser
 from cube.io_utils.io_vocoder import VocoderDataset, VocoderCollate
 
 
+class PrintAndSaveCallback(pl.callbacks.Callback):
+    def __init__(self, store_prefix):
+        super().__init__()
+        self.store_prefix = store_prefix
+        self._best_loss = 99999
+
+    def on_validation_end(self, trainer, pl_module):
+        metrics = trainer.callback_metrics
+        epoch = trainer.current_epoch
+        val_loss = pl_module._val_loss
+        sys.stdout.write('\n\n')
+        sys.stdout.flush()
+        if val_loss < self._best_loss:
+            self._best_loss = val_loss
+            fname = "{0}.best".format(self.store_prefix)
+            sys.stdout.write('\tStoring {0}\n'.format(fname))
+            sys.stdout.flush()
+            pl_module.save(fname)
+
+        fname = "{0}.last".format(self.store_prefix)
+        sys.stdout.write('\tStoring {0}\n'.format(fname))
+        sys.stdout.flush()
+        pl_module.save(fname)
+
+        # for lang in pl_module._epoch_results:
+        #     res = pl_module._epoch_results[lang]
+        #     if "acc_best" in res:
+        #         trainer.save_checkpoint(self.store_prefix + "." + lang + ".best")
+        #
+        # trainer.save_checkpoint(self.store_prefix + ".last")
+        #
+        # s = "{0:30s}\tACC".format("Language")
+        # print("\n\n\t" + s)
+        # print("\t" + ("=" * (len(s) + 16)))
+        # for lang in pl_module._language_codes:
+        #     acc = metrics["val/ACC/{0}".format(lang)]
+        #     msg = "\t{0:30s}:\t{1:.4f}".format(lang, acc)
+        #     print(msg)
+        # print("\n")
+
+
 def _train(params):
     config = {
         'num_layers': params.num_layers,
@@ -72,7 +113,8 @@ def _train(params):
     trainer = pl.Trainer(
         gpus=params.gpus,
         accelerator=acc,
-        gradient_clip_val=5
+        gradient_clip_val=5,
+        callbacks=[PrintAndSaveCallback(params.output_base)]
     )
 
     trainer.fit(model, trainloader, devloader)
