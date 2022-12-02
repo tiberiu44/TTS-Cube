@@ -153,7 +153,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    vocoder = CubenetVocoder()
+    vocoder = CubenetVocoder(num_layers=1)
     mel = torch.rand((1, int(86.1328125 * 5), 80))
     vocoder.eval()
     start = time.time()
