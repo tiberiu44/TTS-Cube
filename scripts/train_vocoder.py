@@ -113,6 +113,7 @@ def _train(params):
     trainer = pl.Trainer(
         gpus=params.gpus,
         accelerator=acc,
+        max_epochs=-1,
         gradient_clip_val=5,
         callbacks=[PrintAndSaveCallback(params.output_base)]
     )
