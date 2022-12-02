@@ -59,7 +59,7 @@ class CubenetVocoder(pl.LightningModule):
         with torch.no_grad():
             upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
             last_x = torch.zeros((upsampled_mel.shape[0], 1, self._psamples), device=self._get_device())
-            output_list = np.zeros((upsampled_mel.shape[0], upsampled_mel.shape[1] * self._stride), dtype=np.long)
+            output_list = np.zeros((upsampled_mel.shape[0], upsampled_mel.shape[1] * self._stride), dtype=np.float)
             hx = None
             index = 0
             for ii in range(upsampled_mel.shape[1]):
@@ -69,13 +69,13 @@ class CubenetVocoder(pl.LightningModule):
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.rand((output.shape[0], output.shape[1]), device=self._get_device())
-                samples = means + z * logvars
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device())
+                samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 samples = samples.detach().cpu().numpy()
                 offset = (index // self._stride) * (self._stride * self._psamples) + (index % self._stride)
                 for jj in range(samples.shape[1]):
-                    output_list[:, jj * self._stride + offset] = samples[:, jj] * 32767
+                    output_list[:, jj * self._stride + offset] = samples[:, jj]
                 index += 1
         return output_list
 
@@ -153,9 +153,24 @@ class CubenetVocoder(pl.LightningModule):
 
 if __name__ == '__main__':
     vocoder = CubenetVocoder(num_layers=1)
-    mel = torch.rand((1, int(86.1328125 * 5), 80))
+    vocoder.load('data/voc-anca.last')
+    import librosa
+    from cube.io_utils.vocoder import MelVocoder
+
+    wav, sr = librosa.load('data/test.wav', sr=22050)
+    mel_vocoder = MelVocoder()
+    mel = mel_vocoder.melspectrogram(wav, sample_rate=22050, num_mels=80, use_preemphasis=False)
+    mel = torch.tensor(mel).unsqueeze(0)
     vocoder.eval()
     start = time.time()
     output = vocoder({'mel': mel})
+    # from ipdb import set_trace
+
+    # set_trace()
     stop = time.time()
-    print("generated 5 seconds of audio in ", stop - start)
+    print("generated {0} seconds of audio in {1}".format(len(wav) / 22050, stop - start))
+    from cube.io_utils.dataset import DatasetIO
+
+    dio = DatasetIO()
+
+    dio.write_wave("data/generated.wav", output.squeeze(), 22050, dtype=np.float)

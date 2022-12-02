@@ -33,6 +33,7 @@ class VocoderDataset(Dataset):
     def __getitem__(self, item):
         filename = self._examples[item]
         wav, sr = librosa.load(filename, sr=self._sample_rate)
+        wav = wav / np.max(np.abs(wav))
         if self._max_segment_size != -1 and len(wav) > self._max_segment_size:
             start = random.randint(0, len(wav) - self._max_segment_size - 1)
             x = wav[start:start + self._max_segment_size]
