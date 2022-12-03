@@ -78,7 +78,7 @@ class CubenetVocoder(pl.LightningModule):
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.5
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 samples = samples.detach().cpu().numpy()
@@ -118,7 +118,8 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output[:, :-self._stride, :], target_x[:, self._stride:])
+        loss = self._loss(output[:, self._psamples * self._stride:-1, :],
+                          target_x[:, self._psamples * self._stride + 1:])
         # from ipdb import set_trace
         # set_trace()
         return loss.mean()
@@ -136,8 +137,10 @@ class CubenetVocoder(pl.LightningModule):
         output_aux = output_aux.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
 
-        loss = self._loss(output[:, :-self._stride, :], target_x[:, self._stride:])
-        loss_aux = self._loss(output_aux[:, :-self._stride, :], target_x[:, self._stride:])
+        loss = self._loss(output[:, self._psamples * self._stride:-1, :],
+                          target_x[:, self._psamples * self._stride + 1:])
+        loss_aux = self._loss(output_aux[:, self._psamples * self._stride:-1, :],
+                              target_x[:, self._psamples * self._stride + 1:])
         return loss.mean() + loss_aux.mean() * 0.2
 
     def validation_epoch_end(self, outputs) -> None:
