@@ -111,37 +111,31 @@ class CubenetVocoder(pl.LightningModule):
         output = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
+        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
+        x = x[:, 1:]
         x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output[:, self._psamples * self._stride:-1, :],
-                          target_x[:, self._psamples * self._stride + 1:])
-        # from ipdb import set_trace
-        # set_trace()
+        loss = self._loss(output, target_x)
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
         output = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
+        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
+        x = x[:, 1:]
         x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
-        # output_aux = output_aux.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-
-        loss = self._loss(output[:, self._psamples * self._stride:-1, :],
-                          target_x[:, self._psamples * self._stride + 1:])
-        # loss_aux = self._loss(output_aux[:, self._psamples * self._stride:-1, :],
-        #                      target_x[:, self._psamples * self._stride + 1:])
-        return loss.mean()  # + loss_aux.mean() * 0.2
+        loss = self._loss(output, target_x)
+        return loss.mean()
 
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)
