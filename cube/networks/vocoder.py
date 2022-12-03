@@ -47,6 +47,7 @@ class CubenetVocoder(pl.LightningModule):
         self._preoutput = LinearNorm(layer_size, 512)
         self._skip = LinearNorm(80 + psamples, 512)
         self._output = LinearNorm(512, psamples * 2)  # mean+logvars
+        self._output_aux = LinearNorm(512, psamples * 2)
         self._loss = gaussian_loss
         self._val_loss = 9999
 
@@ -74,7 +75,7 @@ class CubenetVocoder(pl.LightningModule):
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.1
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 samples = samples.detach().cpu().numpy()
@@ -99,10 +100,12 @@ class CubenetVocoder(pl.LightningModule):
         rnn_output, _ = self._rnn(rnn_input)
         preoutput = self._preoutput(rnn_output)
         skip = self._skip(rnn_input)
-        return self._output(torch.tanh(preoutput + skip))
+        output = self._output(torch.tanh(preoutput + skip))
+        output_aux = self._output_aux(torch.tanh(skip))
+        return output, output_aux
 
     def validation_step(self, batch, batch_idx):
-        output = self.forward(batch)
+        output, _ = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
@@ -118,7 +121,7 @@ class CubenetVocoder(pl.LightningModule):
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
-        output = self.forward(batch)
+        output, output_aux = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
@@ -127,10 +130,12 @@ class CubenetVocoder(pl.LightningModule):
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
+        output_aux = output_aux.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
 
         loss = self._loss(output[:, :-self._stride, :], target_x[:, self._stride:])
-        return loss.mean()
+        loss_aux = self._loss(output_aux[:, :-self._stride, :], target_x[:, self._stride:])
+        return (loss.mean() + loss_aux.mean()) / 2
 
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)
