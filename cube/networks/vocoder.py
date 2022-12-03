@@ -45,6 +45,7 @@ class CubenetVocoder(pl.LightningModule):
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         self._rnn = nn.LSTM(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
         self._preoutput = LinearNorm(layer_size, 512)
+        self._skip = LinearNorm(80 + psamples, 512)
         self._output = LinearNorm(512, psamples * 2)  # mean+logvars
         self._loss = gaussian_loss
         self._val_loss = 9999
@@ -66,12 +67,14 @@ class CubenetVocoder(pl.LightningModule):
             for ii in range(upsampled_mel.shape[1]):
                 lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
-                preoutput = torch.tanh(self._preoutput(lstm_output))
+                preoutput = self._preoutput(lstm_output)
+                skip = self._skip(lstm_input)
+                preoutput = torch.tanh(preoutput + skip)
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device())
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.1
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 samples = samples.detach().cpu().numpy()
@@ -94,7 +97,9 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._psamples)
         rnn_input = torch.cat([upsampled_mel, x], dim=-1)
         rnn_output, _ = self._rnn(rnn_input)
-        return self._output(torch.tanh(self._preoutput(rnn_output)))
+        preoutput = self._preoutput(rnn_output)
+        skip = self._skip(rnn_input)
+        return self._output(torch.tanh(preoutput + skip))
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
@@ -108,8 +113,8 @@ class CubenetVocoder(pl.LightningModule):
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss = self._loss(output[:, :-self._stride, :], target_x[:, self._stride:])
-        #from ipdb import set_trace
-        #set_trace()
+        # from ipdb import set_trace
+        # set_trace()
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
