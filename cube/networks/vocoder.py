@@ -47,7 +47,7 @@ class CubenetVocoder(pl.LightningModule):
         self._preoutput = LinearNorm(layer_size, 512)
         self._skip = LinearNorm(80 + psamples, 512)
         self._output = LinearNorm(512, psamples * 2)  # mean+logvars
-        self._output_aux = LinearNorm(512, psamples * 2)
+        self._output_aux = LinearNorm(80, psamples * 2)
         self._loss = gaussian_loss
         self._val_loss = 9999
 
@@ -101,7 +101,7 @@ class CubenetVocoder(pl.LightningModule):
         preoutput = self._preoutput(rnn_output)
         skip = self._skip(rnn_input)
         output = self._output(torch.tanh(preoutput + skip))
-        output_aux = self._output_aux(torch.tanh(skip))
+        output_aux = self._output_aux(upsampled_mel)
         return output, output_aux
 
     def validation_step(self, batch, batch_idx):
