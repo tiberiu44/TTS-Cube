@@ -30,7 +30,7 @@ from cube.networks.loss import gaussian_loss
 
 class CubenetVocoder(pl.LightningModule):
     def __init__(self, num_layers: int = 2, layer_size: int = 512, psamples: int = 16, stride: int = 16,
-                 upsample=[2, 2, 4]):
+                 upsample=[2, 2, 2, 2]):
         super(CubenetVocoder, self).__init__()
 
         self._config = {
@@ -135,7 +135,7 @@ class CubenetVocoder(pl.LightningModule):
 
         loss = self._loss(output[:, :-self._stride, :], target_x[:, self._stride:])
         loss_aux = self._loss(output_aux[:, :-self._stride, :], target_x[:, self._stride:])
-        return (loss.mean() + loss_aux.mean()) / 2
+        return loss.mean() + loss_aux.mean() * 0.2
 
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)

@@ -74,7 +74,7 @@ def _train(params):
         'layer_size': params.layer_size,
         'psamples': params.psamples,
         'stride': params.stride,
-        'upsample': 256,
+        'upsample': [2, 2, 2, 2],
         'sample_rate': params.sample_rate
     }
     conf_file = '{0}.yaml'.format(params.output_base)
@@ -104,7 +104,7 @@ def _train(params):
                            layer_size=params.layer_size,
                            psamples=params.psamples,
                            stride=params.stride,
-                           upsample=[2, 2, 4])
+                           upsample=[2, 2, 2, 2])
 
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
