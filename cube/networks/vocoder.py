@@ -72,6 +72,9 @@ class CubenetVocoder(pl.LightningModule):
                 skip = self._skip(lstm_input)
                 preoutput = torch.tanh(preoutput + skip)
                 output = self._output(preoutput)
+                # from ipdb import set_trace
+                # set_trace()
+                # output = self._output_aux(upsampled_mel[:, ii, :])
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
