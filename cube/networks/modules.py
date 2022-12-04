@@ -331,7 +331,7 @@ class Seq2Seq(nn.Module):
 #         return c
 
 class UpsampleNet(nn.Module):
-    def __init__(self, upsample_scales=[2, 2, 2, 2]):
+    def __init__(self, upsample_scales=[2, 2, 2, 2], in_channels=80, out_channels=80):
         super(UpsampleNet, self).__init__()
         self._upsample_conv = nn.ModuleList()
         for s in upsample_scales:
