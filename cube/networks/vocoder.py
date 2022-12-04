@@ -69,12 +69,8 @@ class CubenetVocoder(pl.LightningModule):
                 lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
                 preoutput = self._preoutput(lstm_output)
-                # skip = self._skip(lstm_input)
                 preoutput = torch.tanh(preoutput)
                 output = self._output(preoutput)
-                # from ipdb import set_trace
-                # set_trace()
-                # output = self._output_aux(upsampled_mel[:, ii, :])
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
@@ -91,20 +87,16 @@ class CubenetVocoder(pl.LightningModule):
     def _train_forward(self, mel, gs_audio):
 
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
-        # upsampled_mel = torch.repeat_interleave(upsampled_mel, self._stride, dim=1)
         # get closest gs_size that is multiple of stride
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
-        x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         x = x.reshape(x.shape[0], -1, self._psamples)
         rnn_input = torch.cat([upsampled_mel, x], dim=-1)
         rnn_output, _ = self._rnn(rnn_input)
         preoutput = self._preoutput(rnn_output)
-        # skip = self._skip(rnn_input)
         output = self._output(torch.tanh(preoutput))
-        # output_aux = self._output_aux(upsampled_mel)
         return output  # , output_aux
 
     def validation_step(self, batch, batch_idx):
