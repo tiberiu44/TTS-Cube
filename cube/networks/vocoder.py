@@ -78,7 +78,7 @@ class CubenetVocoder(pl.LightningModule):
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.1
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device())
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 samples = samples.detach().cpu().numpy()
@@ -165,7 +165,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    vocoder = CubenetVocoder(num_layers=1, layer_size=512)
+    vocoder = CubenetVocoder(num_layers=1, layer_size=900)
     vocoder.load('data/voc-anca.last')
     import librosa
     from cube.io_utils.vocoder import MelVocoder
