@@ -45,7 +45,7 @@ class CubenetVocoder(pl.LightningModule):
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         self._rnn = nn.LSTM(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
         self._preoutput = LinearNorm(layer_size, 512)
-        self._skip = LinearNorm(80 + psamples, 512)
+        # self._skip = LinearNorm(80 + psamples, 512)
         self._output = LinearNorm(512, psamples * 2)  # mean+logvars
         # self._output_aux = LinearNorm(80, psamples * 2)
         self._loss = gaussian_loss
@@ -69,8 +69,8 @@ class CubenetVocoder(pl.LightningModule):
                 lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
                 preoutput = self._preoutput(lstm_output)
-                skip = self._skip(lstm_input)
-                preoutput = torch.tanh(preoutput + skip)
+                # skip = self._skip(lstm_input)
+                preoutput = torch.tanh(preoutput)
                 output = self._output(preoutput)
                 # from ipdb import set_trace
                 # set_trace()
@@ -102,8 +102,8 @@ class CubenetVocoder(pl.LightningModule):
         rnn_input = torch.cat([upsampled_mel, x], dim=-1)
         rnn_output, _ = self._rnn(rnn_input)
         preoutput = self._preoutput(rnn_output)
-        skip = self._skip(rnn_input)
-        output = self._output(torch.tanh(preoutput + skip))
+        # skip = self._skip(rnn_input)
+        output = self._output(torch.tanh(preoutput))
         # output_aux = self._output_aux(upsampled_mel)
         return output  # , output_aux
 
