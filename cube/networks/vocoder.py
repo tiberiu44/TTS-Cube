@@ -63,6 +63,7 @@ class CubenetVocoder(pl.LightningModule):
             upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
             last_x = torch.zeros((upsampled_mel.shape[0], 1, self._psamples), device=self._get_device())
             output_list = np.zeros((upsampled_mel.shape[0], upsampled_mel.shape[1] * self._stride), dtype=np.float)
+            output_list = []
             hx = None
             index = 0
             for ii in range(upsampled_mel.shape[1]):
@@ -75,13 +76,20 @@ class CubenetVocoder(pl.LightningModule):
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
                 z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device())
+                # from ipdb import set_trace
+                # set_trace()
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
+                output_list.append(samples.unsqueeze(1))
                 samples = samples.detach().cpu().numpy()
                 offset = (index // self._stride) * (self._stride * self._psamples) + (index % self._stride)
                 for jj in range(samples.shape[1]):
                     output_list[:, jj * self._stride + offset] = samples[:, jj]
                 index += 1
+        # output_list = torch.cat(output_list, dim=1)
+        # output_list = output_list.reshape(output_list.shape[0], -1, self._stride, self._psamples)
+        # output_list = output_list.transpose(2, 3)
+        # output_list = output_list.reshape(output_list.shape[0], -1).detach().cpu().numpy()
         return output_list
 
     def _train_forward(self, mel, gs_audio):
@@ -111,7 +119,9 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output, target_x)
+        loss = self._loss(output[:, self._psamples * self._stride:, ],
+                          target_x[:, self._psamples * self._stride:],
+                          log_std_min=-10)
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
@@ -126,7 +136,9 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output, target_x)
+        loss = self._loss(output[:, self._psamples * self._stride:, ],
+                          target_x[:, self._psamples * self._stride:],
+                          log_std_min=-10)
         return loss.mean()
 
     def validation_epoch_end(self, outputs) -> None:
@@ -157,7 +169,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    vocoder = CubenetVocoder(num_layers=1, layer_size=900)
+    vocoder = CubenetVocoder(num_layers=1, layer_size=800)
     vocoder.load('data/voc-anca.last')
     import librosa
     from cube.io_utils.vocoder import MelVocoder
