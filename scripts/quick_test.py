@@ -127,6 +127,11 @@ def _train(params):
     train_batch = collate.collate_fn([devset[0], devset[1]])
     valid_batch = collate.collate_fn([devset[0], devset[1]])
     optimizer = model.configure_optimizers()
+    model.to('cuda:0')
+    train_batch['mel'] = train_batch['mel'].to('cuda:0')
+    train_batch['x'] = train_batch['x'].to('cuda:0')
+    valid_batch['mel'] = valid_batch['mel'].to('cuda:0')
+    valid_batch['x'] = valid_batch['x'].to('cuda:0')
     for ii in range(1000):
         print(ii)
         optimizer.zero_grad()
