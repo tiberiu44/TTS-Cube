@@ -105,7 +105,7 @@ class CubenetVocoder(pl.LightningModule):
         return output, output_aux
 
     def validation_step(self, batch, batch_idx):
-        output = self.forward(batch)
+        output, _ = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
