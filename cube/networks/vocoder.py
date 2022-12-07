@@ -45,7 +45,7 @@ class CubenetVocoder(pl.LightningModule):
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         self._rnn = nn.LSTM(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
         self._preoutput = LinearNorm(layer_size, 512)
-        # self._skip = LinearNorm(80 + psamples, 512)
+        self._skip = LinearNorm(80, 512)
         self._output = LinearNorm(512, psamples * 2)  # mean+logvars
         # self._output_aux = LinearNorm(80, psamples * 2)
         self._loss = gaussian_loss
@@ -70,22 +70,17 @@ class CubenetVocoder(pl.LightningModule):
                 lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
                 preoutput = self._preoutput(lstm_output)
-                preoutput = torch.tanh(preoutput)
+                skip = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
+                preoutput = torch.tanh(preoutput + skip)
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
-                # from ipdb import set_trace
-                # set_trace()
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
-                # samples = samples.detach().cpu().numpy()
-                # offset = (index // self._stride) * (self._stride * self._psamples) + (index % self._stride)
-                # for jj in range(samples.shape[1]):
-                #     output_list[:, jj * self._stride + offset] = samples[:, jj]
-                # index += 1
+
         output_list = torch.cat(output_list, dim=1)
         output_list = output_list.reshape(output_list.shape[0], -1, self._stride, self._psamples)
         output_list = output_list.transpose(2, 3)
@@ -95,6 +90,7 @@ class CubenetVocoder(pl.LightningModule):
     def _train_forward(self, mel, gs_audio):
 
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
+        skip = self._skip(upsampled_mel)
         # get closest gs_size that is multiple of stride
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
@@ -104,7 +100,7 @@ class CubenetVocoder(pl.LightningModule):
         rnn_input = torch.cat([upsampled_mel, x], dim=-1)
         rnn_output, _ = self._rnn(rnn_input)
         preoutput = self._preoutput(rnn_output)
-        output = self._output(torch.tanh(preoutput))
+        output = self._output(torch.tanh(preoutput + skip))
         return output  # , output_aux
 
     def validation_step(self, batch, batch_idx):
@@ -171,6 +167,8 @@ class CubenetVocoder(pl.LightningModule):
 if __name__ == '__main__':
     vocoder = CubenetVocoder(num_layers=1, layer_size=800)
     vocoder.load('data/voc-anca.last')
+    # vocoder._skip = LinearNorm(80, 512)
+    # vocoder.save('data/voc-anca-2.last')
     import librosa
     from cube.io_utils.vocoder import MelVocoder
 
