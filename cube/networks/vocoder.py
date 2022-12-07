@@ -43,10 +43,10 @@ class CubenetVocoder(pl.LightningModule):
         self._stride = stride
         self._psamples = psamples
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
-        self._rnn = nn.LSTM(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
-        self._preoutput = LinearNorm(layer_size, 512)
-        self._skip = LinearNorm(80, 512)
-        self._output = LinearNorm(512, psamples * 2)  # mean+logvars
+        self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
+        self._preoutput = LinearNorm(layer_size, 256)
+        self._skip = LinearNorm(80, 256)
+        self._output = LinearNorm(256, psamples * 2)  # mean+logvars
         self._output_aux = LinearNorm(80, psamples * 2)
         self._loss = gaussian_loss
         self._val_loss = 9999
@@ -170,11 +170,11 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    vocoder = CubenetVocoder(num_layers=1, layer_size=800)
-    vocoder.load('data/voc-anca.last')
-    vocoder._output_aux = LinearNorm(80, 32)
+    vocoder = CubenetVocoder(num_layers=1, layer_size=1000)
+    #vocoder.load('data/voc-anca.last')
+    #vocoder._output_aux = LinearNorm(80, 32)
     # vocoder._skip = LinearNorm(80, 512)
-    vocoder.save('data/voc-anca-2.last')
+    #vocoder.save('data/voc-anca-2.last')
     import librosa
     from cube.io_utils.vocoder import MelVocoder
 
