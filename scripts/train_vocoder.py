@@ -104,7 +104,7 @@ def _train(params):
                            layer_size=params.layer_size,
                            psamples=params.psamples,
                            stride=params.stride,
-                           upsample=[2, 2, 2, 2])
+                           upsample=[4, 4, 4, 4])
 
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
