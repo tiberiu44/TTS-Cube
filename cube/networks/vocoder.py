@@ -22,6 +22,9 @@ import numpy as np
 
 import sys
 
+import tqdm
+import yaml
+
 sys.path.append('')
 
 from cube.networks.modules import LinearNorm, ConvNorm, UpsampleNet
@@ -66,7 +69,7 @@ class CubenetVocoder(pl.LightningModule):
             output_list = []
             hx = None
             # index = 0
-            for ii in range(upsampled_mel.shape[1]):
+            for ii in tqdm.tqdm(range(upsampled_mel.shape[1]), ncols=80):
                 lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
                 preoutput = self._preoutput(lstm_output)
@@ -172,11 +175,23 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    vocoder = CubenetVocoder(num_layers=1, layer_size=1024)
-    vocoder.load('data/voc-anca.last')
-    # vocoder._output_aux = LinearNorm(80, 32)
-    # vocoder._skip = LinearNorm(80, 512)
-    # vocoder.save('data/voc-anca-2.last')
+    from yaml import Loader, Dumper
+
+    fname = 'data/voc-anca-1-1'
+    conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
+    num_layers = conf['num_layers']
+    upsample = conf['upsample']
+    psamples = conf['psamples']
+    stride = conf['stride']
+    layer_size = conf['layer_size']
+    sample_rate = conf['sample_rate']
+    vocoder = CubenetVocoder(num_layers=num_layers,
+                             layer_size=layer_size,
+                             psamples=psamples,
+                             stride=stride,
+                             upsample=upsample)
+    # vocoder = CubenetVocoder(num_layers=1, layer_size=1024)
+    vocoder.load('{0}.last'.format(fname))
     import librosa
     from cube.io_utils.vocoder import MelVocoder
 
