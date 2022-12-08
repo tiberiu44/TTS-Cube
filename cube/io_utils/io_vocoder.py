@@ -14,11 +14,12 @@ from cube.io_utils.vocoder import MelVocoder
 
 
 class VocoderDataset(Dataset):
-    def __init__(self, path: str, target_sample_rate: int = 22050, max_segment_size=-1):
+    def __init__(self, path: str, target_sample_rate: int = 22050, max_segment_size=-1, random_start=True):
         self._examples = []
         self._sample_rate = target_sample_rate
         self._max_segment_size = max_segment_size
         self._mel_vocoder = MelVocoder()
+        self._random_start = random_start
         train_files_tmp = [join(path, f) for f in listdir(path) if isfile(join(path, f))]
 
         for file in train_files_tmp:
@@ -35,7 +36,10 @@ class VocoderDataset(Dataset):
         wav, sr = librosa.load(filename, sr=self._sample_rate)
         wav = wav / np.max(np.abs(wav))
         if self._max_segment_size != -1 and len(wav) > self._max_segment_size:
-            start = random.randint(0, len(wav) - self._max_segment_size - 1)
+            if self._random_start:
+                start = random.randint(0, len(wav) - self._max_segment_size - 1)
+            else:
+                start = 0
             x = wav[start:start + self._max_segment_size]
         else:
             x = wav

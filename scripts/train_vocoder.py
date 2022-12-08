@@ -69,12 +69,15 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
 
 
 def _train(params):
+    upsample = ''.join(params.upsample).replace('[', '').replace(']', '').split(',')
+    upsample = [int(x) for x in upsample]
+    print(upsample)
     config = {
         'num_layers': params.num_layers,
         'layer_size': params.layer_size,
         'psamples': params.psamples,
         'stride': params.stride,
-        'upsample': [2, 2, 2, 2],
+        'upsample': upsample,
         'sample_rate': params.sample_rate
     }
     conf_file = '{0}.yaml'.format(params.output_base)
@@ -83,8 +86,9 @@ def _train(params):
     sys.stdout.write(open(conf_file).read())
     sys.stdout.write('========================================\n\n')
     trainset = VocoderDataset(params.train_folder, target_sample_rate=params.sample_rate,
-                              max_segment_size=params.maximum_segment_size)
-    devset = VocoderDataset(params.dev_folder, target_sample_rate=params.sample_rate)
+                              max_segment_size=params.maximum_segment_size, random_start=True)
+    devset = VocoderDataset(params.dev_folder, target_sample_rate=params.sample_rate,
+                            max_segment_size=params.maximum_segment_size, random_start=False)
     sys.stdout.write('==================Data==================\n')
     sys.stdout.write('Training files: {0}\n'.format(len(trainset)))
     sys.stdout.write('Validation files: {0}\n'.format(len(devset)))
@@ -104,7 +108,7 @@ def _train(params):
                            layer_size=params.layer_size,
                            psamples=params.psamples,
                            stride=params.stride,
-                           upsample=[4, 4, 4, 4])
+                           upsample=upsample)
 
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
@@ -158,6 +162,9 @@ if __name__ == '__main__':
                         help='LSTM layer size (default=512)')
     parser.add_argument('--num_layers', dest='num_layers', default=1, type=int,
                         help='Number of LSTM layers (default=1)')
+    parser.add_argument('--upsample', dest='upsample', default=[2, 2, 2, 2], type=list,
+                        help='Upsample layers (default=[2,2,2,2])')
+
     parser.add_argument('--resume', dest='resume', action='store_true')
 
     args = parser.parse_args()

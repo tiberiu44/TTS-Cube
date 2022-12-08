@@ -97,12 +97,14 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         x = x.reshape(x.shape[0], -1, self._psamples)
-        rnn_input = torch.cat([upsampled_mel, x], dim=-1)
+        msize = min(upsampled_mel.shape[1], x.shape[1])
+        rnn_input = torch.cat([upsampled_mel[:, :msize, :], x[:, :msize, :]], dim=-1)
+        skip = skip[:, :msize, :]
         rnn_output, _ = self._rnn(rnn_input)
         preoutput = self._preoutput(rnn_output)
         output = self._output(torch.tanh(preoutput + skip))
-        output_aux = self._output_aux(upsampled_mel)
-        return output, output_aux
+        # output_aux = self._output_aux(upsampled_mel)
+        return output, None
 
     def validation_step(self, batch, batch_idx):
         output, _ = self.forward(batch)
@@ -132,15 +134,15 @@ class CubenetVocoder(pl.LightningModule):
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
-        output_aux = output_aux.reshape(output.shape[0], -1, 2)
+        # output_aux = output_aux.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss = self._loss(output[:, self._psamples * self._stride:, ],
                           target_x[:, self._psamples * self._stride:],
                           log_std_min=-14)
-        loss_aux = self._loss(output_aux[:, self._psamples * self._stride:, ],
-                              target_x[:, self._psamples * self._stride:],
-                              log_std_min=-14)
-        return (loss.mean() + loss_aux.mean()) / 2
+        # loss_aux = self._loss(output_aux[:, self._psamples * self._stride:, ],
+        #                       target_x[:, self._psamples * self._stride:],
+        #                       log_std_min=-14)
+        return loss.mean()
 
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)
