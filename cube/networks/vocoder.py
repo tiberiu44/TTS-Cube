@@ -74,7 +74,7 @@ class CubenetVocoder(pl.LightningModule):
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
                 preoutput = self._preoutput(lstm_output)
                 skip = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
-                preoutput = torch.tanh(preoutput + skip)
+                preoutput = torch.tanh(preoutput)
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
@@ -105,7 +105,7 @@ class CubenetVocoder(pl.LightningModule):
         skip = skip[:, :msize, :]
         rnn_output, _ = self._rnn(rnn_input)
         preoutput = self._preoutput(rnn_output)
-        output = self._output(torch.tanh(preoutput + skip))
+        output = self._output(torch.tanh(preoutput))
         # output_aux = self._output_aux(upsampled_mel)
         return output, None
 
@@ -211,4 +211,4 @@ if __name__ == '__main__':
 
     dio = DatasetIO()
 
-    dio.write_wave("data/generated.wav", output.squeeze(), 22050, dtype=np.float)
+    dio.write_wave("data/generated.wav", output.squeeze() * 32000, 22050, dtype=np.int16)
