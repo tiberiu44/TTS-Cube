@@ -74,12 +74,12 @@ class CubenetVocoder(pl.LightningModule):
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
                 preoutput = self._preoutput(lstm_output)
                 skip = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
-                preoutput = torch.tanh(preoutput)
+                preoutput = torch.tanh(preoutput + skip)
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device())
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * .5
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
@@ -105,7 +105,7 @@ class CubenetVocoder(pl.LightningModule):
         skip = skip[:, :msize, :]
         rnn_output, _ = self._rnn(rnn_input)
         preoutput = self._preoutput(rnn_output)
-        output = self._output(torch.tanh(preoutput))
+        output = self._output(torch.tanh(preoutput + skip))
         # output_aux = self._output_aux(upsampled_mel)
         return output, None
 
