@@ -160,7 +160,7 @@ if __name__ == '__main__':
                         help='Number of mixtures to use when generating samples (default=3)')
     parser.add_argument('--layer-size', dest='layer_size', default=512, type=int,
                         help='LSTM layer size (default=512)')
-    parser.add_argument('--num_layers', dest='num_layers', default=1, type=int,
+    parser.add_argument('--num-layers', dest='num_layers', default=1, type=int,
                         help='Number of LSTM layers (default=1)')
     parser.add_argument('--upsample', dest='upsample', default=[2, 2, 2, 2], type=list,
                         help='Upsample layers (default=[2,2,2,2])')
