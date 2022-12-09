@@ -48,7 +48,7 @@ class CubenetVocoder(pl.LightningModule):
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
         self._preoutput = LinearNorm(layer_size, 256)
-        self._skip = LinearNorm(80, 256)
+        self._skip = LinearNorm(80, layer_size)
         self._output = LinearNorm(256, psamples * 2)  # mean+logvars
         self._output_aux = LinearNorm(80, psamples * 2)
         self._loss = gaussian_loss
@@ -65,16 +65,14 @@ class CubenetVocoder(pl.LightningModule):
         with torch.no_grad():
             upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
             last_x = torch.zeros((upsampled_mel.shape[0], 1, self._psamples), device=self._get_device())
-            # output_list = np.zeros((upsampled_mel.shape[0], upsampled_mel.shape[1] * self._stride), dtype=np.float)
             output_list = []
             hx = None
             # index = 0
             for ii in tqdm.tqdm(range(upsampled_mel.shape[1]), ncols=80):
                 lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
                 lstm_output, hx = self._rnn(lstm_input, hx=hx)
-                preoutput = self._preoutput(lstm_output)
                 skip = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
-                preoutput = torch.tanh(preoutput + skip)
+                preoutput = torch.tanh(self._preoutput(lstm_output + skip))
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
@@ -104,13 +102,13 @@ class CubenetVocoder(pl.LightningModule):
         rnn_input = torch.cat([upsampled_mel[:, :msize, :], x[:, :msize, :]], dim=-1)
         skip = skip[:, :msize, :]
         rnn_output, _ = self._rnn(rnn_input)
-        preoutput = self._preoutput(rnn_output)
-        output = self._output(torch.tanh(preoutput + skip))
+        preoutput = torch.tanh(self._preoutput(rnn_output + skip))
+        output = self._output(preoutput)
         # output_aux = self._output_aux(upsampled_mel)
         return output, None
 
     def validation_step(self, batch, batch_idx):
-        output, _ = self.forward(batch)
+        output = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
@@ -127,7 +125,7 @@ class CubenetVocoder(pl.LightningModule):
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
-        output, output_aux = self.forward(batch)
+        output = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
@@ -137,14 +135,10 @@ class CubenetVocoder(pl.LightningModule):
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
-        # output_aux = output_aux.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss = self._loss(output[:, self._psamples * self._stride:, ],
                           target_x[:, self._psamples * self._stride:],
                           log_std_min=-14)
-        # loss_aux = self._loss(output_aux[:, self._psamples * self._stride:, ],
-        #                       target_x[:, self._psamples * self._stride:],
-        #                       log_std_min=-14)
         return loss.mean()
 
     def validation_epoch_end(self, outputs) -> None:
@@ -177,7 +171,7 @@ class CubenetVocoder(pl.LightningModule):
 if __name__ == '__main__':
     from yaml import Loader, Dumper
 
-    fname = 'data/voc-anca-1-1'
+    fname = 'data/voc-anca-16-16'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']
