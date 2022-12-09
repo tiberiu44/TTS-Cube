@@ -79,7 +79,7 @@ class CubenetVocoder(pl.LightningModule):
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * .5
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.5
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
@@ -153,7 +153,7 @@ class CubenetVocoder(pl.LightningModule):
         self._val_loss = loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=1e-5)
+        return torch.optim.AdamW(self.parameters(), lr=1e-4)
 
     @torch.jit.ignore
     def _get_device(self):

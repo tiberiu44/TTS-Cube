@@ -322,7 +322,7 @@ class UpsampleNet(nn.Module):
             convt = nn.utils.weight_norm(convt)
             nn.init.kaiming_normal_(convt.weight)
             self._upsample_conv.append(convt)
-            self._upsample_conv.append(nn.LeakyReLU(0.4))
+            self._upsample_conv.append(nn.Tanh())
 
     def forward(self, c):
         # B x C x T'
