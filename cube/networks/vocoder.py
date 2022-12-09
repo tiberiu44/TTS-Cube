@@ -104,8 +104,7 @@ class CubenetVocoder(pl.LightningModule):
         rnn_output, _ = self._rnn(rnn_input)
         preoutput = torch.tanh(self._preoutput(rnn_output + skip))
         output = self._output(preoutput)
-        # output_aux = self._output_aux(upsampled_mel)
-        return output, None
+        return output
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
