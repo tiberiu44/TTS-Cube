@@ -40,9 +40,9 @@ class VocoderDataset(Dataset):
         filename = self._examples[item]
         cache_filename = 'data/cache/{0}'.format(filename.replace('/', '_').replace('\\', '_'))
         if self._use_cache:
-            if os.path.exists('{0}.mgc'.format(cache_filename)):
-                mel = np.load('{0}.mgc'.format(cache_filename))
-                wav = np.load('{0}.audio'.format(cache_filename))
+            if os.path.exists('{0}.mgc.npy'.format(cache_filename)):
+                mel = np.load('{0}.mgc.npy'.format(cache_filename))
+                wav = np.load('{0}.audio.npy'.format(cache_filename))
             else:
                 wav, sr = librosa.load(filename, sr=self._sample_rate)
                 wav = wav / np.max(np.abs(wav))
