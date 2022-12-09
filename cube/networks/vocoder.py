@@ -26,7 +26,7 @@ import tqdm
 import yaml
 
 sys.path.append('')
-
+from yaml import Loader
 from cube.networks.modules import LinearNorm, ConvNorm, UpsampleNet
 from cube.networks.loss import gaussian_loss
 
@@ -169,8 +169,6 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    from yaml import Loader, Dumper
-
     fname = 'data/voc-anca-16-16'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
