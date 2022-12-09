@@ -14,7 +14,8 @@ from cube.io_utils.vocoder import MelVocoder
 
 
 class VocoderDataset(Dataset):
-    def __init__(self, path: str, target_sample_rate: int = 22050, max_segment_size=-1, random_start=True):
+    def __init__(self, path: str, target_sample_rate: int = 22050, max_segment_size=-1, random_start=True,
+                 use_cache=True):
         self._examples = []
         self._sample_rate = target_sample_rate
         self._max_segment_size = max_segment_size
@@ -27,25 +28,51 @@ class VocoderDataset(Dataset):
                 w_size = os.stat(file).st_size
                 if w_size > 4096 and w_size > max_segment_size * 2:
                     self._examples.append(file)
+        self._use_cache = use_cache
+        if use_cache and not os.path.exists('data/cache'):
+            os.makedirs('data/cache')
 
     def __len__(self):
         return len(self._examples)
 
     def __getitem__(self, item):
-        filename = self._examples[item]
-        wav, sr = librosa.load(filename, sr=self._sample_rate)
-        wav = wav / np.max(np.abs(wav))
-        if self._max_segment_size != -1 and len(wav) > self._max_segment_size:
-            if self._random_start:
-                start = random.randint(0, len(wav) - self._max_segment_size - 1)
-            else:
-                start = 0
-            x = wav[start:start + self._max_segment_size]
-        else:
-            x = wav
 
-        mel = self._mel_vocoder.melspectrogram(x, sample_rate=self._sample_rate, num_mels=80, use_preemphasis=False)
-        return (x, mel)
+        filename = self._examples[item]
+        cache_filename = 'data/cache/{0}'.format(filename.replace('/', '_').replace('\\', '_'))
+        if self._use_cache:
+            if os.path.exists('{0}.mgc'.format(cache_filename)):
+                mel = np.load('{0}.mgc'.format(cache_filename))
+                wav = np.load('{0}.audio'.format(cache_filename))
+            else:
+                wav, sr = librosa.load(filename, sr=self._sample_rate)
+                wav = wav / np.max(np.abs(wav))
+                mel = self._mel_vocoder.melspectrogram(wav,
+                                                       sample_rate=self._sample_rate,
+                                                       num_mels=80,
+                                                       use_preemphasis=False)
+                np.save('{0}.mgc'.format(cache_filename), mel)
+                np.save('{0}.audio'.format(cache_filename), wav)
+            if self._max_segment_size == -1 or len(wav) < self._max_segment_size or not self._random_start:
+                return (wav, mel)
+            else:
+                start = random.randint(0, len(wav) - self._max_segment_size - 1)
+                start = start // 256 * 256  # multiple of hop size
+                stop = start + self._max_segment_size
+                return (wav[start:stop], mel[start // 256:stop // 256 + 1])
+        else:
+            wav, sr = librosa.load(filename, sr=self._sample_rate)
+            wav = wav / np.max(np.abs(wav))
+            if self._max_segment_size != -1 and len(wav) > self._max_segment_size:
+                if self._random_start:
+                    start = random.randint(0, len(wav) - self._max_segment_size - 1)
+                else:
+                    start = 0
+                x = wav[start:start + self._max_segment_size]
+            else:
+                x = wav
+
+            mel = self._mel_vocoder.melspectrogram(x, sample_rate=self._sample_rate, num_mels=80, use_preemphasis=False)
+            return (x, mel)
 
 
 class VocoderCollate:
