@@ -138,8 +138,7 @@ class CubenetVocoder(pl.LightningModule):
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss = self._loss(output[:, self._psamples * self._stride:, ],
-                          target_x[:, self._psamples * self._stride:],
-                          log_std_min=-14)
+                          target_x[:, self._psamples * self._stride:])
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
@@ -155,8 +154,7 @@ class CubenetVocoder(pl.LightningModule):
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss = self._loss(output[:, self._psamples * self._stride:, ],
-                          target_x[:, self._psamples * self._stride:],
-                          log_std_min=-14)
+                          target_x[:, self._psamples * self._stride:])
         return loss.mean()
 
     def validation_epoch_end(self, outputs) -> None:
