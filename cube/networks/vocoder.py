@@ -27,8 +27,8 @@ import yaml
 
 sys.path.append('')
 from yaml import Loader
-from cube.networks.modules import LinearNorm, ConvNorm, UpsampleNet
-from cube.networks.loss import gaussian_loss
+from cube.networks.modules import LinearNorm, UpsampleNet
+from cube.networks.loss import beta_loss
 
 
 class CubenetVocoder(pl.LightningModule):
@@ -46,12 +46,19 @@ class CubenetVocoder(pl.LightningModule):
         self._stride = stride
         self._psamples = psamples
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
-        self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
+        # self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
+        ic = 80
+        rnn_list = []
+        for ii in range(num_layers):
+            rnn = nn.GRU(input_size=ic + psamples, hidden_size=layer_size, num_layers=1, batch_first=True)
+            ic = layer_size
+            rnn_list.append(rnn)
+        self._rnns = nn.ModuleList(rnn_list)
         self._preoutput = LinearNorm(layer_size, 256)
         self._skip = LinearNorm(80, layer_size)
         self._output = LinearNorm(256, psamples * 2)  # mean+logvars
         self._output_aux = LinearNorm(80, psamples * 2)
-        self._loss = gaussian_loss
+        self._loss = beta_loss
         self._val_loss = 9999
 
     def forward(self, X):
@@ -66,18 +73,24 @@ class CubenetVocoder(pl.LightningModule):
             upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
             last_x = torch.zeros((upsampled_mel.shape[0], 1, self._psamples), device=self._get_device())
             output_list = []
-            hx = None
+            hxs = [None for _ in range(len(self._rnns))]
             # index = 0
             for ii in tqdm.tqdm(range(upsampled_mel.shape[1]), ncols=80):
-                lstm_input = torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1)
-                lstm_output, hx = self._rnn(lstm_input, hx=hx)
-                skip = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
-                preoutput = torch.tanh(self._preoutput(lstm_output + skip))
+                hidden = upsampled_mel[:, ii, :].unsqueeze(1)
+                res = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
+                for ll in range(len(self._rnns)):
+                    rnn_input = torch.cat([hidden, last_x], dim=-1)
+                    rnn = self._rnns[ll]
+                    rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
+                    hidden = rnn_output + res
+                    res = hidden
+
+                preoutput = torch.tanh(self._preoutput(res))
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, 2)
                 means = output[:, :, 0]
                 logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.5
+                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
                 samples = means + z * torch.exp(logvars)
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
@@ -99,10 +112,16 @@ class CubenetVocoder(pl.LightningModule):
         x = x.transpose(2, 3)
         x = x.reshape(x.shape[0], -1, self._psamples)
         msize = min(upsampled_mel.shape[1], x.shape[1])
-        rnn_input = torch.cat([upsampled_mel[:, :msize, :], x[:, :msize, :]], dim=-1)
-        skip = skip[:, :msize, :]
-        rnn_output, _ = self._rnn(rnn_input)
-        preoutput = torch.tanh(self._preoutput(rnn_output + skip))
+        hidden = upsampled_mel[:, :msize, :]
+        last_x = x[:, :msize, :]
+        res = skip[:, :msize, :]
+        for ll in range(len(self._rnns)):
+            rnn_input = torch.cat([hidden, last_x], dim=-1)
+            rnn_output, _ = self._rnns[ll](rnn_input)
+            hidden = rnn_output + res
+            res = hidden
+
+        preoutput = torch.tanh(self._preoutput(res))
         output = self._output(preoutput)
         return output
 

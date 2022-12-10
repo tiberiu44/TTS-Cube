@@ -17,6 +17,8 @@
 import torch
 import math
 
+from torch.distributions import Beta
+
 
 def gaussian_loss(y_hat, y, log_std_min=-7.0):
     assert y_hat.dim() == 3
@@ -31,3 +33,17 @@ def gaussian_loss(y_hat, y, log_std_min=-7.0):
     log_probs = -0.5 * (
             - math.log(2.0 * torch.pi) - 2. * log_std - torch.pow(y - mean, 2) * torch.exp((-2.0 * log_std)))
     return log_probs.squeeze()
+
+
+def beta_loss(y_hat, y):
+    loc_y = y_hat.exp()
+    alpha = loc_y[:, :, 0].unsqueeze(-1)
+    beta = loc_y[:, :, 1].unsqueeze(-1)
+    dist = Beta(alpha, beta)
+    # rescale y to be between
+    y = (y + 1.0) / 2.0
+    # note that we will get inf loss if y == 0 or 1.0 exactly, so we will clip it slightly just in case
+    y = torch.clamp(y, 1e-5, 0.99999)
+    # compute logprob
+    loss = -dist.log_prob(y).squeeze(-1)
+    return loss.mean()
