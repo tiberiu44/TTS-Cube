@@ -29,6 +29,7 @@ sys.path.append('')
 from yaml import Loader
 from cube.networks.modules import LinearNorm, UpsampleNet
 from cube.networks.loss import beta_loss
+from torch.distributions import Beta
 
 
 class CubenetVocoder(pl.LightningModule):
@@ -87,11 +88,14 @@ class CubenetVocoder(pl.LightningModule):
 
                 preoutput = torch.tanh(self._preoutput(res))
                 output = self._output(preoutput)
-                output = output.reshape(output.shape[0], -1, 2)
-                means = output[:, :, 0]
-                logvars = output[:, :, 1]
-                z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
-                samples = means + z * torch.exp(logvars)
+                output = torch.exp(output.reshape(output.shape[0], -1, 2))
+                alfas = output[:, :, 0]
+                betas = output[:, :, 1]
+
+                # z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
+                # samples = means + z * torch.exp(logvars)
+                distrib = Beta(alfas, betas)
+                samples = (distrib.sample() - 0.5) * 2
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
 
@@ -137,8 +141,7 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output[:, self._psamples * self._stride:, ],
-                          target_x[:, self._psamples * self._stride:])
+        loss = self._loss(output, target_x[:, self._psamples * self._stride:])
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
@@ -153,8 +156,7 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output[:, self._psamples * self._stride:, ],
-                          target_x[:, self._psamples * self._stride:])
+        loss = self._loss(output, target_x)
         return loss.mean()
 
     def validation_epoch_end(self, outputs) -> None:
@@ -185,7 +187,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-16-16'
+    fname = 'data/voc-anca-16-16-beta'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']
