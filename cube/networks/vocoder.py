@@ -141,7 +141,7 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 2)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output, target_x[:, self._psamples * self._stride:])
+        loss = self._loss(output, target_x)
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
