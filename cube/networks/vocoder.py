@@ -28,7 +28,7 @@ import yaml
 sys.path.append('')
 from yaml import Loader
 from cube.networks.modules import LinearNorm, UpsampleNet
-from cube.networks.loss import beta_loss
+from cube.networks.loss import discretized_mix_logistic_loss, sample_from_discretized_mix_logistic
 from torch.distributions import Beta
 
 
@@ -57,9 +57,8 @@ class CubenetVocoder(pl.LightningModule):
         self._rnns = nn.ModuleList(rnn_list)
         self._preoutput = LinearNorm(layer_size, 256)
         self._skip = LinearNorm(80, layer_size)
-        self._output = LinearNorm(256, psamples * 2)  # mean+logvars
-        self._output_aux = LinearNorm(80, psamples * 2)
-        self._loss = beta_loss
+        self._output = LinearNorm(256, psamples * 30)  # mean+logvars
+        self._loss = discretized_mix_logistic_loss
         self._val_loss = 9999
 
     def forward(self, X):
@@ -88,14 +87,8 @@ class CubenetVocoder(pl.LightningModule):
 
                 preoutput = torch.tanh(self._preoutput(res))
                 output = self._output(preoutput)
-                output = torch.exp(output.reshape(output.shape[0], -1, 2))
-                alfas = output[:, :, 0]
-                betas = output[:, :, 1]
-
-                # z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
-                # samples = means + z * torch.exp(logvars)
-                distrib = Beta(alfas, betas)
-                samples = (distrib.sample() - 0.5) * 2
+                output = output.reshape(output.shape[0], -1, 30)
+                samples = sample_from_discretized_mix_logistic(output)
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
 
@@ -139,7 +132,7 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
-        output = output.reshape(output.shape[0], -1, 2)
+        output = output.reshape(output.shape[0], -1, 30)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss = self._loss(output, target_x)
         return loss.mean()
@@ -154,7 +147,7 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
-        output = output.reshape(output.shape[0], -1, 2)
+        output = output.reshape(output.shape[0], -1, 30)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss = self._loss(output, target_x)
         return loss.mean()
