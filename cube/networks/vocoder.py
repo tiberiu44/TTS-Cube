@@ -34,7 +34,7 @@ from torch.distributions import Beta
 
 class CubenetVocoder(pl.LightningModule):
     def __init__(self, num_layers: int = 2, layer_size: int = 512, psamples: int = 16, stride: int = 16,
-                 upsample=[2, 2, 2, 2]):
+                 upsample=[2, 2, 2, 2], learning_rate=1e-4):
         super(CubenetVocoder, self).__init__()
 
         self._config = {
@@ -44,6 +44,7 @@ class CubenetVocoder(pl.LightningModule):
             'stride': stride,
             'upsample': upsample
         }
+        self._learning_rate = learning_rate
         self._stride = stride
         self._psamples = psamples
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
@@ -158,7 +159,7 @@ class CubenetVocoder(pl.LightningModule):
         self._val_loss = loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-4)
+        return torch.optim.AdamW(self.parameters(), lr=self._learning_rate)
 
     @torch.jit.ignore
     def _get_device(self):
@@ -180,7 +181,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-16-16-beta'
+    fname = 'data/voc-anca-16-16-mol'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']

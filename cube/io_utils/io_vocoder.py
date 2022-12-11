@@ -45,7 +45,7 @@ class VocoderDataset(Dataset):
                 wav = np.load('{0}.audio.npy'.format(cache_filename))
             else:
                 wav, sr = librosa.load(filename, sr=self._sample_rate)
-                wav = wav / np.max(np.abs(wav))
+                wav = (wav / np.max(np.abs(wav))) * 0.95
                 mel = self._mel_vocoder.melspectrogram(wav,
                                                        sample_rate=self._sample_rate,
                                                        num_mels=80,
@@ -61,7 +61,7 @@ class VocoderDataset(Dataset):
                 return (wav[start:stop], mel[start // 256:stop // 256 + 1])
         else:
             wav, sr = librosa.load(filename, sr=self._sample_rate)
-            wav = wav / np.max(np.abs(wav))
+            wav = (wav / np.max(np.abs(wav))) * 0.95
             if self._max_segment_size != -1 and len(wav) > self._max_segment_size:
                 if self._random_start:
                     start = random.randint(0, len(wav) - self._max_segment_size - 1)
@@ -71,7 +71,10 @@ class VocoderDataset(Dataset):
             else:
                 x = wav
 
-            mel = self._mel_vocoder.melspectrogram(x, sample_rate=self._sample_rate, num_mels=80, use_preemphasis=False)
+            mel = self._mel_vocoder.melspectrogram(x,
+                                                   sample_rate=self._sample_rate,
+                                                   num_mels=80,
+                                                   use_preemphasis=False)
             return (x, mel)
 
 

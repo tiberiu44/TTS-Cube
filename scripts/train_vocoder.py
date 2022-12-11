@@ -164,6 +164,8 @@ if __name__ == '__main__':
                         help='Number of LSTM layers (default=1)')
     parser.add_argument('--upsample', dest='upsample', default=[2, 2, 2, 2], type=list,
                         help='Upsample layers (default=[2,2,2,2])')
+    parser.add_argument('--lr', dest='lr', default=1e-4, type=float,
+                        help='Learning rate (default=1e-4)')
 
     parser.add_argument('--resume', dest='resume', action='store_true')
 
