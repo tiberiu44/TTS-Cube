@@ -159,7 +159,7 @@ class CubenetVocoder(pl.LightningModule):
         self._val_loss = loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self._learning_rate)
+        return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
 
     @torch.jit.ignore
     def _get_device(self):
