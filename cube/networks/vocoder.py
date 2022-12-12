@@ -156,7 +156,7 @@ class CubenetVocoder(pl.LightningModule):
             loss = self._loss(output, target_x)
             loss_list.append(loss.mean())
 
-        return sum(loss_list) / len(loss_list)
+        return (sum(loss_list[:-1]) / (len(loss_list) - 1)) * 0.5 + loss_list[-1]
 
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)
