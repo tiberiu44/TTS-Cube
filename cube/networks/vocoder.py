@@ -80,6 +80,7 @@ class CubenetVocoder(pl.LightningModule):
                 hidden = upsampled_mel[:, ii, :].unsqueeze(1)
                 res = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
                 for ll in range(len(self._rnns)):
+                    # for ll in range(1):
                     rnn_input = torch.cat([hidden, last_x], dim=-1)
                     rnn = self._rnns[ll]
                     rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
@@ -130,8 +131,8 @@ class CubenetVocoder(pl.LightningModule):
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
         x = x[:, 1:]
-        x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
-        x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
+        # x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
+        x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 30)
@@ -145,8 +146,8 @@ class CubenetVocoder(pl.LightningModule):
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
         x = x[:, 1:]
-        x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
-        x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
+        # x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
+        x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         target_x = target_x.reshape(target_x.shape[0], -1)
@@ -189,7 +190,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-16-16-mol'
+    fname = 'data/voc-anca-16-16-mol-2-layer-512'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']
