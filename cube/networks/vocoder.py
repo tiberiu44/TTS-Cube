@@ -151,9 +151,12 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss_list = []
-        for output in output_list:
+        scales = list(reversed([2 ** (8 + i) for i in range(len(output_list) - 1)]))
+        scales.append(1)
+        for output, scale in zip(output_list, scales):
             output = output.reshape(output.shape[0], -1, 30)
-            loss = self._loss(output, target_x)
+            scale_target_x = (((target_x + 1.0) * 32768 // scale) * scale) / 32768 - 1.0
+            loss = self._loss(output, scale_target_x)
             loss_list.append(loss.mean())
 
         return (sum(loss_list[:-1]) / (len(loss_list) - 1)) * 0.5 + loss_list[-1]
