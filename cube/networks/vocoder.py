@@ -113,18 +113,19 @@ class CubenetVocoder(pl.LightningModule):
         hidden = upsampled_mel[:, :msize, :]
         last_x = x[:, :msize, :]
         res = skip[:, :msize, :]
+        output_list = []
         for ll in range(len(self._rnns)):
             rnn_input = torch.cat([hidden, last_x], dim=-1)
             rnn_output, _ = self._rnns[ll](rnn_input)
             hidden = rnn_output + res
             res = hidden
-
-        preoutput = torch.tanh(self._preoutput(res))
-        output = self._output(preoutput)
-        return output
+            preoutput = torch.tanh(self._preoutput(res))
+            output = self._output(preoutput)
+            output_list.append(output)
+        return output, output_list
 
     def validation_step(self, batch, batch_idx):
-        output = self.forward(batch)
+        output, _ = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
@@ -139,7 +140,7 @@ class CubenetVocoder(pl.LightningModule):
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
-        output = self.forward(batch)
+        output, output_list = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
@@ -148,10 +149,14 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
-        output = output.reshape(output.shape[0], -1, 30)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output, target_x)
-        return loss.mean()
+        loss_list = []
+        for output in output_list:
+            output = output.reshape(output.shape[0], -1, 30)
+            loss = self._loss(output, target_x)
+            loss_list.append(loss.mean())
+
+        return sum(loss_list) / len(loss_list)
 
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)
