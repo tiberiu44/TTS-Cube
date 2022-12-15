@@ -151,6 +151,7 @@ class CubenetVocoder(pl.LightningModule):
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         target_x = target_x.reshape(target_x.shape[0], -1)
+        output = output.reshape(output.shape[0], -1, 30)
         loss = self._output_functions.loss(output, target_x)
         return loss
         # loss_list = []
