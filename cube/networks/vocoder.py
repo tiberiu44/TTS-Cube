@@ -64,7 +64,7 @@ class CubenetVocoder(pl.LightningModule):
             self._output_functions = GaussianOutput()
         elif output == 'beta':
             self._output_functions = BetaOutput()
-        elif output == 'mulwa':
+        elif output == 'mulaw':
             self._output_functions = MULAWOutput()
         self._output = LinearNorm(256, psamples * self._output_functions.sample_size)
         self._val_loss = 9999
