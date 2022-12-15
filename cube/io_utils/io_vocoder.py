@@ -79,14 +79,15 @@ class VocoderDataset(Dataset):
 
 
 class VocoderCollate:
-    def __init__(self):
-        pass
+    def __init__(self, x_zero=0, mel_zero=-5):
+        self._x_zero = x_zero
+        self._mel_zero = mel_zero
 
     def collate_fn(self, examples):
         max_audio_size = max([x[0].shape[0] for x in examples])
         max_mel_size = max([x[1].shape[0] for x in examples])
-        mel = np.ones((len(examples), max_mel_size, examples[0][1].shape[1]), dtype=np.float) * -5
-        x = np.zeros((len(examples), max_audio_size))
+        mel = np.ones((len(examples), max_mel_size, examples[0][1].shape[1]), dtype=np.float) * self._mel_zero
+        x = np.ones((len(examples), max_audio_size)) * self._x_zero
         for ii in range(len(examples)):
             cx = examples[ii][0]
             cmel = examples[ii][1]

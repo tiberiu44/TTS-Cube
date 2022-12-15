@@ -44,6 +44,7 @@ class CubenetVocoder(pl.LightningModule):
             'stride': stride,
             'upsample': upsample
         }
+        self._x_zero = 0
         self._learning_rate = learning_rate
         self._stride = stride
         self._psamples = psamples
@@ -65,6 +66,7 @@ class CubenetVocoder(pl.LightningModule):
         elif output == 'beta':
             self._output_functions = BetaOutput()
         elif output == 'mulaw':
+            self._x_zero = 128
             self._output_functions = MULAWOutput()
         self._output = LinearNorm(256, psamples * self._output_functions.sample_size)
         self._val_loss = 9999
@@ -79,7 +81,7 @@ class CubenetVocoder(pl.LightningModule):
     def _inference(self, mel):
         with torch.no_grad():
             upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
-            last_x = torch.zeros((upsampled_mel.shape[0], 1, self._psamples), device=self._get_device())
+            last_x = torch.ones((upsampled_mel.shape[0], 1, self._psamples), device=self._get_device()) * self._x_zero
             output_list = []
             hxs = [None for _ in range(len(self._rnns))]
             # index = 0
