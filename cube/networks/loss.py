@@ -208,7 +208,7 @@ class MULAWOutput:
         self._loss = CrossEntropyLoss()
 
     def loss(self, y_hat, y):
-        return self._loss(y_hat, y)
+        return self._loss(y_hat.reshape(y_hat.shape[0]*y_hat.shape[1], -1), y.reshape(y.shape[0]*y.shape[1]))
 
     def sample(self, y):
         distrib = Categorical(logits=y)
@@ -225,7 +225,7 @@ class MULAWOutput:
 
             if isinstance(x, torch.LongTensor):
                 x = x.float()
-            mu = torch.FloatTensor([mu])
+            mu = torch.FloatTensor([mu]).to(x.get_device())
             x_mu = torch.sign(x) * torch.log1p(mu * torch.abs(x)) / torch.log1p(mu)
             x_mu = ((x_mu + 1) / 2 * mu + 0.5).long()
         return x_mu

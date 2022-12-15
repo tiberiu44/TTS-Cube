@@ -96,7 +96,7 @@ class CubenetVocoder(pl.LightningModule):
 
                 preoutput = torch.tanh(self._preoutput(res))
                 output = self._output(preoutput)
-                output = output.reshape(output.shape[0], -1, 30)
+                output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.sample(output)
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
@@ -142,7 +142,7 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
-        output = output.reshape(output.shape[0], -1, 30)
+        output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
         target_x = target_x.reshape(target_x.shape[0], -1)
         loss = self._output_functions.loss(output, target_x)
         return loss.mean()
@@ -159,7 +159,7 @@ class CubenetVocoder(pl.LightningModule):
         x = x.transpose(2, 3)
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        output = output.reshape(output.shape[0], -1, 30)
+        output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
         loss = self._output_functions.loss(output, target_x)
         return loss
         # loss_list = []
