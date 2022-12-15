@@ -230,7 +230,7 @@ class MULAWOutput:
             else:
                 mu = torch.FloatTensor([mu])
             x_mu = torch.sign(x) * torch.log1p(mu * torch.abs(x)) / torch.log1p(mu)
-            x_mu = ((x_mu + 1) / 2 * mu + 0.5)
+            x_mu = ((x_mu + 1) / 2 * mu + 0.5).long()
 
         return x_mu
 
