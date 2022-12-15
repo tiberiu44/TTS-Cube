@@ -28,13 +28,13 @@ import yaml
 sys.path.append('')
 from yaml import Loader
 from cube.networks.modules import LinearNorm, UpsampleNet
-from cube.networks.loss import MOLOutput
+from cube.networks.loss import MOLOutput, GaussianOutput, BetaOutput, MULAWOutput
 from torch.distributions import Beta
 
 
 class CubenetVocoder(pl.LightningModule):
     def __init__(self, num_layers: int = 2, layer_size: int = 512, psamples: int = 16, stride: int = 16,
-                 upsample=[2, 2, 2, 2], learning_rate=1e-4):
+                 upsample=[2, 2, 2, 2], learning_rate=1e-4, output='mol'):
         super(CubenetVocoder, self).__init__()
 
         self._config = {
@@ -58,8 +58,15 @@ class CubenetVocoder(pl.LightningModule):
         self._rnns = nn.ModuleList(rnn_list)
         self._preoutput = LinearNorm(layer_size, 256)
         self._skip = LinearNorm(80, layer_size)
-        self._output = LinearNorm(256, psamples * 30)  # mean+logvars
-        self._output_functions = MOLOutput()
+        if output == 'mol':
+            self._output_functions = MOLOutput()
+        elif output == 'gm':
+            self._output_functions = GaussianOutput()
+        elif output == 'beta':
+            self._output_functions = BetaOutput()
+        elif output == 'mulwa':
+            self._output_functions = MULAWOutput()
+        self._output = LinearNorm(256, psamples * self._output_functions.sample_size)
         self._val_loss = 9999
 
     def forward(self, X):
@@ -98,10 +105,9 @@ class CubenetVocoder(pl.LightningModule):
         output_list = output_list.reshape(output_list.shape[0], -1, self._stride, self._psamples)
         output_list = output_list.transpose(2, 3)
         output_list = output_list.reshape(output_list.shape[0], -1).detach().cpu().numpy()
-        return output_list
+        return self._output_functions.decode(output_list)
 
     def _train_forward(self, mel, gs_audio):
-
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
         skip = self._skip(upsampled_mel)
         # get closest gs_size that is multiple of stride
@@ -126,6 +132,7 @@ class CubenetVocoder(pl.LightningModule):
         return output, output_list
 
     def validation_step(self, batch, batch_idx):
+        batch['x'] = self._output_functions.encode(batch['x'])
         output, _ = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
@@ -141,6 +148,7 @@ class CubenetVocoder(pl.LightningModule):
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
+        batch['x'] = self._output_functions.encode(batch['x'])
         output, output_list = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
@@ -201,11 +209,13 @@ if __name__ == '__main__':
     stride = conf['stride']
     layer_size = conf['layer_size']
     sample_rate = conf['sample_rate']
+    output = conf['output']
     vocoder = CubenetVocoder(num_layers=num_layers,
                              layer_size=layer_size,
                              psamples=psamples,
                              stride=stride,
-                             upsample=upsample)
+                             upsample=upsample,
+                             output=output)
     # vocoder = CubenetVocoder(num_layers=1, layer_size=1024)
     vocoder.load('{0}.last'.format(fname))
     import librosa

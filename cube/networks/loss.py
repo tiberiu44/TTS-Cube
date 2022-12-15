@@ -19,7 +19,8 @@ import math
 import numpy as np
 import torch.nn.functional as F
 
-from torch.distributions import Beta
+from torch.distributions import Beta, Categorical
+from torch.nn import CrossEntropyLoss
 
 
 def log_sum_exp(x):
@@ -55,6 +56,10 @@ class GaussianOutput:
 
     def decode(self, x):
         return x
+
+    @property
+    def sample_size(self):
+        return 2
 
 
 class BetaOutput:
@@ -199,11 +204,16 @@ class MOLOutput:
 
 
 class MULAWOutput:
-    def loss(y_hat, y):
-        pass
+    def __init__(self):
+        self._loss = CrossEntropyLoss()
+
+    def loss(self, y_hat, y):
+        return self._loss(y_hat, y)
 
     def sample(self, y):
-        pass
+        distrib = Categorical(logits=y)
+        sample = distrib.sample()
+        return sample
 
     def encode(self, x):
         quantization_channels = 256

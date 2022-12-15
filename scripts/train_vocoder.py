@@ -78,7 +78,8 @@ def _train(params):
         'psamples': params.psamples,
         'stride': params.stride,
         'upsample': upsample,
-        'sample_rate': params.sample_rate
+        'sample_rate': params.sample_rate,
+        'output': params.output
     }
     conf_file = '{0}.yaml'.format(params.output_base)
     yaml.dump(config, open(conf_file, 'w'))
@@ -109,7 +110,8 @@ def _train(params):
                            psamples=params.psamples,
                            stride=params.stride,
                            upsample=upsample,
-                           learning_rate=params.lr)
+                           learning_rate=params.lr,
+                           output=params.output)
 
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
@@ -167,6 +169,8 @@ if __name__ == '__main__':
                         help='Upsample layers (default=[2,2,2,2])')
     parser.add_argument('--lr', dest='lr', default=1e-4, type=float,
                         help='Learning rate (default=1e-4)')
+    parser.add_argument('--output', dest='output', default='mol',
+                        help='Output type (mol|gm|mulaw|beta) (default=mol)')
 
     parser.add_argument('--resume', dest='resume', action='store_true')
 
