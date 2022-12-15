@@ -28,7 +28,7 @@ import yaml
 sys.path.append('')
 from yaml import Loader
 from cube.networks.modules import LinearNorm, UpsampleNet
-from cube.networks.loss import discretized_mix_logistic_loss, sample_from_discretized_mix_logistic
+from cube.networks.loss import MOLOutput
 from torch.distributions import Beta
 
 
@@ -59,7 +59,7 @@ class CubenetVocoder(pl.LightningModule):
         self._preoutput = LinearNorm(layer_size, 256)
         self._skip = LinearNorm(80, layer_size)
         self._output = LinearNorm(256, psamples * 30)  # mean+logvars
-        self._loss = discretized_mix_logistic_loss
+        self._output_functions = MOLOutput()
         self._val_loss = 9999
 
     def forward(self, X):
@@ -90,7 +90,7 @@ class CubenetVocoder(pl.LightningModule):
                 preoutput = torch.tanh(self._preoutput(res))
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, 30)
-                samples = sample_from_discretized_mix_logistic(output)
+                samples = self._output_functions.sample(output)
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
 
@@ -137,7 +137,7 @@ class CubenetVocoder(pl.LightningModule):
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         output = output.reshape(output.shape[0], -1, 30)
         target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._loss(output, target_x)
+        loss = self._output_functions.loss(output, target_x)
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
@@ -157,7 +157,7 @@ class CubenetVocoder(pl.LightningModule):
         for output, scale in zip(output_list, scales):
             output = output.reshape(output.shape[0], -1, 30)
             scale_target_x = (((target_x + 1.0) * 32768 // scale) * scale) / 32768 - 1.0
-            loss = self._loss(output, scale_target_x)
+            loss = self._output_functions.loss(output, scale_target_x)
             loss_list.append(loss.mean())
 
         return (sum(loss_list[:-1]) / (len(loss_list) - 1)) * 0.5 + loss_list[-1]
@@ -190,7 +190,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-16-16-mol-2-layer-512'
+    fname = 'data/voc-anca-16-16-mol'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']

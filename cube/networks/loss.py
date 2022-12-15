@@ -31,144 +31,209 @@ def log_sum_exp(x):
     return m + torch.log(torch.sum(torch.exp(x - m2), dim=axis))
 
 
-def gaussian_loss(y_hat, y, log_std_min=-7.0):
-    assert y_hat.dim() == 3
-    # assert y_hat.size(1) == 2
+class GaussianOutput:
+    def loss(y_hat, y, log_std_min=-14.0):
+        assert y_hat.dim() == 3
+        # assert y_hat.size(1) == 2
 
-    ## (B x T x C)
-    # y_hat = y_hat.transpose(1, 2)
-    y = y.unsqueeze(2)
-    mean = y_hat[:, :, :1]
-    log_std = torch.clamp(y_hat[:, :, 1:], min=log_std_min)
+        ## (B x T x C)
+        # y_hat = y_hat.transpose(1, 2)
+        y = y.unsqueeze(2)
+        mean = y_hat[:, :, :1]
+        log_std = torch.clamp(y_hat[:, :, 1:], min=log_std_min)
 
-    log_probs = -0.5 * (
-            - math.log(2.0 * torch.pi) - 2. * log_std - torch.pow(y - mean, 2) * torch.exp((-2.0 * log_std)))
-    return log_probs.squeeze()
+        log_probs = -0.5 * (
+                - math.log(2.0 * torch.pi) - 2. * log_std - torch.pow(y - mean, 2) * torch.exp((-2.0 * log_std)))
+        return log_probs.squeeze()
 
+    def sample(y_hat):
+        z = torch.randn((y_hat.shape[0], y_hat.shape[1], 1))
+        return y_hat[:, :, 0] + z * torch.exp(y_hat[:, :, 1])
 
-def sample_from_gaussian(y_hat):
-    z = torch.randn((y_hat.shape[0], y_hat.shape[1], 1))
-    return y_hat[:, :, 0] + z * torch.exp(y_hat[:, :, 1])
+    def encode(self, x):
+        return x
 
-
-def beta_loss(y_hat, y):
-    loc_y = y_hat.exp()
-    alpha = loc_y[:, :, 0].unsqueeze(-1)
-    beta = loc_y[:, :, 1].unsqueeze(-1)
-    dist = Beta(alpha, beta)
-    # rescale y to be between
-    y = (y + 1.0) / 2.0
-    # note that we will get inf loss if y == 0 or 1.0 exactly, so we will clip it slightly just in case
-    y = torch.clamp(y, 1e-5, 0.99999).unsqueeze(-1)
-    # compute logprob
-    loss = -dist.log_prob(y).squeeze(-1)
-    return loss.mean()
+    def decode(self, x):
+        return x
 
 
-def sample_from_beta(y_hat):
-    output = torch.exp(y_hat)
-    alfas = output[:, :, 0]
-    betas = output[:, :, 1]
+class BetaOutput:
+    def loss(y_hat, y):
+        loc_y = y_hat.exp()
+        alpha = loc_y[:, :, 0].unsqueeze(-1)
+        beta = loc_y[:, :, 1].unsqueeze(-1)
+        dist = Beta(alpha, beta)
+        # rescale y to be between
+        y = (y + 1.0) / 2.0
+        # note that we will get inf loss if y == 0 or 1.0 exactly, so we will clip it slightly just in case
+        y = torch.clamp(y, 1e-5, 0.99999).unsqueeze(-1)
+        # compute logprob
+        loss = -dist.log_prob(y).squeeze(-1)
+        return loss.mean()
 
-    # z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
-    # samples = means + z * torch.exp(logvars)
-    distrib = Beta(alfas, betas)
-    samples = (distrib.sample() - 0.5) * 2
-    return samples
+    def sample(y_hat):
+        output = torch.exp(y_hat)
+        alfas = output[:, :, 0]
+        betas = output[:, :, 1]
+
+        # z = torch.randn((output.shape[0], output.shape[1]), device=self._get_device()) * 0.8
+        # samples = means + z * torch.exp(logvars)
+        distrib = Beta(alfas, betas)
+        samples = (distrib.sample() - 0.5) * 2
+        return samples
+
+    def encode(self, x):
+        return x
+
+    def decode(self, x):
+        return x
+
+    @property
+    def sample_size(self):
+        return 2
 
 
-def discretized_mix_logistic_loss(y_hat, y, num_classes=65536,
-                                  log_scale_min=None, reduce=True):
-    if log_scale_min is None:
-        log_scale_min = float(np.log(1e-14))
-    assert y_hat.dim() == 3
-    assert y_hat.shape[2] % 3 == 0
-    nr_mix = y_hat.shape[2] // 3
-    y = y.unsqueeze(2)
+class MOLOutput:
+    def loss(self, y_hat, y, num_classes=65536, log_scale_min=None):
+        if log_scale_min is None:
+            log_scale_min = float(np.log(1e-14))
+        assert y_hat.dim() == 3
+        assert y_hat.shape[2] % 3 == 0
+        nr_mix = y_hat.shape[2] // 3
+        y = y.unsqueeze(2)
 
-    # unpack parameters. (B, T, num_mixtures) x 3
-    logit_probs = y_hat[:, :, :nr_mix]
-    means = y_hat[:, :, nr_mix:2 * nr_mix]
-    log_scales = torch.clamp(y_hat[:, :, 2 * nr_mix:3 * nr_mix], min=log_scale_min)
+        # unpack parameters. (B, T, num_mixtures) x 3
+        logit_probs = y_hat[:, :, :nr_mix]
+        means = y_hat[:, :, nr_mix:2 * nr_mix]
+        log_scales = torch.clamp(y_hat[:, :, 2 * nr_mix:3 * nr_mix], min=log_scale_min)
 
-    # B x T x 1 -> B x T x num_mixtures
-    y = y.expand_as(means)
+        # B x T x 1 -> B x T x num_mixtures
+        y = y.expand_as(means)
 
-    centered_y = y - means
-    inv_stdv = torch.exp(-log_scales)
-    plus_in = inv_stdv * (centered_y + 1. / (num_classes - 1))
-    cdf_plus = torch.sigmoid(plus_in)
-    min_in = inv_stdv * (centered_y - 1. / (num_classes - 1))
-    cdf_min = torch.sigmoid(min_in)
+        centered_y = y - means
+        inv_stdv = torch.exp(-log_scales)
+        plus_in = inv_stdv * (centered_y + 1. / (num_classes - 1))
+        cdf_plus = torch.sigmoid(plus_in)
+        min_in = inv_stdv * (centered_y - 1. / (num_classes - 1))
+        cdf_min = torch.sigmoid(min_in)
 
-    # log probability for edge case of 0 (before scaling)
-    # equivalent: torch.log(F.sigmoid(plus_in))
-    log_cdf_plus = plus_in - F.softplus(plus_in)
+        # log probability for edge case of 0 (before scaling)
+        # equivalent: torch.log(F.sigmoid(plus_in))
+        log_cdf_plus = plus_in - F.softplus(plus_in)
 
-    # log probability for edge case of 255 (before scaling)
-    # equivalent: (1 - F.sigmoid(min_in)).log()
-    log_one_minus_cdf_min = -F.softplus(min_in)
+        # log probability for edge case of 255 (before scaling)
+        # equivalent: (1 - F.sigmoid(min_in)).log()
+        log_one_minus_cdf_min = -F.softplus(min_in)
 
-    # probability for all other cases
-    cdf_delta = cdf_plus - cdf_min
+        # probability for all other cases
+        cdf_delta = cdf_plus - cdf_min
 
-    mid_in = inv_stdv * centered_y
-    # log probability in the center of the bin, to be used in extreme cases
-    # (not actually used in our code)
-    log_pdf_mid = mid_in - log_scales - 2. * F.softplus(mid_in)
+        mid_in = inv_stdv * centered_y
+        # log probability in the center of the bin, to be used in extreme cases
+        # (not actually used in our code)
+        log_pdf_mid = mid_in - log_scales - 2. * F.softplus(mid_in)
 
-    inner_inner_cond = (cdf_delta > 1e-5).float()
+        inner_inner_cond = (cdf_delta > 1e-5).float()
 
-    inner_inner_out = inner_inner_cond * \
-                      torch.log(torch.clamp(cdf_delta, min=1e-12)) + \
-                      (1. - inner_inner_cond) * (log_pdf_mid - np.log((num_classes - 1) / 2))
-    inner_cond = (y > 0.999).float()
-    inner_out = inner_cond * log_one_minus_cdf_min + (1. - inner_cond) * inner_inner_out
-    cond = (y < -0.999).float()
-    log_probs = cond * log_cdf_plus + (1. - cond) * inner_out
+        inner_inner_out = inner_inner_cond * \
+                          torch.log(torch.clamp(cdf_delta, min=1e-12)) + \
+                          (1. - inner_inner_cond) * (log_pdf_mid - np.log((num_classes - 1) / 2))
+        inner_cond = (y > 0.999).float()
+        inner_out = inner_cond * log_one_minus_cdf_min + (1. - inner_cond) * inner_inner_out
+        cond = (y < -0.999).float()
+        log_probs = cond * log_cdf_plus + (1. - cond) * inner_out
 
-    log_probs = log_probs + F.log_softmax(logit_probs, -1)
+        log_probs = log_probs + F.log_softmax(logit_probs, -1)
 
-    if reduce:
         return -torch.mean(log_sum_exp(log_probs))
-    else:
-        return -log_sum_exp(log_probs).unsqueeze(-1)
+
+    def sample(self, y, log_scale_min=None):
+        """
+        Sample from discretized mixture of logistic distributions
+        Args:
+            y (Tensor): B x T x C
+            log_scale_min (float): Log scale minimum value
+        Returns:
+            Tensor: sample in range of [-1, 1].
+        """
+        if log_scale_min is None:
+            log_scale_min = float(np.log(1e-14))
+        assert y.shape[2] % 3 == 0
+        nr_mix = y.shape[2] // 3
+
+        # B x T x C
+        # y = y.transpose(1, 2)
+        logit_probs = y[:, :, :nr_mix]
+
+        # sample mixture indicator from softmax
+        temp = logit_probs.data.new(logit_probs.size()).uniform_(1e-5, 1 - 1e-5)
+        temp = logit_probs.data - torch.log(- torch.log(temp))
+        _, argmax = temp.max(dim=-1)
+
+        # (B, T) -> (B, T, nr_mix)
+        one_hot = F.one_hot(argmax, nr_mix).float()
+        # select logistic parameters
+        means = torch.sum(y[:, :, nr_mix:2 * nr_mix] * one_hot, dim=-1)
+        log_scales = torch.clamp(torch.sum(
+            y[:, :, 2 * nr_mix:3 * nr_mix] * one_hot, dim=-1), min=log_scale_min)
+        # sample from logistic & clip to interval
+        # we don't actually round to the nearest 8bit value when sampling
+        u = means.data.new(means.size()).uniform_(1e-5, 1.0 - 1e-5)
+        x = means + torch.exp(log_scales) * (torch.log(u) - torch.log(1. - u)) * 1
+        # u = means.data.new(means.size()).normal_(0, 1) * temperature
+        # x = means + torch.exp(log_scales) * u
+
+        x = torch.clamp(torch.clamp(x, min=-1.), max=1.)
+
+        return x
+
+    def encode(self, x):
+        return x
+
+    def decode(self, x):
+        return x
+
+    @property
+    def sample_size(self):
+        return 30
 
 
-def sample_from_discretized_mix_logistic(y, log_scale_min=None):
-    """
-    Sample from discretized mixture of logistic distributions
-    Args:
-        y (Tensor): B x T x C
-        log_scale_min (float): Log scale minimum value
-    Returns:
-        Tensor: sample in range of [-1, 1].
-    """
-    if log_scale_min is None:
-        log_scale_min = float(np.log(1e-14))
-    assert y.shape[2] % 3 == 0
-    nr_mix = y.shape[2] // 3
+class MULAWOutput:
+    def loss(y_hat, y):
+        pass
 
-    # B x T x C
-    # y = y.transpose(1, 2)
-    logit_probs = y[:, :, :nr_mix]
+    def sample(self, y):
+        pass
 
-    # sample mixture indicator from softmax
-    temp = logit_probs.data.new(logit_probs.size()).uniform_(1e-5, 1.0 - 1e-5)
-    temp = logit_probs.data - torch.log(- torch.log(temp))
-    _, argmax = temp.max(dim=-1)
+    def encode(self, x):
+        quantization_channels = 256
+        mu = quantization_channels - 1
+        if isinstance(x, np.ndarray):
+            x_mu = np.sign(x) * np.log1p(mu * np.abs(x)) / np.log1p(mu)
+            x_mu = ((x_mu + 1) / 2 * mu + 0.5).astype(int)
+        elif isinstance(x, (torch.Tensor, torch.LongTensor)):
 
-    # (B, T) -> (B, T, nr_mix)
-    one_hot = F.one_hot(argmax, nr_mix).float()
-    # select logistic parameters
-    means = torch.sum(y[:, :, nr_mix:2 * nr_mix] * one_hot, dim=-1)
-    log_scales = torch.clamp(torch.sum(
-        y[:, :, 2 * nr_mix:3 * nr_mix] * one_hot, dim=-1), min=log_scale_min)
-    # sample from logistic & clip to interval
-    # we don't actually round to the nearest 8bit value when sampling
-    u = means.data.new(means.size()).uniform_(1e-5, 1.0 - 1e-5)
-    x = means + torch.exp(log_scales) * (torch.log(u) - torch.log(1. - u))
+            if isinstance(x, torch.LongTensor):
+                x = x.float()
+            mu = torch.FloatTensor([mu])
+            x_mu = torch.sign(x) * torch.log1p(mu * torch.abs(x)) / torch.log1p(mu)
+            x_mu = ((x_mu + 1) / 2 * mu + 0.5).long()
+        return x_mu
 
-    x = torch.clamp(torch.clamp(x, min=-1.), max=1.)
+    def decode(self, x_mu):
+        quantization_channels = 256
+        mu = quantization_channels - 1.
+        if isinstance(x_mu, np.ndarray):
+            x = ((x_mu) / mu) * 2 - 1.
+            x = np.sign(x) * (np.exp(np.abs(x) * np.log1p(mu)) - 1.) / mu
+        elif isinstance(x_mu, (torch.Tensor, torch.LongTensor)):
+            if isinstance(x_mu, (torch.LongTensor, torch.cuda.LongTensor)):
+                x_mu = x_mu.float()
+            # mu = (torch.FloatTensor([mu]))
+            x = ((x_mu) / mu) * 2 - 1.
+            x = torch.sign(x) * (torch.exp(torch.abs(x) * torch.log1p(mu)) - 1.) / mu
+        return x
 
-    return x
+    @property
+    def sample_size(self):
+        return 256
