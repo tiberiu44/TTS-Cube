@@ -53,7 +53,10 @@ class VocoderDataset(Dataset):
                 np.save('{0}.mgc'.format(cache_filename), mel)
                 np.save('{0}.audio'.format(cache_filename), wav)
             if self._max_segment_size == -1 or len(wav) < self._max_segment_size or not self._random_start:
-                return (wav, mel)
+                if not self._random_start and self._max_segment_size != -1:
+                    return (wav[:self._max_segment_size], mel[:self._max_segment_size // 256])
+                else:
+                    return (wav, mel)
             else:
                 start = random.randint(0, len(wav) - self._max_segment_size - 1)
                 start = start // 256 * 256  # multiple of hop size
