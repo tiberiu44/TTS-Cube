@@ -33,7 +33,7 @@ def log_sum_exp(x):
 
 
 class GaussianOutput:
-    def loss(y_hat, y, log_std_min=-14.0):
+    def loss(self, y_hat, y, log_std_min=-14.0):
         assert y_hat.dim() == 3
         # assert y_hat.size(1) == 2
 
@@ -47,7 +47,7 @@ class GaussianOutput:
                 - math.log(2.0 * torch.pi) - 2. * log_std - torch.pow(y - mean, 2) * torch.exp((-2.0 * log_std)))
         return log_probs.squeeze()
 
-    def sample(y_hat):
+    def sample(self, y_hat):
         z = torch.randn((y_hat.shape[0], y_hat.shape[1], 1))
         return y_hat[:, :, 0] + z * torch.exp(y_hat[:, :, 1])
 
@@ -63,7 +63,7 @@ class GaussianOutput:
 
 
 class BetaOutput:
-    def loss(y_hat, y):
+    def loss(self, y_hat, y):
         loc_y = y_hat.exp()
         alpha = loc_y[:, :, 0].unsqueeze(-1)
         beta = loc_y[:, :, 1].unsqueeze(-1)
@@ -76,7 +76,7 @@ class BetaOutput:
         loss = -dist.log_prob(y).squeeze(-1)
         return loss.mean()
 
-    def sample(y_hat):
+    def sample(self, y_hat):
         output = torch.exp(y_hat)
         alfas = output[:, :, 0]
         betas = output[:, :, 1]
