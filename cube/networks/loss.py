@@ -45,7 +45,7 @@ class GaussianOutput:
 
         log_probs = -0.5 * (
                 - math.log(2.0 * torch.pi) - 2. * log_std - torch.pow(y - mean, 2) * torch.exp((-2.0 * log_std)))
-        return log_probs.squeeze()
+        return log_probs.squeeze().mean()
 
     def sample(self, y_hat):
         z = torch.randn((y_hat.shape[0], y_hat.shape[1], 1))
