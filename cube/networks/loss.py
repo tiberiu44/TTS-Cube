@@ -49,7 +49,7 @@ class GaussianOutput:
 
     def sample(self, y_hat):
         z = torch.randn((y_hat.shape[0], y_hat.shape[1], 1))
-        return y_hat[:, :, 0] + z * torch.exp(y_hat[:, :, 1])
+        return (y_hat[:, :, 0] + z * torch.exp(y_hat[:, :, 1])).squeeze(1)
 
     def encode(self, x):
         return x
@@ -208,11 +208,13 @@ class MULAWOutput:
         self._loss = CrossEntropyLoss()
 
     def loss(self, y_hat, y):
+        y = (((y + 1.0) / 2) * 255).long()
         return self._loss(y_hat.reshape(y_hat.shape[0] * y_hat.shape[1], -1), y.reshape(y.shape[0] * y.shape[1]))
 
     def sample(self, y):
         distrib = Categorical(logits=y)
         sample = distrib.sample()
+        sample = (sample / 255) * 2 - 1.0
         return sample
 
     def encode(self, x):
@@ -232,22 +234,32 @@ class MULAWOutput:
             x_mu = torch.sign(x) * torch.log1p(mu * torch.abs(x)) / torch.log1p(mu)
             x_mu = ((x_mu + 1) / 2 * mu + 0.5).long()
 
-        return x_mu
+        return (x_mu / 255) * 2 - 1
 
     def decode(self, x_mu):
         quantization_channels = 256
         mu = quantization_channels - 1.
         if isinstance(x_mu, np.ndarray):
-            x = ((x_mu) / mu) * 2 - 1.
-            x = np.sign(x) * (np.exp(np.abs(x) * np.log1p(mu)) - 1.) / mu
+            # x = ((x_mu) / mu) * 2 - 1.
+            x = np.sign(x_mu) * (np.exp(np.abs(x_mu) * np.log1p(mu)) - 1.) / mu
         elif isinstance(x_mu, (torch.Tensor, torch.LongTensor)):
             if isinstance(x_mu, (torch.LongTensor, torch.cuda.LongTensor)):
                 x_mu = x_mu.float()
             # mu = (torch.FloatTensor([mu]))
-            x = ((x_mu) / mu) * 2 - 1.
-            x = torch.sign(x) * (torch.exp(torch.abs(x) * torch.log1p(mu)) - 1.) / mu
+            # x = ((x_mu) / mu) * 2 - 1.
+            x = torch.sign(x_mu) * (torch.exp(torch.abs(x_mu) * torch.log1p(mu)) - 1.) / mu
         return x
 
     @property
     def sample_size(self):
         return 256
+
+
+if __name__ == '__main__':
+    m = MULAWOutput()
+    x_orig = np.array([1, 0.9, 0, -0.9, -1])
+    print(x_orig)
+    x_enc = m.encode(x_orig)
+    print(x_enc)
+    x_dec = m.decode(x_enc)
+    print(x_dec)

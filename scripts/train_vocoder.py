@@ -95,10 +95,7 @@ def _train(params):
     sys.stdout.write('Validation files: {0}\n'.format(len(devset)))
     sys.stdout.write('========================================\n\n')
     sys.stdout.write('================Training================\n')
-    if params.output == 'mulaw':
-        collate = VocoderCollate(x_zero=128)
-    else:
-        collate = VocoderCollate(x_zero=0)
+    collate = VocoderCollate(x_zero=0)
     trainloader = DataLoader(trainset,
                              batch_size=params.batch_size,
                              num_workers=params.num_workers,

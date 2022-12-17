@@ -66,7 +66,6 @@ class CubenetVocoder(pl.LightningModule):
         elif output == 'beta':
             self._output_functions = BetaOutput()
         elif output == 'mulaw':
-            self._x_zero = 128
             self._output_functions = MULAWOutput()
         self._output = LinearNorm(256, psamples * self._output_functions.sample_size)
         self._val_loss = 9999
@@ -203,7 +202,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-1-1-mol'
+    fname = 'data/voc-anca-1-1-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']
