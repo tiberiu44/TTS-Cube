@@ -135,9 +135,9 @@ class CubenetVocoder(pl.LightningModule):
         return output, output_list
 
     def validation_step(self, batch, batch_idx):
-        batch['x'] = self._output_functions.encode(batch['x'])
+        # batch['x'] = self._output_functions.encode(batch['x'])
         output, _ = self.forward(batch)
-        gs_audio = batch['x']
+        gs_audio = self._output_functions.encode(batch['x'])
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1), value=self._x_zero)
         x = x[:, 1:]
@@ -151,9 +151,9 @@ class CubenetVocoder(pl.LightningModule):
         return loss.mean()
 
     def training_step(self, batch, batch_idx):
-        batch['x'] = self._output_functions.encode(batch['x'])
+        # batch['x'] = self._output_functions.encode(batch['x'])
         output, output_list = self.forward(batch)
-        gs_audio = batch['x']
+        gs_audio = self._output_functions.encode(batch['x'])
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1), value=self._x_zero)
         x = x[:, 1:]

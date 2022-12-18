@@ -226,7 +226,9 @@ class MULAWOutput:
     def sample(self, y):
         distrib = Categorical(logits=y)
         sample = distrib.sample()
-        sample = (sample / 255) * 2 - 1.0
+        # from ipdb import set_trace
+        # set_trace()
+        # sample = (sample / 255) * 2 - 1.0
         return sample
 
     def encode(self, x):
@@ -246,19 +248,19 @@ class MULAWOutput:
             x_mu = torch.sign(x) * torch.log1p(mu * torch.abs(x)) / torch.log1p(mu)
             x_mu = ((x_mu + 1) / 2 * mu + 0.5).long()
 
-        return (x_mu / 255) * 2 - 1
+        return x_mu
 
     def decode(self, x_mu):
         quantization_channels = 256
         mu = quantization_channels - 1.
         if isinstance(x_mu, np.ndarray):
-            # x = ((x_mu) / mu) * 2 - 1.
+            x = ((x_mu) / mu) * 2 - 1.
             x = np.sign(x_mu) * (np.exp(np.abs(x_mu) * np.log1p(mu)) - 1.) / mu
         elif isinstance(x_mu, (torch.Tensor, torch.LongTensor)):
             if isinstance(x_mu, (torch.LongTensor, torch.cuda.LongTensor)):
                 x_mu = x_mu.float()
             # mu = (torch.FloatTensor([mu]))
-            # x = ((x_mu) / mu) * 2 - 1.
+            x = ((x_mu) / mu) * 2 - 1.
             x = torch.sign(x_mu) * (torch.exp(torch.abs(x_mu) * torch.log1p(mu)) - 1.) / mu
         return x
 
