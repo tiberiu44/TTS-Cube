@@ -113,7 +113,7 @@ class CubenetVocoder(pl.LightningModule):
         skip = self._skip(upsampled_mel)
         # get closest gs_size that is multiple of stride
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
+        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]), value=self._x_zero)
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         x = x.reshape(x.shape[0], -1, self._psamples)
@@ -137,7 +137,7 @@ class CubenetVocoder(pl.LightningModule):
         output, _ = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
+        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1), value=self._x_zero)
         x = x[:, 1:]
         # x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
         x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
@@ -153,7 +153,7 @@ class CubenetVocoder(pl.LightningModule):
         output, output_list = self.forward(batch)
         gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
+        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1), value=self._x_zero)
         x = x[:, 1:]
         # x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
         x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
