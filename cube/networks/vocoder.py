@@ -68,7 +68,7 @@ class CubenetVocoder(pl.LightningModule):
         elif output == 'mulaw':
             self._output_functions = MULAWOutput()
 
-        self._x_mean = self._x_std = self._output_functions.stats
+        self._x_mean, self._x_std = self._output_functions.stats
         self._output = LinearNorm(256, psamples * self._output_functions.sample_size)
         self._val_loss = 9999
 
