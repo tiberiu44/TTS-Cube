@@ -90,7 +90,6 @@ class CubenetVocoder(pl.LightningModule):
                 hidden = upsampled_mel[:, ii, :].unsqueeze(1)
                 res = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
                 for ll in range(len(self._rnns)):
-                    # for ll in range(1):
                     rnn_input = torch.cat([hidden, last_x], dim=-1)
                     rnn = self._rnns[ll]
                     rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
@@ -119,62 +118,57 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         x = x.reshape(x.shape[0], -1, self._psamples)
+
         msize = min(upsampled_mel.shape[1], x.shape[1])
         hidden = upsampled_mel[:, :msize, :]
+
         last_x = (x[:, :msize, :] - self._x_mean) / self._x_std
         res = skip[:, :msize, :]
-        output_list = []
         for ll in range(len(self._rnns)):
             rnn_input = torch.cat([hidden, last_x], dim=-1)
             rnn_output, _ = self._rnns[ll](rnn_input)
             hidden = rnn_output + res
             res = hidden
-            preoutput = torch.tanh(self._preoutput(res))
-            output = self._output(preoutput)
-            output_list.append(output)
-        return output, output_list
+
+        preoutput = torch.tanh(self._preoutput(res))
+        output = self._output(preoutput)
+        return output
 
     def validation_step(self, batch, batch_idx):
-        # batch['x'] = self._output_functions.encode(batch['x'])
-        output, _ = self.forward(batch)
-        gs_audio = batch['x']  # self._output_functions.encode(batch['x'])
-        x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
-        x = x[:, 1:]
-        # x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
-        x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
-        x = x.transpose(2, 3)
-        target_x = x.reshape(x.shape[0], -1, self._psamples)
-        output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
-        target_x = target_x.reshape(target_x.shape[0], -1)
-        loss = self._output_functions.loss(output, self._output_functions.encode(target_x))
-        return loss.mean()
+        output = self.forward(batch)
 
-    def training_step(self, batch, batch_idx):
-        # batch['x'] = self._output_functions.encode(batch['x'])
-        output, output_list = self.forward(batch)
-        gs_audio = batch['x']  # self._output_functions.encode(batch['x'])
+        gs_audio = batch['x']
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
+
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
         x = x[:, 1:]
-        # x = x.reshape(x.shape[0], x.shape[1] // self._stride, -1)
         x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
         x = x.transpose(2, 3)
+
         target_x = x.reshape(x.shape[0], -1, self._psamples)
         target_x = target_x.reshape(target_x.shape[0], -1)
         output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
+
         loss = self._output_functions.loss(output, self._output_functions.encode(target_x))
         return loss
-        # loss_list = []
-        # scales = list(reversed([2 ** (8 + i) for i in range(len(output_list) - 1)]))
-        # scales.append(1)
-        # for output, scale in zip(output_list, scales):
-        #     output = output.reshape(output.shape[0], -1, 30)
-        #     scale_target_x = (((target_x + 1.0) * 32768 // scale) * scale) / 32768 - 1.0
-        #     loss = self._output_functions.loss(output, scale_target_x)
-        #     loss_list.append(loss.mean())
-        #
-        # return (sum(loss_list[:-1]) / (len(loss_list) - 1)) * 0.5 + loss_list[-1]
+
+    def training_step(self, batch, batch_idx):
+        output = self.forward(batch)
+
+        gs_audio = batch['x']
+        x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
+
+        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
+        x = x[:, 1:]
+        x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
+        x = x.transpose(2, 3)
+
+        target_x = x.reshape(x.shape[0], -1, self._psamples)
+        target_x = target_x.reshape(target_x.shape[0], -1)
+        output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
+
+        loss = self._output_functions.loss(output, self._output_functions.encode(target_x))
+        return loss
 
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)
