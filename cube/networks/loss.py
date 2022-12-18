@@ -220,7 +220,7 @@ class MULAWOutput:
         self._loss = CrossEntropyLoss()
 
     def loss(self, y_hat, y):
-        y = (((y + 1.0) / 2) * 255).long()
+        #y = (((y + 1.0) / 2) * 255).long()
         return self._loss(y_hat.reshape(y_hat.shape[0] * y_hat.shape[1], -1), y.reshape(y.shape[0] * y.shape[1]))
 
     def sample(self, y):
