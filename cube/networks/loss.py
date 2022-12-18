@@ -220,7 +220,7 @@ class MULAWOutput:
         self._loss = CrossEntropyLoss()
 
     def loss(self, y_hat, y):
-        #y = (((y + 1.0) / 2) * 255).long()
+        # y = (((y + 1.0) / 2) * 255).long()
         return self._loss(y_hat.reshape(y_hat.shape[0] * y_hat.shape[1], -1), y.reshape(y.shape[0] * y.shape[1]))
 
     def sample(self, y):
@@ -255,13 +255,13 @@ class MULAWOutput:
         mu = quantization_channels - 1.
         if isinstance(x_mu, np.ndarray):
             x = ((x_mu) / mu) * 2 - 1.
-            x = np.sign(x_mu) * (np.exp(np.abs(x_mu) * np.log1p(mu)) - 1.) / mu
+            x = np.sign(x) * (np.exp(np.abs(x) * np.log1p(mu)) - 1.) / mu
         elif isinstance(x_mu, (torch.Tensor, torch.LongTensor)):
             if isinstance(x_mu, (torch.LongTensor, torch.cuda.LongTensor)):
                 x_mu = x_mu.float()
-            # mu = (torch.FloatTensor([mu]))
+            mu = (torch.FloatTensor([mu]))
             x = ((x_mu) / mu) * 2 - 1.
-            x = torch.sign(x_mu) * (torch.exp(torch.abs(x_mu) * torch.log1p(mu)) - 1.) / mu
+            x = torch.sign(x) * (torch.exp(torch.abs(x) * torch.log1p(mu)) - 1.) / mu
         return x
 
     @property
