@@ -122,3 +122,7 @@ class MelVocoder:
         inverse = librosa.istft(full, hop_length=hop_length, window=window)
 
         return inverse
+
+    @property
+    def stats(self):
+        return -2.195394, 0.996

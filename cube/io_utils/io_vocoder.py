@@ -54,7 +54,7 @@ class VocoderDataset(Dataset):
                 np.save('{0}.audio'.format(cache_filename), wav)
             if self._max_segment_size == -1 or len(wav) < self._max_segment_size or not self._random_start:
                 if not self._random_start and self._max_segment_size != -1:
-                    return (wav[:self._max_segment_size], mel[:self._max_segment_size // 256+1])
+                    return (wav[:self._max_segment_size], mel[:self._max_segment_size // 256 + 1])
                 else:
                     return (wav, mel)
             else:
@@ -85,6 +85,9 @@ class VocoderCollate:
     def __init__(self, x_zero=0, mel_zero=-5):
         self._x_zero = x_zero
         self._mel_zero = mel_zero
+        from cube.io_utils.vocoder import MelVocoder
+        mv = MelVocoder()
+        self._mel_mean, self._mel_std = mv.stats
 
     def collate_fn(self, examples):
         max_audio_size = max([x[0].shape[0] for x in examples])
@@ -98,7 +101,7 @@ class VocoderCollate:
             x[ii, :cx.shape[0]] = cx
 
         x = torch.tensor(x, dtype=torch.float)
-        mel = torch.tensor(mel, dtype=torch.float)
+        mel = (torch.tensor(mel, dtype=torch.float) - self._mel_mean) / self._mel_std
         x = x / torch.max(torch.abs(x))  # normalize
         return {
             'x': x,

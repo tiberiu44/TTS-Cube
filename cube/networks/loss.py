@@ -61,6 +61,10 @@ class GaussianOutput:
     def sample_size(self):
         return 2
 
+    @property
+    def stats(self):
+        return 6e-6, 0.15
+
 
 class BetaOutput:
     def loss(self, y_hat, y):
@@ -96,6 +100,10 @@ class BetaOutput:
     @property
     def sample_size(self):
         return 2
+
+    @property
+    def stats(self):
+        return 6e-6, 0.15
 
 
 class MOLOutput:
@@ -202,6 +210,10 @@ class MOLOutput:
     def sample_size(self):
         return 30
 
+    @property
+    def stats(self):
+        return 6e-6, 0.15
+
 
 class MULAWOutput:
     def __init__(self):
@@ -253,6 +265,10 @@ class MULAWOutput:
     @property
     def sample_size(self):
         return 256
+
+    @property
+    def stats(self):
+        return -0.019, 0.51
 
 
 if __name__ == '__main__':
