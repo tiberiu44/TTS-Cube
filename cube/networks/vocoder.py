@@ -224,6 +224,7 @@ if __name__ == '__main__':
     mel = torch.tensor(mel).unsqueeze(0)
     vocoder.eval()
     start = time.time()
+    # normalize mel
     output = vocoder({'mel': mel})
     # from ipdb import set_trace
 
