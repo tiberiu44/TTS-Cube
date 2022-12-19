@@ -49,7 +49,7 @@ class CubenetVocoder(pl.LightningModule):
         self._psamples = psamples
         self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         # self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
-        ic = 80
+        ic = 80 + 1
         rnn_list = []
         for ii in range(num_layers):
             rnn = nn.GRU(input_size=ic, hidden_size=layer_size, num_layers=1, batch_first=True)
