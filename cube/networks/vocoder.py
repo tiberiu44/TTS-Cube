@@ -96,7 +96,7 @@ class CubenetVocoder(pl.LightningModule):
                     hidden = rnn_output + res
                     res = hidden
 
-                preoutput = torch.tanh(self._preoutput(res))
+                preoutput = torch.relu(self._preoutput(res))
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.decode(self._output_functions.sample(output))
@@ -131,7 +131,7 @@ class CubenetVocoder(pl.LightningModule):
             hidden = rnn_output + res
             res = hidden
 
-        preoutput = torch.tanh(self._preoutput(res))
+        preoutput = torch.relu(self._preoutput(res))
         output = self._output(preoutput)
         return output
 
