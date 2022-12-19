@@ -87,9 +87,10 @@ class CubenetVocoder(pl.LightningModule):
             # index = 0
             for ii in tqdm.tqdm(range(upsampled_mel.shape[1]), ncols=80):
                 hidden = upsampled_mel[:, ii, :].unsqueeze(1)
-                res = self._skip(torch.cat(upsampled_mel[:, ii, :].unsqueeze(1), last_x))
+                res = self._skip(torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1))
+                hidden = torch.cat([hidden, last_x], dim=-1)
                 for ll in range(len(self._rnns)):
-                    rnn_input = torch.cat([hidden, last_x], dim=-1)
+                    rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
                     rnn = self._rnns[ll]
                     rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
                     hidden = rnn_output + res
@@ -109,6 +110,8 @@ class CubenetVocoder(pl.LightningModule):
         return output_list  # self._output_functions.decode(output_list)
 
     def _train_forward(self, mel, gs_audio):
+        from ipdb import set_trace
+        set_trace()
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
         # get closest gs_size that is multiple of stride
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples

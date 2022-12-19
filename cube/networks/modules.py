@@ -318,7 +318,7 @@ class UpsampleNet(nn.Module):
         for ii in range(3):
             conv = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
             self._conv.append(conv)
-            self._conv.append(nn.Tanh())
+            self._conv.append(nn.LeakyReLU(0.4))
         self._upsample_conv = nn.ModuleList()
         ic = in_channels
         for s in upsample_scales:
@@ -327,7 +327,7 @@ class UpsampleNet(nn.Module):
             convt = nn.utils.weight_norm(convt)
             nn.init.kaiming_normal_(convt.weight)
             self._upsample_conv.append(convt)
-            self._upsample_conv.append(nn.Tanh())
+            self._upsample_conv.append(nn.LeakyReLU(0.4))
 
     def forward(self, c):
         # B x C x T'
