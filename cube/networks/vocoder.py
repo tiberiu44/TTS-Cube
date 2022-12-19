@@ -117,10 +117,10 @@ class CubenetVocoder(pl.LightningModule):
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         x = x.reshape(x.shape[0], -1, self._psamples)
-        skip = self._skip(torch.cat([upsampled_mel, x], dim=-1))
 
         msize = min(upsampled_mel.shape[1], x.shape[1])
         hidden = upsampled_mel[:, :msize, :]
+        skip = self._skip(torch.cat([upsampled_mel, x], dim=-1))
 
         last_x = (x[:, :msize, :] - self._x_mean) / self._x_std
         res = skip[:, :msize, :]
