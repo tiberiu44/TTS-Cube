@@ -67,7 +67,6 @@ class CubenetVocoder(pl.LightningModule):
         elif output == 'mulaw':
             self._output_functions = MULAWOutput()
 
-        self._x_mean, self._x_std = self._output_functions.stats
         self._output = LinearNorm(256, psamples * self._output_functions.sample_size)
         self._val_loss = 9999
 
@@ -100,7 +99,7 @@ class CubenetVocoder(pl.LightningModule):
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.decode(self._output_functions.sample(output))
-                last_x = (samples.unsqueeze(1) - self._x_mean) / self._x_std
+                last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
 
         output_list = torch.cat(output_list, dim=1)
@@ -120,9 +119,9 @@ class CubenetVocoder(pl.LightningModule):
 
         msize = min(upsampled_mel.shape[1], x.shape[1])
         hidden = upsampled_mel[:, :msize, :]
-        skip = self._skip(torch.cat([upsampled_mel, x], dim=-1))
+        skip = self._skip(torch.cat([upsampled_mel, x[:, :msize, :]], dim=-1))
 
-        last_x = (x[:, :msize, :] - self._x_mean) / self._x_std
+        last_x = x[:, :msize, :]
         res = skip[:, :msize, :]
         for ll in range(len(self._rnns)):
             rnn_input = torch.cat([hidden, last_x], dim=-1)
