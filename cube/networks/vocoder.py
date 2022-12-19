@@ -27,7 +27,7 @@ import yaml
 
 sys.path.append('')
 from yaml import Loader
-from cube.networks.modules import LinearNorm, UpsampleNet
+from cube.networks.modules import LinearNorm, UpsampleNet, UpsampleNet2
 from cube.networks.loss import MOLOutput, GaussianOutput, BetaOutput, MULAWOutput
 from torch.distributions import Beta
 
@@ -47,7 +47,7 @@ class CubenetVocoder(pl.LightningModule):
         self._learning_rate = learning_rate
         self._stride = stride
         self._psamples = psamples
-        self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
+        self._upsample = UpsampleNet2(upsample_scales=upsample, in_channels=80, out_channels=80)
         # self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
         ic = 80 + 1
         rnn_list = []

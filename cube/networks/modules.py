@@ -337,22 +337,23 @@ class UpsampleNet(nn.Module):
             c = f(c)
         return c
 
-# class UpsampleNet(nn.Module):
-#     def __init__(self, upsample_scales=[2, 2, 2, 2], in_channels=80, out_channels=80):
-#         super(UpsampleNet, self).__init__()
-#         self._upsample_conv = nn.ModuleList()
-#         for s in upsample_scales:
-#             convt = nn.ConvTranspose2d(1, 1, (3, 2 * s), padding=(1, s // 2), stride=(1, s))
-#             convt = nn.utils.weight_norm(convt)
-#             nn.init.kaiming_normal_(convt.weight)
-#             self._upsample_conv.append(convt)
-#             self._upsample_conv.append(nn.LeakyReLU(0.4))
-#
-#     def forward(self, c):
-#         # B x 1 x C x T'
-#         c = c.unsqueeze(1)
-#         for f in self._upsample_conv:
-#             c = f(c)
-#         # B x C x T
-#         c = c.squeeze(1)
-#         return c
+
+class UpsampleNet2(nn.Module):
+    def __init__(self, upsample_scales=[2, 2, 2, 2], in_channels=80, out_channels=80):
+        super(UpsampleNet2, self).__init__()
+        self._upsample_conv = nn.ModuleList()
+        for s in upsample_scales:
+            convt = nn.ConvTranspose2d(1, 1, (3, 2 * s), padding=(1, s // 2), stride=(1, s))
+            convt = nn.utils.weight_norm(convt)
+            nn.init.kaiming_normal_(convt.weight)
+            self._upsample_conv.append(convt)
+            self._upsample_conv.append(nn.LeakyReLU(0.4))
+
+    def forward(self, c):
+        # B x 1 x C x T'
+        c = c.unsqueeze(1)
+        for f in self._upsample_conv:
+            c = f(c)
+        # B x C x T
+        c = c.squeeze(1)
+        return c
