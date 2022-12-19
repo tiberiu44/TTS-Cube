@@ -110,8 +110,6 @@ class CubenetVocoder(pl.LightningModule):
         return output_list  # self._output_functions.decode(output_list)
 
     def _train_forward(self, mel, gs_audio):
-        from ipdb import set_trace
-        set_trace()
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
         # get closest gs_size that is multiple of stride
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
