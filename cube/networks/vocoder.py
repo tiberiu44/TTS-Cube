@@ -52,12 +52,12 @@ class CubenetVocoder(pl.LightningModule):
         ic = 80
         rnn_list = []
         for ii in range(num_layers):
-            rnn = nn.GRU(input_size=ic + psamples, hidden_size=layer_size, num_layers=1, batch_first=True)
+            rnn = nn.GRU(input_size=ic, hidden_size=layer_size, num_layers=1, batch_first=True)
             ic = layer_size
             rnn_list.append(rnn)
         self._rnns = nn.ModuleList(rnn_list)
         self._preoutput = LinearNorm(layer_size, 256)
-        self._skip = LinearNorm(80, layer_size)
+        self._skip = LinearNorm(80 + psamples, layer_size)
         if output == 'mol':
             self._output_functions = MOLOutput()
         elif output == 'gm':
@@ -88,7 +88,7 @@ class CubenetVocoder(pl.LightningModule):
             # index = 0
             for ii in tqdm.tqdm(range(upsampled_mel.shape[1]), ncols=80):
                 hidden = upsampled_mel[:, ii, :].unsqueeze(1)
-                res = self._skip(upsampled_mel[:, ii, :].unsqueeze(1))
+                res = self._skip(torch.cat(upsampled_mel[:, ii, :].unsqueeze(1), last_x))
                 for ll in range(len(self._rnns)):
                     rnn_input = torch.cat([hidden, last_x], dim=-1)
                     rnn = self._rnns[ll]
@@ -111,13 +111,13 @@ class CubenetVocoder(pl.LightningModule):
 
     def _train_forward(self, mel, gs_audio):
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
-        skip = self._skip(upsampled_mel)
         # get closest gs_size that is multiple of stride
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
         x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
         x = x.transpose(2, 3)
         x = x.reshape(x.shape[0], -1, self._psamples)
+        skip = self._skip(torch.cat([upsampled_mel, x], dim=-1))
 
         msize = min(upsampled_mel.shape[1], x.shape[1])
         hidden = upsampled_mel[:, :msize, :]
