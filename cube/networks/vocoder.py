@@ -121,7 +121,7 @@ class CubenetVocoder(pl.LightningModule):
         hidden = upsampled_mel[:, :msize, :]
 
         last_x = x[:, :msize, :]
-        skip = self._skip(torch.cat([upsampled_mel, last_x], dim=-1))
+        skip = self._skip(torch.cat([hidden, last_x], dim=-1))
         res = skip[:, :msize, :]
         for ll in range(len(self._rnns)):
             rnn_input = torch.cat([hidden, last_x], dim=-1)
