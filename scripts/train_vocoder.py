@@ -126,7 +126,7 @@ def _train(params):
         gpus=params.gpus,
         accelerator=acc,
         max_epochs=-1,
-        gradient_clip_val=5,
+        gradient_clip_val=1,
         callbacks=[PrintAndSaveCallback(params.output_base)]
     )
 

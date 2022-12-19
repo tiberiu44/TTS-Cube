@@ -47,7 +47,7 @@ class CubenetVocoder(pl.LightningModule):
         self._learning_rate = learning_rate
         self._stride = stride
         self._psamples = psamples
-        self._upsample = UpsampleNet2(upsample_scales=upsample, in_channels=80, out_channels=80)
+        self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         # self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
         ic = 80 + 1
         rnn_list = []
@@ -57,7 +57,7 @@ class CubenetVocoder(pl.LightningModule):
             rnn_list.append(rnn)
         self._rnns = nn.ModuleList(rnn_list)
         self._preoutput = LinearNorm(layer_size, 256)
-        self._skip = LinearNorm(80 + psamples, layer_size)
+        self._skip = LinearNorm(80 + psamples, layer_size, w_init_gain='tanh')
         if output == 'mol':
             self._output_functions = MOLOutput()
         elif output == 'gm':
@@ -67,7 +67,7 @@ class CubenetVocoder(pl.LightningModule):
         elif output == 'mulaw':
             self._output_functions = MULAWOutput()
 
-        self._output = LinearNorm(256, psamples * self._output_functions.sample_size)
+        self._output = LinearNorm(256, psamples * self._output_functions.sample_size, w_init_gain='linear')
         self._val_loss = 9999
 
     def forward(self, X):
@@ -96,7 +96,7 @@ class CubenetVocoder(pl.LightningModule):
                     hidden = rnn_output + res
                     res = hidden
 
-                preoutput = torch.relu(self._preoutput(res))
+                preoutput = torch.tanh(self._preoutput(res))
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.decode(self._output_functions.sample(output))
@@ -111,6 +111,7 @@ class CubenetVocoder(pl.LightningModule):
 
     def _train_forward(self, mel, gs_audio):
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
+
         # get closest gs_size that is multiple of stride
         x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
         x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
@@ -130,8 +131,7 @@ class CubenetVocoder(pl.LightningModule):
             rnn_output, _ = self._rnns[ll](rnn_input)
             hidden = rnn_output + res
             res = hidden
-
-        preoutput = torch.relu(self._preoutput(res))
+        preoutput = torch.tanh(self._preoutput(res))
         output = self._output(preoutput)
         return output
 
