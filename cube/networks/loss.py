@@ -230,7 +230,7 @@ class MULAWOutput:
         # from ipdb import set_trace
         # set_trace()
         # sample = (sample / 255) * 2 - 1.0
-        return sample
+        return self.decode(sample)
 
     def encode(self, x):
         quantization_channels = 256

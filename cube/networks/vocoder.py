@@ -99,7 +99,7 @@ class CubenetVocoder(pl.LightningModule):
                 preoutput = torch.tanh(self._preoutput(res))
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
-                samples = self._output_functions.decode(self._output_functions.sample(output))
+                samples = self._output_functions.sample(output)
                 last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
 
@@ -199,7 +199,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-16-16-mulaw'
+    fname = 'data/voc-anca-1-1-mol'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']
