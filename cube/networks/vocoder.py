@@ -27,7 +27,7 @@ import yaml
 
 sys.path.append('')
 from yaml import Loader
-from cube.networks.modules import LinearNorm, UpsampleNet, UpsampleNet2
+from cube.networks.modules import LinearNorm, UpsampleNet, UpsampleNet2, UpsampleNetR
 from cube.networks.loss import MOLOutput, GaussianOutput, BetaOutput, MULAWOutput
 from torch.distributions import Beta
 
@@ -240,7 +240,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-16-16-mulaw'
+    fname = 'data/voc-anca-1-1-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']
@@ -267,7 +267,7 @@ if __name__ == '__main__':
     vocoder.eval()
     start = time.time()
     # normalize mel
-    output = vocoder._inference2(mel, wav)
+    output = vocoder({'mel': mel})
     # from ipdb import set_trace
 
     # set_trace()

@@ -359,6 +359,23 @@ class UpsampleNet2(nn.Module):
         return c
 
 
+class UpsampleNetR(nn.Module):
+    def __init__(self, upsample_scales=[2, 2, 2, 2], in_channels=80, out_channels=80):
+        super(UpsampleNet2, self).__init__()
+        usc = upsample_scales[0]
+        for nusc in upsample_scales[1:]:
+            usc *= nusc
+        self._usc = usc
+
+    def forward(self, c):
+        c = c.permute(0, 2, 1)
+        c = c.unsqueeze(2)
+        c = c.repeat(1, 1, self._usc, 1)
+        c = c.reshape(c.shape[0], -1, c.shape[3])
+        c = c.permute(0, 2, 1)
+        return c
+
+
 class OracleNet(nn.Module):
     def __init__(self, receptive_size=256, samples=16, cond_size=80):
         super(OracleNet, self).__init__()
