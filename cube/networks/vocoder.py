@@ -93,8 +93,8 @@ class CubenetVocoder(pl.LightningModule):
                     rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
                     rnn = self._rnns[ll]
                     rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
-                    hidden = rnn_output + res
-                    res = hidden
+                    hidden = rnn_output
+                    res = res + hidden
 
                 preoutput = torch.tanh(self._preoutput(res))
                 output = self._output(preoutput)
@@ -129,8 +129,8 @@ class CubenetVocoder(pl.LightningModule):
         for ll in range(len(self._rnns)):
             rnn_input = hidden
             rnn_output, _ = self._rnns[ll](rnn_input)
-            hidden = rnn_output + res
-            res = hidden
+            hidden = rnn_output
+            res = res + hidden
         preoutput = torch.tanh(self._preoutput(res))
         output = self._output(preoutput)
         return output
@@ -199,7 +199,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-16-16-mol'
+    fname = 'data/voc-anca-16-16-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']
