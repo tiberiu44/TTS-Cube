@@ -357,3 +357,11 @@ class UpsampleNet2(nn.Module):
         # B x C x T
         c = c.squeeze(1)
         return c
+
+
+class OracleNet(nn.Module):
+    def __init__(self, receptive_size=256, samples=16, cond_size=80):
+        super(OracleNet, self).__init__()
+
+    def forward(self, x):
+        pass
