@@ -109,6 +109,47 @@ class CubenetVocoder(pl.LightningModule):
         output_list = output_list.reshape(output_list.shape[0], -1).detach().cpu().numpy()
         return output_list  # self._output_functions.decode(output_list)
 
+    def _inference2(self, mel, oracle):
+        with torch.no_grad():
+            upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
+            last_x = torch.ones((upsampled_mel.shape[0], 1, self._psamples),
+                                device=self._get_device()) * 0  # * self._x_zero
+            output_list = []
+            hxs = [None for _ in range(len(self._rnns))]
+            # index = 0
+            oracle = torch.tensor(oracle).unsqueeze(0)
+            x_size = ((oracle.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
+            oracle = nn.functional.pad(oracle, (0, x_size - oracle.shape[1]))
+            oracle = oracle.reshape(oracle.shape[0], -1, 16, 16)
+            for ii in tqdm.tqdm(range(upsampled_mel.shape[1]), ncols=80):
+                hidden = upsampled_mel[:, ii, :].unsqueeze(1)
+                res = self._skip(torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1))
+                hidden = torch.cat([hidden, last_x], dim=-1)
+                for ll in range(len(self._rnns)):
+                    rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
+                    rnn = self._rnns[ll]
+                    rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
+                    hidden = rnn_output
+                    res = res + hidden
+
+                preoutput = torch.tanh(self._preoutput(res))
+                output = self._output(preoutput)
+                output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
+                samples = self._output_functions.sample(output)
+                last_x = samples.unsqueeze(1)
+                # from ipdb import set_trace
+                # set_trace()
+                if ii % 16 == 0:
+                    last_x = oracle[:, ii // 16, 0, :].unsqueeze(0)
+                    samples = last_x.squeeze(0)
+                output_list.append(samples.unsqueeze(1))
+
+        output_list = torch.cat(output_list, dim=1)
+        output_list = output_list.reshape(output_list.shape[0], -1, self._stride, self._psamples)
+        output_list = output_list.transpose(2, 3)
+        output_list = output_list.reshape(output_list.shape[0], -1).detach().cpu().numpy()
+        return output_list  # self._output_functions.decode(output_list)
+
     def _train_forward(self, mel, gs_audio):
         upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
 
@@ -177,7 +218,7 @@ class CubenetVocoder(pl.LightningModule):
         self._val_loss = loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
+        return torch.optim.AdamW(self.parameters(), lr=self._learning_rate)
 
     @torch.jit.ignore
     def _get_device(self):
@@ -226,7 +267,7 @@ if __name__ == '__main__':
     vocoder.eval()
     start = time.time()
     # normalize mel
-    output = vocoder({'mel': mel})
+    output = vocoder._inference2(mel, wav)
     # from ipdb import set_trace
 
     # set_trace()
