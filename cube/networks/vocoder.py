@@ -150,7 +150,7 @@ class CubenetVocoder(pl.LightningModule):
         target_x = target_x.reshape(target_x.shape[0], -1)
         output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
 
-        loss = self._output_functions.loss(output, self._output_functions.encode(target_x))
+        loss = self._output_functions.loss(output, target_x)
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -168,7 +168,7 @@ class CubenetVocoder(pl.LightningModule):
         target_x = target_x.reshape(target_x.shape[0], -1)
         output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
 
-        loss = self._output_functions.loss(output, self._output_functions.encode(target_x))
+        loss = self._output_functions.loss(output, target_x)
         return loss
 
     def validation_epoch_end(self, outputs) -> None:
@@ -199,7 +199,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-1-1-mol'
+    fname = 'data/voc-anca-16-16-mol'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     upsample = conf['upsample']
