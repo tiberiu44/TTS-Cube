@@ -361,7 +361,7 @@ class UpsampleNet2(nn.Module):
 
 class UpsampleNetR(nn.Module):
     def __init__(self, upsample_scales=[2, 2, 2, 2], in_channels=80, out_channels=80):
-        super(UpsampleNet2, self).__init__()
+        super(UpsampleNetR, self).__init__()
         usc = upsample_scales[0]
         for nusc in upsample_scales[1:]:
             usc *= nusc
