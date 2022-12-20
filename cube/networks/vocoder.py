@@ -47,7 +47,7 @@ class CubenetVocoder(pl.LightningModule):
         self._learning_rate = learning_rate
         self._stride = stride
         self._psamples = psamples
-        self._upsample = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
+        self._upsample = UpsampleNetR(upsample_scales=upsample, in_channels=80, out_channels=80)
         # self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
         ic = 80 + psamples
         rnn_list = []
