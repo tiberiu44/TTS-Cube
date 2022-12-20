@@ -53,7 +53,7 @@ class VocoderDataset(Dataset):
                 np.save('{0}.mgc'.format(cache_filename), mel)
                 np.save('{0}.audio'.format(cache_filename), wav)
             if self._max_segment_size == -1 or len(wav) < self._max_segment_size or not self._random_start:
-                if not self._random_start and self._max_segment_size != -1:
+                if not self._random_start and self._max_segment_size != -1 and len(wav > self._max_segment_size):
                     return (wav[:self._max_segment_size], mel[:self._max_segment_size // 256 + 1])
                 else:
                     return (wav, mel)
@@ -99,7 +99,7 @@ class VocoderCollate:
 
         x = torch.tensor(x, dtype=torch.float)
         mel = torch.tensor(mel, dtype=torch.float)
-        x = x / torch.max(torch.abs(x))  # normalize
+        # x = x / torch.max(torch.abs(x))  # normalize
         return {
             'x': x,
             'mel': mel
