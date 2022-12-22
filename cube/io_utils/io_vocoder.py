@@ -72,7 +72,7 @@ class VocoderDataset(Dataset):
         else:
             start = random.randint(0, len(wav) - self._max_segment_size - 1)
             hs = self._sample_rate // self._sample_rate_low
-            start_low = start // hs * hs
+            start_low = start // hs
             stop_low = start_low + self._max_segment_size // hs
             start = start // self._hop_size * self._hop_size  # multiple of hop size
             stop = start + self._max_segment_size
