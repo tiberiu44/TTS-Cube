@@ -56,6 +56,7 @@ class VocoderDataset(Dataset):
             mel = self._mel_vocoder.melspectrogram(wav,
                                                    sample_rate=self._sample_rate,
                                                    num_mels=80,
+                                                   hop_size=self._hop_size,
                                                    use_preemphasis=False)
             np.save('{0}.mgc'.format(cache_filename), mel)
             np.save('{0}.audio'.format(cache_filename), wav)

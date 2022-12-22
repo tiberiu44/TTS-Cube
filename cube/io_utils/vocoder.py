@@ -51,12 +51,12 @@ class MelVocoder:
         y = y.transpose()
         return self._istft(y, sample_rate)
 
-    def melspectrogram(self, y, sample_rate, num_mels, use_preemphasis=False):
+    def melspectrogram(self, y, sample_rate, num_mels, hop_size, use_preemphasis=False):
         if use_preemphasis:
             pre_y = self._preemphasis(y)
         else:
             pre_y = y
-        fft = self._stft(pre_y, sample_rate)
+        fft = self._stft(pre_y, sample_rate, hop_size)
         magn = np.abs(fft)
         mel = self._amp_to_db(self._linear_to_mel(magn, sample_rate, num_mels))
         return mel.transpose()
@@ -70,8 +70,8 @@ class MelVocoder:
         n_fft, hop_length, win_length = self._stft_parameters(sample_rate)
         return librosa.istft(y, hop_length=hop_length, win_length=win_length)
 
-    def _stft(self, y, sample_rate):
-        n_fft, hop_length, win_length = self._stft_parameters(sample_rate)
+    def _stft(self, y, sample_rate, hop_length):
+        n_fft, _, win_length = self._stft_parameters(sample_rate)
         return librosa.stft(y=y, n_fft=n_fft, hop_length=hop_length, win_length=win_length, window='hann')
 
     def _linear_to_mel(self, spectrogram, sample_rate, num_mels):

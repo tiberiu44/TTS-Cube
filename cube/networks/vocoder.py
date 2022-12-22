@@ -227,13 +227,17 @@ if __name__ == '__main__':
     vocoder.load('{0}.last'.format(fname))
     import librosa
     from cube.io_utils.vocoder import MelVocoder
+    from cube.io_utils.dataset import DatasetIO
+
+    dio = DatasetIO()
 
     wav, sr = librosa.load('data/test.wav', sr=sample_rate)
     wav_low, sr = librosa.load('data/test.wav', sr=sample_rate_low)
     mel_vocoder = MelVocoder()
-    mel = mel_vocoder.melspectrogram(wav, sample_rate=22050, num_mels=80, use_preemphasis=False)
+    mel = mel_vocoder.melspectrogram(wav, sample_rate=22050, hop_size=hop_size, num_mels=80, use_preemphasis=False)
     mel = torch.tensor(mel).unsqueeze(0)
     x_low = torch.tensor(wav_low).unsqueeze(0)
+    dio.write_wave("data/load.wav", x_low.squeeze() * 32000, sample_rate_low, dtype=np.int16)
     vocoder.eval()
     start = time.time()
     # normalize mel
@@ -243,8 +247,5 @@ if __name__ == '__main__':
     # set_trace()
     stop = time.time()
     print("generated {0} seconds of audio in {1}".format(len(wav) / sample_rate, stop - start))
-    from cube.io_utils.dataset import DatasetIO
-
-    dio = DatasetIO()
 
     dio.write_wave("data/generated.wav", output.squeeze() * 32000, sample_rate, dtype=np.int16)
