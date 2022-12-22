@@ -27,29 +27,35 @@ import yaml
 
 sys.path.append('')
 from yaml import Loader
-from cube.networks.modules import LinearNorm, UpsampleNet, UpsampleNet2, UpsampleNetR
+from cube.networks.modules import LinearNorm, ConvNorm, UpsampleNetR
 from cube.networks.loss import MOLOutput, GaussianOutput, BetaOutput, MULAWOutput
-from torch.distributions import Beta
 
 
 class CubenetVocoder(pl.LightningModule):
-    def __init__(self, num_layers: int = 2, layer_size: int = 512, psamples: int = 16, stride: int = 16,
-                 upsample=[2, 2, 2, 2], learning_rate=1e-4, output='mol'):
+    def __init__(self,
+                 num_layers: int = 2,
+                 layer_size: int = 512,
+                 upsample=100,
+                 upsample_low=10,
+                 use_lowres=True,
+                 learning_rate=1e-4,
+                 output='mol'):
         super(CubenetVocoder, self).__init__()
 
-        self._config = {
-            'num_layers': num_layers,
-            'layer_size': layer_size,
-            'psamples': psamples,
-            'stride': stride,
-            'upsample': upsample
-        }
         self._learning_rate = learning_rate
-        self._stride = stride
-        self._psamples = psamples
-        self._upsample = UpsampleNetR(upsample_scales=upsample, in_channels=80, out_channels=80)
-        # self._rnn = nn.GRU(input_size=80 + psamples, hidden_size=layer_size, num_layers=num_layers, batch_first=True)
-        ic = 80 + psamples
+        self._upsample_mel = UpsampleNetR(upsample=upsample)
+        self._upsample_lowres = UpsampleNetR(upsample=upsample_low)
+        self._use_lowres = use_lowres
+        if self._use_lowres:
+            self._lowres_conv = nn.ModuleList()
+            ic = 1
+            for ii in range(3):
+                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=3, padding=1))
+                ic = 20
+        ic = 80 + 1
+        if use_lowres:
+            ic += 20
+        self._skip = LinearNorm(ic, layer_size, w_init_gain='tanh')
         rnn_list = []
         for ii in range(num_layers):
             rnn = nn.GRU(input_size=ic, hidden_size=layer_size, num_layers=1, batch_first=True)
@@ -57,7 +63,7 @@ class CubenetVocoder(pl.LightningModule):
             rnn_list.append(rnn)
         self._rnns = nn.ModuleList(rnn_list)
         self._preoutput = LinearNorm(layer_size, 256)
-        self._skip = LinearNorm(80 + psamples, layer_size, w_init_gain='tanh')
+
         if output == 'mol':
             self._output_functions = MOLOutput()
         elif output == 'gm':
@@ -67,15 +73,15 @@ class CubenetVocoder(pl.LightningModule):
         elif output == 'mulaw':
             self._output_functions = MULAWOutput()
 
-        self._output = LinearNorm(256, psamples * self._output_functions.sample_size, w_init_gain='linear')
+        self._output = LinearNorm(256, self._output_functions.sample_size, w_init_gain='linear')
         self._val_loss = 9999
 
     def forward(self, X):
         mel = X['mel']
         if 'x' in X:
-            return self._train_forward(mel, X['x'])
+            return self._train_forward(X)
         else:
-            return self._inference(mel)
+            return self._inference(X)
 
     def _inference(self, mel):
         with torch.no_grad():
@@ -109,64 +115,31 @@ class CubenetVocoder(pl.LightningModule):
         output_list = output_list.reshape(output_list.shape[0], -1).detach().cpu().numpy()
         return output_list  # self._output_functions.decode(output_list)
 
-    def _inference2(self, mel, oracle):
-        with torch.no_grad():
-            upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
-            last_x = torch.ones((upsampled_mel.shape[0], 1, self._psamples),
-                                device=self._get_device()) * 0  # * self._x_zero
-            output_list = []
-            hxs = [None for _ in range(len(self._rnns))]
-            # index = 0
-            oracle = torch.tensor(oracle).unsqueeze(0)
-            x_size = ((oracle.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
-            oracle = nn.functional.pad(oracle, (0, x_size - oracle.shape[1]))
-            oracle = oracle.reshape(oracle.shape[0], -1, 16, 16)
-            for ii in tqdm.tqdm(range(upsampled_mel.shape[1]), ncols=80):
-                hidden = upsampled_mel[:, ii, :].unsqueeze(1)
-                res = self._skip(torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1))
-                hidden = torch.cat([hidden, last_x], dim=-1)
-                for ll in range(len(self._rnns)):
-                    rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
-                    rnn = self._rnns[ll]
-                    rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
-                    hidden = rnn_output
-                    res = res + hidden
+    def _train_forward(self, X):
+        mel = X['mel']
+        gs_x = X['x']
+        low_x = X['x_low']
 
-                preoutput = torch.tanh(self._preoutput(res))
-                output = self._output(preoutput)
-                output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
-                samples = self._output_functions.sample(output)
-                last_x = samples.unsqueeze(1)
-                # from ipdb import set_trace
-                # set_trace()
-                if ii % 16 == 0:
-                    last_x = oracle[:, ii // 16, 0, :].unsqueeze(0)
-                    samples = last_x.squeeze(0)
-                output_list.append(samples.unsqueeze(1))
+        # check if we are using lowres signal conditioning
+        if self._use_lowres:
+            # conv and upsample
+            hidden = low_x.unsqueeze(1)
+            for conv in self._lowres_conv:
+                hidden = torch.tanh(conv(hidden))
 
-        output_list = torch.cat(output_list, dim=1)
-        output_list = output_list.reshape(output_list.shape[0], -1, self._stride, self._psamples)
-        output_list = output_list.transpose(2, 3)
-        output_list = output_list.reshape(output_list.shape[0], -1).detach().cpu().numpy()
-        return output_list  # self._output_functions.decode(output_list)
+            upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
+        upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
 
-    def _train_forward(self, mel, gs_audio):
-        upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
+        msize = min(upsampled_mel.shape[1], gs_x.shape[1], upsampled_x.shape[1])
+        upsampled_mel = upsampled_mel[:, :msize, :]
+        gs_x = gs_x[:, :msize].unsqueeze(2)
+        upsampled_x = upsampled_x[:, :msize, :]
+        if self._use_lowres:
+            hidden = torch.cat([upsampled_mel, upsampled_x, gs_x], dim=-1)
+        else:
+            hidden = torch.cat([upsampled_mel, gs_x], dim=-1)
+        res = self._skip(hidden)
 
-        # get closest gs_size that is multiple of stride
-        x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1]))
-        x = x.reshape(x.shape[0], -1, self._stride, self._psamples)
-        x = x.transpose(2, 3)
-        x = x.reshape(x.shape[0], -1, self._psamples)
-
-        msize = min(upsampled_mel.shape[1], x.shape[1])
-        hidden = upsampled_mel[:, :msize, :]
-
-        last_x = x[:, :msize, :]
-        skip = self._skip(torch.cat([hidden, last_x], dim=-1))
-        res = skip[:, :msize, :]
-        hidden = torch.cat([hidden, last_x], dim=-1)
         for ll in range(len(self._rnns)):
             rnn_input = hidden
             rnn_output, _ = self._rnns[ll](rnn_input)
@@ -178,39 +151,22 @@ class CubenetVocoder(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
-
         gs_audio = batch['x']
-        x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
 
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
-        x = x[:, 1:]
-        x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
-        x = x.transpose(2, 3)
-
-        target_x = x.reshape(x.shape[0], -1, self._psamples)
-        target_x = target_x.reshape(target_x.shape[0], -1)
-        output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
-
-        loss = self._output_functions.loss(output, target_x)
+        target_x = gs_audio[:, 1:]
+        pred_x = output[:, :-1]
+        loss = self._output_functions.loss(pred_x, target_x)
         return loss
 
     def training_step(self, batch, batch_idx):
         output = self.forward(batch)
-
         gs_audio = batch['x']
-        x_size = ((gs_audio.shape[1] // (self._stride * self._psamples)) + 1) * self._stride * self._psamples
 
-        x = nn.functional.pad(gs_audio, (0, x_size - gs_audio.shape[1] + 1))
-        x = x[:, 1:]
-        x = x.reshape(x.shape[0], -1, self._psamples, self._stride)
-        x = x.transpose(2, 3)
-
-        target_x = x.reshape(x.shape[0], -1, self._psamples)
-        target_x = target_x.reshape(target_x.shape[0], -1)
-        output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
-
-        loss = self._output_functions.loss(output, target_x)
+        target_x = gs_audio[:, 1:]
+        pred_x = output[:, :-1]
+        loss = self._output_functions.loss(pred_x, target_x)
         return loss
+
 
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)
