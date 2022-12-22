@@ -83,17 +83,32 @@ class CubenetVocoder(pl.LightningModule):
         else:
             return self._inference(X)
 
-    def _inference(self, mel):
+    def _inference(self, X):
         with torch.no_grad():
-            upsampled_mel = self._upsample(mel.permute(0, 2, 1)).permute(0, 2, 1)
-            last_x = torch.ones((upsampled_mel.shape[0], 1, self._psamples),
+            mel = X['mel']
+            low_x = X['x_low']
+            if self._use_lowres:
+                # conv and upsample
+                hidden = low_x.unsqueeze(1)
+                for conv in self._lowres_conv:
+                    hidden = torch.tanh(conv(hidden))
+
+                upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
+
+            upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
+            cond = upsampled_mel
+            if self._use_lowres:
+                msize = min(upsampled_mel.shape[1], upsampled_x.shape[1])
+                cond = torch.cat([upsampled_mel[:, :msize, :], upsampled_x[:, :msize, :]], dim=-1)
+
+            last_x = torch.ones((cond.shape[0], 1, 1),
                                 device=self._get_device()) * 0  # * self._x_zero
             output_list = []
             hxs = [None for _ in range(len(self._rnns))]
             # index = 0
-            for ii in tqdm.tqdm(range(upsampled_mel.shape[1]), ncols=80):
-                hidden = upsampled_mel[:, ii, :].unsqueeze(1)
-                res = self._skip(torch.cat([upsampled_mel[:, ii, :].unsqueeze(1), last_x], dim=-1))
+            for ii in tqdm.tqdm(range(cond.shape[1]), ncols=80):
+                hidden = cond[:, ii, :].unsqueeze(1)
+                res = self._skip(torch.cat([cond[:, ii, :].unsqueeze(1), last_x], dim=-1))
                 hidden = torch.cat([hidden, last_x], dim=-1)
                 for ll in range(len(self._rnns)):
                     rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
@@ -110,10 +125,7 @@ class CubenetVocoder(pl.LightningModule):
                 output_list.append(samples.unsqueeze(1))
 
         output_list = torch.cat(output_list, dim=1)
-        output_list = output_list.reshape(output_list.shape[0], -1, self._stride, self._psamples)
-        output_list = output_list.transpose(2, 3)
-        output_list = output_list.reshape(output_list.shape[0], -1).detach().cpu().numpy()
-        return output_list  # self._output_functions.decode(output_list)
+        return output_list.detach().cpu().numpy()  # self._output_functions.decode(output_list)
 
     def _train_forward(self, X):
         mel = X['mel']
@@ -167,7 +179,6 @@ class CubenetVocoder(pl.LightningModule):
         loss = self._output_functions.loss(pred_x, target_x)
         return loss
 
-
     def validation_epoch_end(self, outputs) -> None:
         loss = sum(outputs) / len(outputs)
         self.log("val_loss", loss)
@@ -196,41 +207,44 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-1-1-mulaw'
+    fname = 'data/voc-anca-2-256-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
-    upsample = conf['upsample']
-    psamples = conf['psamples']
-    stride = conf['stride']
+    hop_size = conf['hop_size']
     layer_size = conf['layer_size']
     sample_rate = conf['sample_rate']
+    sample_rate_low = conf['sample_rate_low']
+    use_lowres = conf['use_lowres']
     output = conf['output']
+    upsample = conf['upsample']
     vocoder = CubenetVocoder(num_layers=num_layers,
                              layer_size=layer_size,
-                             psamples=psamples,
-                             stride=stride,
+                             use_lowres=use_lowres,
                              upsample=upsample,
+                             upsample_low=sample_rate // sample_rate_low,
                              output=output)
     # vocoder = CubenetVocoder(num_layers=1, layer_size=1024)
     vocoder.load('{0}.last'.format(fname))
     import librosa
     from cube.io_utils.vocoder import MelVocoder
 
-    wav, sr = librosa.load('data/test.wav', sr=22050)
+    wav, sr = librosa.load('data/test.wav', sr=sample_rate)
+    wav_low, sr = librosa.load('data/test.wav', sr=sample_rate_low)
     mel_vocoder = MelVocoder()
     mel = mel_vocoder.melspectrogram(wav, sample_rate=22050, num_mels=80, use_preemphasis=False)
     mel = torch.tensor(mel).unsqueeze(0)
+    x_low = torch.tensor(wav_low).unsqueeze(0)
     vocoder.eval()
     start = time.time()
     # normalize mel
-    output = vocoder({'mel': mel})
+    output = vocoder({'mel': mel, 'x_low': x_low})
     # from ipdb import set_trace
 
     # set_trace()
     stop = time.time()
-    print("generated {0} seconds of audio in {1}".format(len(wav) / 22050, stop - start))
+    print("generated {0} seconds of audio in {1}".format(len(wav) / sample_rate, stop - start))
     from cube.io_utils.dataset import DatasetIO
 
     dio = DatasetIO()
 
-    dio.write_wave("data/generated.wav", output.squeeze() * 32000, 22050, dtype=np.int16)
+    dio.write_wave("data/generated.wav", output.squeeze() * 32000, sample_rate, dtype=np.int16)
