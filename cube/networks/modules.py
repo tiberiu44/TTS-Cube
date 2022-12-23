@@ -312,15 +312,17 @@ class Seq2Seq(nn.Module):
 
 
 class UpsampleNet(nn.Module):
-    def __init__(self, upsample_scales=[2, 2, 4], in_channels=80, out_channels=80):
+    def __init__(self, upsample_scales=[2, 2, 4], in_channels=80, out_channels=80, kernel_size=3):
         super(UpsampleNet, self).__init__()
         self._conv = nn.ModuleList()
+        ic = in_channels
         for ii in range(3):
-            conv = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
+            conv = nn.Conv1d(ic, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
+            ic = out_channels
             self._conv.append(conv)
             self._conv.append(nn.LeakyReLU(0.4))
         self._upsample_conv = nn.ModuleList()
-        ic = in_channels
+        ic = out_channels
         for s in upsample_scales:
             convt = nn.ConvTranspose1d(ic, out_channels, 2 * s, padding=s // 2, stride=(s))
             ic = out_channels

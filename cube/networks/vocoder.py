@@ -27,7 +27,7 @@ import yaml
 
 sys.path.append('')
 from yaml import Loader
-from cube.networks.modules import LinearNorm, ConvNorm, UpsampleNetR
+from cube.networks.modules import LinearNorm, ConvNorm, UpsampleNetR, UpsampleNet
 from cube.networks.loss import MOLOutput, GaussianOutput, BetaOutput, MULAWOutput
 
 
@@ -43,18 +43,13 @@ class CubenetVocoder(pl.LightningModule):
         super(CubenetVocoder, self).__init__()
 
         self._learning_rate = learning_rate
-        self._upsample_mel = UpsampleNetR(upsample=upsample)
-        self._upsample_lowres = UpsampleNetR(upsample=upsample_low)
+        self._upsample_mel = UpsampleNet(upsample_scales=[4, 4, 4, 4], kernel_size=3)
         self._use_lowres = use_lowres
         if self._use_lowres:
-            self._lowres_conv = nn.ModuleList()
-            ic = 1
-            for ii in range(3):
-                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=3, padding=1))
-                ic = 20
+            self._upsample_lowres = UpsampleNet(upsample_scales=[2, 5], kernel_size=7, in_channels=1, out_channels=32)
         ic = 80 + 1
         if use_lowres:
-            ic += 20
+            ic += 32
         self._skip = LinearNorm(ic, layer_size, w_init_gain='tanh')
         rnn_list = []
         for ii in range(num_layers):
@@ -136,10 +131,8 @@ class CubenetVocoder(pl.LightningModule):
         if self._use_lowres:
             # conv and upsample
             hidden = low_x.unsqueeze(1)
-            for conv in self._lowres_conv:
-                hidden = torch.tanh(conv(hidden))
-
             upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
+
         upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
 
         msize = min(upsampled_mel.shape[1], gs_x.shape[1], upsampled_x.shape[1])
@@ -207,7 +200,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-2-256-mulaw'
+    fname = 'data/voc-anca-2-256-gm'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     hop_size = conf['hop_size']
