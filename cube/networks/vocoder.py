@@ -155,7 +155,7 @@ class CubenetVocoder(pl.LightningModule):
             rnn_output, _ = self._rnns[ll](rnn_input)
             hidden = rnn_output
             res = res + hidden
-        preoutput = torch.tanh(self._preoutput(hidden))
+        preoutput = torch.tanh(self._preoutput(res))
         output = self._output(preoutput)
         return output
 
