@@ -228,10 +228,10 @@ class MULAWOutput:
         distrib = Categorical(logits=y)
         sample = distrib.sample()
         return self.decode(sample)
-        #probs = torch.softmax(y, dim=-1)
+        # probs = torch.softmax(y, dim=-1)
         # from ipdb import set_trace
         # set_trace()
-        #return self.decode(torch.argmax(y, dim=-1))
+        # return self.decode(torch.argmax(y, dim=-1))
 
     def encode(self, x):
         quantization_channels = 256

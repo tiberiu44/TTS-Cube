@@ -46,10 +46,10 @@ class CubenetVocoder(pl.LightningModule):
         self._upsample_mel = UpsampleNet(upsample_scales=[4, 4, 4, 4], kernel_size=3)
         self._use_lowres = use_lowres
         if self._use_lowres:
-            self._upsample_lowres = UpsampleNet(upsample_scales=[2, 5], kernel_size=7, in_channels=1, out_channels=32)
+            self._upsample_lowres = UpsampleNet(upsample_scales=[2, 5], kernel_size=7, in_channels=1, out_channels=64)
         ic = 80 + 1
         if use_lowres:
-            ic += 32
+            ic += 64
         self._skip = LinearNorm(ic, layer_size, w_init_gain='tanh')
         rnn_list = []
         for ii in range(num_layers):
@@ -85,9 +85,6 @@ class CubenetVocoder(pl.LightningModule):
             if self._use_lowres:
                 # conv and upsample
                 hidden = low_x.unsqueeze(1)
-                for conv in self._lowres_conv:
-                    hidden = torch.tanh(conv(hidden))
-
                 upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
 
             upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
@@ -103,16 +100,16 @@ class CubenetVocoder(pl.LightningModule):
             # index = 0
             for ii in tqdm.tqdm(range(cond.shape[1]), ncols=80):
                 hidden = cond[:, ii, :].unsqueeze(1)
-                res = self._skip(torch.cat([cond[:, ii, :].unsqueeze(1), last_x], dim=-1))
+                # res = self._skip(torch.cat([cond[:, ii, :].unsqueeze(1), last_x], dim=-1))
                 hidden = torch.cat([hidden, last_x], dim=-1)
                 for ll in range(len(self._rnns)):
                     rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
                     rnn = self._rnns[ll]
                     rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
                     hidden = rnn_output
-                    res = res + hidden
+                    # res = res + hidden
 
-                preoutput = torch.tanh(self._preoutput(res))
+                preoutput = torch.tanh(self._preoutput(hidden))
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.sample(output)
@@ -143,14 +140,14 @@ class CubenetVocoder(pl.LightningModule):
             hidden = torch.cat([upsampled_mel, upsampled_x, gs_x], dim=-1)
         else:
             hidden = torch.cat([upsampled_mel, gs_x], dim=-1)
-        res = self._skip(hidden)
+        # res = self._skip(hidden)
 
         for ll in range(len(self._rnns)):
             rnn_input = hidden
             rnn_output, _ = self._rnns[ll](rnn_input)
             hidden = rnn_output
-            res = res + hidden
-        preoutput = torch.tanh(self._preoutput(res))
+            # res = res + hidden
+        preoutput = torch.tanh(self._preoutput(hidden))
         output = self._output(preoutput)
         return output
 
@@ -200,7 +197,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-2-256-gm'
+    fname = 'data/voc-anca-2-256-mol'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     hop_size = conf['hop_size']
