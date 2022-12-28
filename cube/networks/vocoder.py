@@ -50,7 +50,7 @@ class CubenetVocoder(pl.LightningModule):
             self._lowres_conv = nn.ModuleList()
             ic = 1
             for ii in range(3):
-                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=7, padding=1))
+                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=7, padding=3))
                 ic = 20
         ic = 80 + 1
         if use_lowres:
