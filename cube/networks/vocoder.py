@@ -50,7 +50,7 @@ class CubenetVocoder(pl.LightningModule):
             self._lowres_conv = nn.ModuleList()
             ic = 1
             for ii in range(3):
-                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=3, padding=1))
+                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=7, padding=1))
                 ic = 20
         ic = 80 + 1
         if use_lowres:
@@ -205,7 +205,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-2-256-mulaw'
+    fname = 'data/voc-anca-2-256-mol'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers = conf['num_layers']
     hop_size = conf['hop_size']
@@ -232,7 +232,8 @@ if __name__ == '__main__':
     wav, sr = librosa.load('data/test.wav', sr=sample_rate)
     wav_low, sr = librosa.load('data/test.wav', sr=sample_rate_low)
     mel_vocoder = MelVocoder()
-    mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80, use_preemphasis=False)
+    mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80,
+                                     use_preemphasis=False)
     mel = torch.tensor(mel).unsqueeze(0)
     x_low = torch.tensor(wav_low).unsqueeze(0)
     dio.write_wave("data/load.wav", x_low.squeeze() * 32000, sample_rate_low, dtype=np.int16)
