@@ -239,6 +239,7 @@ class MULAWOutput:
         if isinstance(x, np.ndarray):
             x_mu = np.sign(x) * np.log1p(mu * np.abs(x)) / np.log1p(mu)
             x_mu = ((x_mu + 1) / 2 * mu + 0.5).astype(int)
+            x_mu = np.clip(x_mu, 0, 255)
         elif isinstance(x, (torch.Tensor, torch.LongTensor)):
 
             if isinstance(x, torch.LongTensor):
@@ -248,8 +249,9 @@ class MULAWOutput:
             else:
                 mu = torch.FloatTensor([mu])
             x_mu = torch.sign(x) * torch.log1p(mu * torch.abs(x)) / torch.log1p(mu)
-            x_mu = ((x_mu + 1) / 2 * mu + 0.5).long()
 
+            x_mu = ((x_mu + 1) / 2 * mu + 0.5).long()
+            x_mu = torch.clip(x_mu, 0, 255)
         return x_mu
 
     def decode(self, x_mu):
