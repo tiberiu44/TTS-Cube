@@ -423,7 +423,6 @@ class WaveRNN(nn.Module):
         self._val_loss = 9999
 
     def forward(self, X):
-        mel = X['mel']
         if 'x' in X:
             return self._train_forward(X)
         else:
@@ -432,8 +431,8 @@ class WaveRNN(nn.Module):
     def _inference(self, X):
         with torch.no_grad():
             mel = X['mel']
-            low_x = X['x_low']
             if self._use_lowres:
+                low_x = X['x_low']
                 hidden = low_x.unsqueeze(1)
                 for conv in self._lowres_conv:
                     hidden = torch.tanh(conv(hidden))

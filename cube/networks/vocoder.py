@@ -59,7 +59,6 @@ class CubenetVocoder(pl.LightningModule):
         self._val_loss_lr = 9999
 
     def forward(self, X):
-        mel = X['mel']
         if 'x' in X:
             return self._train(X)
         else:
@@ -92,7 +91,14 @@ class CubenetVocoder(pl.LightningModule):
 
     def _inference(self, X):
         with torch.no_grad():
-            pass
+            x_lr = self._wavernn_lr(X)
+            x_hr = self._wavernn_hr(
+                {
+                    'mel': X['mel'],
+                    'x_low': torch.tensor(x_lr).squeeze().unsqueeze(0)
+                }
+            )
+        return x_lr, x_hr
 
     def validation_step(self, batch, batch_idx):
         return self.forward(batch)
@@ -132,17 +138,21 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-1-512-mulaw-hr'
+    fname = 'data/voc-anca-1-512-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
-    num_layers = conf['num_layers']
+    num_layers_hr = conf['num_layers_hr']
+    layer_size_hr = conf['layer_size_hr']
+    num_layers_lr = conf['num_layers_lr']
+    layer_size_lr = conf['layer_size_lr']
     hop_size = conf['hop_size']
-    layer_size = conf['layer_size']
     sample_rate = conf['sample_rate']
     sample_rate_low = conf['sample_rate_low']
     output = conf['output']
     upsample = conf['upsample']
-    vocoder = CubenetVocoder(num_layers=num_layers,
-                             layer_size=layer_size,
+    vocoder = CubenetVocoder(num_layers_hr=num_layers_hr,
+                             layer_size_hr=layer_size_hr,
+                             layer_size_lr=layer_size_lr,
+                             num_layers_lr=num_layers_lr,
                              upsample=upsample,
                              upsample_low=sample_rate // sample_rate_low,
                              output=output)
@@ -160,16 +170,17 @@ if __name__ == '__main__':
     mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80,
                                      use_preemphasis=False)
     mel = torch.tensor(mel).unsqueeze(0)
-    x_low = torch.tensor(wav_low).unsqueeze(0)
-    dio.write_wave("data/load.wav", x_low.squeeze() * 32000, sample_rate_low, dtype=np.int16)
+    # x_low = torch.tensor(wav_low).unsqueeze(0)
+    # dio.write_wave("data/load.wav", x_low.squeeze() * 32000, sample_rate_low, dtype=np.int16)
     vocoder.eval()
     start = time.time()
     # normalize mel
-    output = vocoder({'mel': mel, 'x_low': x_low})
+    output_lr, output_hr = vocoder({'mel': mel})
     # from ipdb import set_trace
 
     # set_trace()
     stop = time.time()
     print("generated {0} seconds of audio in {1}".format(len(wav) / sample_rate, stop - start))
 
-    dio.write_wave("data/generated.wav", output.squeeze() * 32000, sample_rate, dtype=np.int16)
+    dio.write_wave("data/generated-lr.wav", output_lr.squeeze() * 32000, sample_rate_low, dtype=np.int16)
+    dio.write_wave("data/generated-hr.wav", output_hr.squeeze() * 32000, sample_rate, dtype=np.int16)
