@@ -32,20 +32,28 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
     def __init__(self, store_prefix):
         super().__init__()
         self.store_prefix = store_prefix
-        self._best_loss = 99999
+        self._best_loss_lr = 99999
+        self._best_loss_hr = 99999
 
     def on_validation_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
         epoch = trainer.current_epoch
-        val_loss = pl_module._val_loss
-        sys.stdout.write('\n\n\tVal loss: {0}\n'.format(val_loss))
+        val_loss_lr = pl_module._val_loss_lr
+        val_loss_hr = pl_module._val_loss_hr
+        sys.stdout.write('\n\n\tVal loss lr: {0}\n\tVal loss hr: {1}\n'.format(val_loss_lr, val_loss_hr))
         sys.stdout.flush()
-        if val_loss < self._best_loss:
-            self._best_loss = val_loss
-            fname = "{0}.best".format(self.store_prefix)
+        if val_loss_lr < self._best_loss_lr:
+            self._best_loss_lr = val_loss_lr
+            fname = "{0}.lr.best".format(self.store_prefix)
             sys.stdout.write('\tStoring {0}\n'.format(fname))
             sys.stdout.flush()
-            pl_module.save(fname)
+            pl_module._wavernn_lr.save(fname)
+        if val_loss_hr < self._best_loss_hr:
+            self._best_loss_hr = val_loss_hr
+            fname = "{0}.hr.best".format(self.store_prefix)
+            sys.stdout.write('\tStoring {0}\n'.format(fname))
+            sys.stdout.flush()
+            pl_module._wavernn_hr.save(fname)
 
         fname = "{0}.last".format(self.store_prefix)
         sys.stdout.write('\tStoring {0}\n'.format(fname))
@@ -55,13 +63,14 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
 
 def _train(params):
     config = {
-        'num_layers': params.num_layers,
-        'layer_size': params.layer_size,
+        'num_layers_lr': params.num_layers_lr,
+        'layer_size_lr': params.layer_size_lr,
+        'num_layers_hr': params.num_layers_hr,
+        'layer_size_hr': params.layer_size_hr,
         'upsample': params.upsample,
         'sample_rate': params.sample_rate,
         'output': params.output,
         'sample_rate_low': params.sample_rate_low,
-        'use_lowres': params.use_lowres,
         'hop_size': params.hop_size
     }
     conf_file = '{0}.yaml'.format(params.output_base)
@@ -91,12 +100,12 @@ def _train(params):
                            batch_size=params.batch_size,
                            num_workers=params.num_workers,
                            collate_fn=collate.collate_fn)
-
-    model = CubenetVocoder(num_layers=params.num_layers,
-                           layer_size=params.layer_size,
+    model = CubenetVocoder(num_layers_hr=params.num_layers_hr,
+                           layer_size_hr=params.layer_size_hr,
+                           num_layers_lr=params.num_layers_lr,
+                           layer_size_lr=params.layer_size_lr,
                            upsample=params.upsample,
                            upsample_low=params.sample_rate // params.sample_rate_low,
-                           use_lowres=params.use_lowres,
                            learning_rate=params.lr,
                            output=params.output)
 
@@ -139,10 +148,13 @@ if __name__ == '__main__':
                         help='Number of parallel samples (default=24000)')
     parser.add_argument('--sample-rate-low', dest='sample_rate_low', type=int, default=2400,
                         help='Number of parallel samples (default=2400)')
-    parser.add_argument('--use-lowres', action=BooleanOptionalAction)
-    parser.add_argument('--layer-size', dest='layer_size', default=512, type=int,
+    parser.add_argument('--layer-size-hr', dest='layer_size_hr', default=512, type=int,
                         help='LSTM layer size (default=512)')
-    parser.add_argument('--num-layers', dest='num_layers', default=1, type=int,
+    parser.add_argument('--num-layers-hr', dest='num_layers_hr', default=1, type=int,
+                        help='Number of LSTM layers (default=1)')
+    parser.add_argument('--layer-size-lr', dest='layer_size_lr', default=512, type=int,
+                        help='LSTM layer size (default=512)')
+    parser.add_argument('--num-layers-lr', dest='num_layers_lr', default=1, type=int,
                         help='Number of LSTM layers (default=1)')
     parser.add_argument('--hop-size', dest='hop_size', type=int, default=240,
                         help='Hop-size for mel (default=240)')

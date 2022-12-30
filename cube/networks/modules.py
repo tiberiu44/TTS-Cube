@@ -17,6 +17,8 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import tqdm
+from cube.networks.loss import BetaOutput, GaussianOutput, MULAWOutput, MOLOutput
 
 
 class LinearNorm(torch.nn.Module):
@@ -375,9 +377,176 @@ class UpsampleNetR(nn.Module):
         return c
 
 
-class OracleNet(nn.Module):
-    def __init__(self, receptive_size=256, samples=16, cond_size=80):
-        super(OracleNet, self).__init__()
+class WaveRNN(nn.Module):
+    def __init__(self,
+                 num_layers: int = 2,
+                 layer_size: int = 512,
+                 upsample=100,
+                 upsample_low=10,
+                 use_lowres=True,
+                 learning_rate=1e-4,
+                 output='mol'):
+        super(WaveRNN, self).__init__()
 
-    def forward(self, x):
-        pass
+        self._learning_rate = learning_rate
+        self._upsample_mel = UpsampleNetR(upsample=upsample)
+        self._use_lowres = use_lowres
+        if self._use_lowres:
+            self._upsample_lowres = UpsampleNetR(upsample_low)
+            self._lowres_conv = nn.ModuleList()
+            ic = 1
+            for ii in range(3):
+                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=7, padding=3))
+                ic = 20
+        ic = 80 + 1
+        if use_lowres:
+            ic += 20
+        self._skip = LinearNorm(ic, layer_size, w_init_gain='tanh')
+        rnn_list = []
+        for ii in range(num_layers):
+            rnn = nn.GRU(input_size=ic, hidden_size=layer_size, num_layers=1, batch_first=True)
+            ic = layer_size
+            rnn_list.append(rnn)
+        self._rnns = nn.ModuleList(rnn_list)
+        self._preoutput = LinearNorm(layer_size, 256)
+
+        if output == 'mol':
+            self._output_functions = MOLOutput()
+        elif output == 'gm':
+            self._output_functions = GaussianOutput()
+        elif output == 'beta':
+            self._output_functions = BetaOutput()
+        elif output == 'mulaw':
+            self._output_functions = MULAWOutput()
+
+        self._output = LinearNorm(256, self._output_functions.sample_size, w_init_gain='linear')
+        self._val_loss = 9999
+
+    def forward(self, X):
+        mel = X['mel']
+        if 'x' in X:
+            return self._train_forward(X)
+        else:
+            return self._inference(X)
+
+    def _inference(self, X):
+        with torch.no_grad():
+            mel = X['mel']
+            low_x = X['x_low']
+            if self._use_lowres:
+                hidden = low_x.unsqueeze(1)
+                for conv in self._lowres_conv:
+                    hidden = torch.tanh(conv(hidden))
+
+                upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
+
+            upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
+            cond = upsampled_mel
+            if self._use_lowres:
+                msize = min(upsampled_mel.shape[1], upsampled_x.shape[1])
+                cond = torch.cat([upsampled_mel[:, :msize, :], upsampled_x[:, :msize, :]], dim=-1)
+
+            last_x = torch.ones((cond.shape[0], 1, 1),
+                                device=self._get_device()) * 0  # * self._x_zero
+            output_list = []
+            hxs = [None for _ in range(len(self._rnns))]
+            # index = 0
+            for ii in tqdm.tqdm(range(cond.shape[1]), ncols=80):
+                hidden = cond[:, ii, :].unsqueeze(1)
+                res = self._skip(torch.cat([cond[:, ii, :].unsqueeze(1), last_x], dim=-1))
+                hidden = torch.cat([hidden, last_x], dim=-1)
+                for ll in range(len(self._rnns)):
+                    rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
+                    rnn = self._rnns[ll]
+                    rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
+                    hidden = rnn_output
+                    res = res + hidden
+
+                preoutput = torch.tanh(self._preoutput(res))
+                output = self._output(preoutput)
+                output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
+                samples = self._output_functions.sample(output)
+                last_x = samples.unsqueeze(1)
+                output_list.append(samples.unsqueeze(1))
+
+        output_list = torch.cat(output_list, dim=1)
+        return output_list.detach().cpu().numpy()  # self._output_functions.decode(output_list)
+
+    def _train_forward(self, X):
+        mel = X['mel']
+        gs_x = X['x']
+
+        upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
+        # check if we are using lowres signal conditioning
+        if self._use_lowres:
+            low_x = X['x_low']
+            hidden = low_x.unsqueeze(1)
+            for conv in self._lowres_conv:
+                hidden = torch.tanh(conv(hidden))
+
+            upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
+            msize = min(upsampled_mel.shape[1], gs_x.shape[1], upsampled_x.shape[1])
+            upsampled_x = upsampled_x[:, :msize, :]
+        else:
+            msize = min(upsampled_mel.shape[1], gs_x.shape[1])
+
+        upsampled_mel = upsampled_mel[:, :msize, :]
+        gs_x = gs_x[:, :msize].unsqueeze(2)
+        if self._use_lowres:
+            hidden = torch.cat([upsampled_mel, upsampled_x, gs_x], dim=-1)
+        else:
+            hidden = torch.cat([upsampled_mel, gs_x], dim=-1)
+        res = self._skip(hidden)
+
+        for ll in range(len(self._rnns)):
+            rnn_input = hidden
+            rnn_output, _ = self._rnns[ll](rnn_input)
+            hidden = rnn_output
+            res = res + hidden
+        preoutput = torch.tanh(self._preoutput(res))
+        output = self._output(preoutput)
+        return output
+
+    def validation_step(self, batch, batch_idx):
+        output = self.forward(batch)
+        gs_audio = batch['x']
+
+        target_x = gs_audio[:, 1:]
+        pred_x = output[:, :-1]
+        loss = self._output_functions.loss(pred_x, target_x)
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        output = self.forward(batch)
+        gs_audio = batch['x']
+
+        target_x = gs_audio[:, 1:]
+        pred_x = output[:, :-1]
+        loss = self._output_functions.loss(pred_x, target_x)
+        return loss
+
+    def validation_epoch_end(self, outputs) -> None:
+        loss = sum(outputs) / len(outputs)
+        self.log("val_loss", loss)
+        self._val_loss = loss
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), lr=self._learning_rate)
+
+    @torch.jit.ignore
+    def _get_device(self):
+        if self._output.linear_layer.weight.device.type == 'cpu':
+            return 'cpu'
+        return '{0}:{1}'.format(self._output.linear_layer.weight.device.type,
+                                str(self._output.linear_layer.weight.device.index))
+
+    @torch.jit.ignore
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+
+    @torch.jit.ignore
+    def load(self, path):
+        # from ipdb import set_trace
+        # set_trace()
+        # tmp = torch.load(path, map_location='cpu')
+        self.load_state_dict(torch.load(path, map_location='cpu'))
