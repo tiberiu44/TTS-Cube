@@ -474,7 +474,7 @@ class WaveRNN(nn.Module):
         mel = X['mel']
         gs_x = X['x']
 
-        if self._use_lowres:
+        if self._use_lowres and self.training:
             # create mask for mel so that the upsampled signal has a higher weight
             mel_mask = (torch.rand((mel.shape[0], mel.shape[1], 1), device=self._get_device()) > 0.1)
             mel = mel * mel_mask
