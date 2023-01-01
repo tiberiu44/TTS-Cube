@@ -158,6 +158,8 @@ if __name__ == '__main__':
                              output=output)
     # vocoder = CubenetVocoder(num_layers=1, layer_size=1024)
     vocoder.load('{0}.last'.format(fname))
+    vocoder._wavernn_lr.load('{0}.lr.best'.format(fname))
+    vocoder._wavernn_hr.load('{0}.hr.best'.format(fname))
     import librosa
     from cube.io_utils.vocoder import MelVocoder
     from cube.io_utils.dataset import DatasetIO
@@ -165,6 +167,11 @@ if __name__ == '__main__':
     dio = DatasetIO()
 
     wav, sr = librosa.load('data/test.wav', sr=sample_rate)
+    from cube.networks.loss import MULAWOutput
+
+    wav2 = MULAWOutput().decode(MULAWOutput().encode(wav))
+    dio.write_wave("data/mulaw.wav", wav2 * 32000, sample_rate, dtype=np.int16)
+
     wav_low, sr = librosa.load('data/test.wav', sr=sample_rate_low)
     mel_vocoder = MelVocoder()
     mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80,

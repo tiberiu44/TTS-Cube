@@ -436,7 +436,6 @@ class WaveRNN(nn.Module):
                 hidden = low_x.unsqueeze(1)
                 for conv in self._lowres_conv:
                     hidden = torch.tanh(conv(hidden))
-
                 upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
 
             upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
@@ -474,6 +473,11 @@ class WaveRNN(nn.Module):
     def _train_forward(self, X):
         mel = X['mel']
         gs_x = X['x']
+
+        if self._use_lowres:
+            # create mask for mel so that the upsampled signal has a higher weight
+            mel_mask = (torch.rand((mel.shape[0], mel.shape[1], 1), device=self._get_device()) > 0.1)
+            mel = mel * mel_mask
 
         upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
         # check if we are using lowres signal conditioning
