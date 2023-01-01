@@ -451,16 +451,16 @@ class WaveRNN(nn.Module):
             # index = 0
             for ii in tqdm.tqdm(range(cond.shape[1]), ncols=80):
                 hidden = cond[:, ii, :].unsqueeze(1)
-                res = self._skip(torch.cat([cond[:, ii, :].unsqueeze(1), last_x], dim=-1))
+                # res = self._skip(torch.cat([cond[:, ii, :].unsqueeze(1), last_x], dim=-1))
                 hidden = torch.cat([hidden, last_x], dim=-1)
                 for ll in range(len(self._rnns)):
                     rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
                     rnn = self._rnns[ll]
                     rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
                     hidden = rnn_output
-                    res = res + hidden
+                    # res = res + hidden
 
-                preoutput = torch.tanh(self._preoutput(res))
+                preoutput = torch.tanh(self._preoutput(hidden))
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.sample(output)
@@ -499,14 +499,14 @@ class WaveRNN(nn.Module):
             hidden = torch.cat([upsampled_mel, upsampled_x, gs_x], dim=-1)
         else:
             hidden = torch.cat([upsampled_mel, gs_x], dim=-1)
-        res = self._skip(hidden)
+        # res = self._skip(hidden)
 
         for ll in range(len(self._rnns)):
             rnn_input = hidden
             rnn_output, _ = self._rnns[ll](rnn_input)
             hidden = rnn_output
-            res = res + hidden
-        preoutput = torch.tanh(self._preoutput(res))
+            # res = res + hidden
+        preoutput = torch.tanh(self._preoutput(hidden))
         output = self._output(preoutput)
         return output
 
