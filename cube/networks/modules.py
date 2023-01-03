@@ -387,12 +387,17 @@ class WaveRNN(nn.Module):
                  learning_rate=1e-4,
                  output='mol'):
         super(WaveRNN, self).__init__()
-
+        # hardcode upsample layers
+        if upsample == 240:
+            upsample = [5, 4, 4, 3]  # 240
+            upsample_low = [2, 5]
+        else:
+            upsample = [2, 2, 2, 3]  # 24
         self._learning_rate = learning_rate
-        self._upsample_mel = UpsampleNetR(upsample=upsample)
+        self._upsample_mel = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         self._use_lowres = use_lowres
         if self._use_lowres:
-            self._upsample_lowres = UpsampleNetR(upsample_low)
+            self._upsample_lowres = UpsampleNet(upsample_scales=upsample_low, in_channels=20, out_channels=20)
             self._lowres_conv = nn.ModuleList()
             ic = 1
             for ii in range(3):
