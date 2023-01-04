@@ -450,6 +450,7 @@ class WaveRNN(nn.Module):
             mel = X['mel']
             if self._use_lowres:
                 low_x = X['x_low']
+                low_x_ups = self._upsample_lowres_i(low_x.unsqueeze(1)).permute(0, 2, 1)
                 hidden = low_x.unsqueeze(1)
                 for conv in self._lowres_conv:
                     hidden = torch.tanh(conv(hidden))
@@ -481,14 +482,17 @@ class WaveRNN(nn.Module):
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.sample(output)
-                last_x = samples.unsqueeze(1)
+                if self._use_lowres and ii < low_x_ups.shape[1]:
+                    last_x = (samples + low_x_ups[:, ii, :]).unsqueeze(1)
+                else:
+                    last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
 
         output_list = torch.cat(output_list, dim=1)
         if self._use_lowres:
             upsample_lowres_i = self._upsample_lowres_i(low_x.unsqueeze(1)).permute(0, 2, 1).squeeze(2)
             min_s = min(upsample_lowres_i.shape[1], output_list.shape[1])
-            output_list = output_list[:, :min_s] + upsample_lowres_i[:, :min_s]
+            output_list = output_list[:, :min_s].squeeze() + upsample_lowres_i[:, :min_s].squeeze()
         return output_list.detach().cpu().numpy()  # self._output_functions.decode(output_list)
 
     def _train_forward(self, X):

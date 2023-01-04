@@ -95,7 +95,8 @@ class CubenetVocoder(pl.LightningModule):
             x_hr = self._wavernn_hr(
                 {
                     'mel': X['mel'],
-                    'x_low': torch.tensor(x_lr).squeeze().unsqueeze(0)
+                    # 'x_low': torch.tensor(x_lr).squeeze().unsqueeze(0)
+                    'x_low': X['x_low']
                 }
             )
         return x_lr, x_hr
@@ -138,7 +139,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-1-512-mulaw'
+    fname = 'data/voc-anca-1-512-mol'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers_hr = conf['num_layers_hr']
     layer_size_hr = conf['layer_size_hr']
@@ -177,12 +178,12 @@ if __name__ == '__main__':
     mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80,
                                      use_preemphasis=False)
     mel = torch.tensor(mel).unsqueeze(0)
-    # x_low = torch.tensor(wav_low).unsqueeze(0)
+    x_low = torch.tensor(wav_low).unsqueeze(0)
     # dio.write_wave("data/load.wav", x_low.squeeze() * 32000, sample_rate_low, dtype=np.int16)
     vocoder.eval()
     start = time.time()
     # normalize mel
-    output_lr, output_hr = vocoder({'mel': mel})
+    output_lr, output_hr = vocoder({'mel': mel, 'x_low': x_low})
     # from ipdb import set_trace
 
     # set_trace()
