@@ -342,6 +342,17 @@ class UpsampleNet(nn.Module):
         return c
 
 
+class UpsampleNetI(nn.Module):
+    def __init__(self, upsample=10):
+        super(UpsampleNetI, self).__init__()
+        self._upsample = upsample
+
+    def forward(self, c):
+        # B x C x T'
+        ups = torch.nn.functional.interpolate(c, self._upsample * c.shape[2])
+        return ups
+
+
 class UpsampleNet2(nn.Module):
     def __init__(self, upsample_scales=[2, 2, 2, 2], in_channels=80, out_channels=80):
         super(UpsampleNet2, self).__init__()
@@ -389,6 +400,7 @@ class WaveRNN(nn.Module):
         super(WaveRNN, self).__init__()
         # hardcode upsample layers
         if upsample == 240:
+            self._upsample_lowres_i = UpsampleNetI(upsample_low)
             upsample = [5, 4, 4, 3]  # 240
             upsample_low = [2, 5]
         else:
@@ -473,6 +485,10 @@ class WaveRNN(nn.Module):
                 output_list.append(samples.unsqueeze(1))
 
         output_list = torch.cat(output_list, dim=1)
+        if self._use_lowres:
+            upsample_lowres_i = self._upsample_lowres_i(low_x.unsqueeze(1)).permute(0, 2, 1).squeeze(2)
+            min_s = min(upsample_lowres_i.shape[1], output_list.shape[1])
+            output_list = output_list[:, :min_s] + upsample_lowres_i[:, :min_s]
         return output_list.detach().cpu().numpy()  # self._output_functions.decode(output_list)
 
     def _train_forward(self, X):
@@ -513,7 +529,9 @@ class WaveRNN(nn.Module):
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
         gs_audio = batch['x']
-
+        if self._use_lowres:
+            interp_x = self._upsample_lowres_i(batch['x_low'].unsqueeze(1)).squeeze(1)
+            gs_audio = gs_audio - interp_x
         target_x = gs_audio[:, 1:]
         pred_x = output[:, :-1]
         loss = self._output_functions.loss(pred_x, target_x)
@@ -522,6 +540,9 @@ class WaveRNN(nn.Module):
     def training_step(self, batch, batch_idx):
         output = self.forward(batch)
         gs_audio = batch['x']
+        if self._use_lowres:
+            interp_x = self._upsample_lowres_i(batch['x_low'].unsqueeze(1)).squeeze(1)
+            gs_audio = gs_audio - interp_x
 
         target_x = gs_audio[:, 1:]
         pred_x = output[:, :-1]
