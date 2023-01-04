@@ -417,7 +417,7 @@ class WaveRNN(nn.Module):
                 ic = 20
         ic = 80 + 1
         if use_lowres:
-            ic += 20
+            ic += 21
         self._skip = LinearNorm(ic, layer_size, w_init_gain='tanh')
         rnn_list = []
         for ii in range(num_layers):
@@ -450,7 +450,7 @@ class WaveRNN(nn.Module):
             mel = X['mel']
             if self._use_lowres:
                 low_x = X['x_low']
-                low_x_ups = self._upsample_lowres_i(low_x.unsqueeze(1)).permute(0, 2, 1)
+                interp_x = self._upsample_lowres_i(low_x.unsqueeze(1)).permute(0, 2, 1)
                 hidden = low_x.unsqueeze(1)
                 for conv in self._lowres_conv:
                     hidden = torch.tanh(conv(hidden))
@@ -482,17 +482,16 @@ class WaveRNN(nn.Module):
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.sample(output)
-                if self._use_lowres and ii < low_x_ups.shape[1]:
-                    last_x = (samples + low_x_ups[:, ii, :]).unsqueeze(1)
+                if self._use_lowres and ii < interp_x.shape[1]:
+                    last_x = (samples + interp_x[:, ii, :]).unsqueeze(1)
                 else:
                     last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
 
         output_list = torch.cat(output_list, dim=1)
         if self._use_lowres:
-            upsample_lowres_i = self._upsample_lowres_i(low_x.unsqueeze(1)).permute(0, 2, 1).squeeze(2)
-            min_s = min(upsample_lowres_i.shape[1], output_list.shape[1])
-            output_list = output_list[:, :min_s].squeeze() + upsample_lowres_i[:, :min_s].squeeze()
+            min_s = min(interp_x.shape[1], output_list.shape[1])
+            output_list = output_list[:, :min_s].squeeze() + interp_x[:, :min_s].squeeze()
         return output_list.detach().cpu().numpy()  # self._output_functions.decode(output_list)
 
     def _train_forward(self, X):
@@ -503,12 +502,13 @@ class WaveRNN(nn.Module):
         # check if we are using lowres signal conditioning
         if self._use_lowres:
             low_x = X['x_low']
+            interp_x = self._upsample_lowres_i(low_x.unsqueeze(1)).squeeze(1)
             hidden = low_x.unsqueeze(1)
             for conv in self._lowres_conv:
                 hidden = torch.tanh(conv(hidden))
 
             upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
-            msize = min(upsampled_mel.shape[1], gs_x.shape[1], upsampled_x.shape[1])
+            msize = min(upsampled_mel.shape[1], gs_x.shape[1], upsampled_x.shape[1], interp_x.shape[1])
             upsampled_x = upsampled_x[:, :msize, :]
         else:
             msize = min(upsampled_mel.shape[1], gs_x.shape[1])
@@ -516,7 +516,7 @@ class WaveRNN(nn.Module):
         upsampled_mel = upsampled_mel[:, :msize, :]
         gs_x = gs_x[:, :msize].unsqueeze(2)
         if self._use_lowres:
-            hidden = torch.cat([upsampled_mel, upsampled_x, gs_x], dim=-1)
+            hidden = torch.cat([upsampled_mel, upsampled_x, interp_x.unsqueeze(2), gs_x], dim=-1)
         else:
             hidden = torch.cat([upsampled_mel, gs_x], dim=-1)
         # res = self._skip(hidden)

@@ -139,7 +139,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-1-512-mol'
+    fname = 'data/voc-vctk-1-512-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers_hr = conf['num_layers_hr']
     layer_size_hr = conf['layer_size_hr']
@@ -167,13 +167,13 @@ if __name__ == '__main__':
 
     dio = DatasetIO()
 
-    wav, sr = librosa.load('data/test.wav', sr=sample_rate)
+    wav, sr = librosa.load('data/test1.wav', sr=sample_rate)
     from cube.networks.loss import MULAWOutput
 
     wav2 = MULAWOutput().decode(MULAWOutput().encode(wav))
     dio.write_wave("data/mulaw.wav", wav2 * 32000, sample_rate, dtype=np.int16)
 
-    wav_low, sr = librosa.load('data/test.wav', sr=sample_rate_low)
+    wav_low, sr = librosa.load('data/test1.wav', sr=sample_rate_low)
     mel_vocoder = MelVocoder()
     mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80,
                                      use_preemphasis=False)
