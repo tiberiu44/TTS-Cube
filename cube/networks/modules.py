@@ -349,7 +349,7 @@ class UpsampleNetI(nn.Module):
 
     def forward(self, c):
         # B x C x T'
-        ups = torch.nn.functional.interpolate(c, self._upsample * c.shape[2])
+        ups = torch.nn.functional.interpolate(c, self._upsample * c.shape[2], mode='linear')
         return ups
 
 
@@ -459,8 +459,11 @@ class WaveRNN(nn.Module):
             upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
             cond = upsampled_mel
             if self._use_lowres:
-                msize = min(upsampled_mel.shape[1], upsampled_x.shape[1])
-                cond = torch.cat([upsampled_mel[:, :msize, :], upsampled_x[:, :msize, :]], dim=-1)
+                msize = min(upsampled_mel.shape[1], upsampled_x.shape[1], interp_x.shape[1])
+                cond = torch.cat([upsampled_mel[:, :msize, :],
+                                  upsampled_x[:, :msize, :],
+                                  interp_x[:, :msize, :]],
+                                 dim=-1)
 
             last_x = torch.ones((cond.shape[0], 1, 1),
                                 device=self._get_device()) * 0  # * self._x_zero

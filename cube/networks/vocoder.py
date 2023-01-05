@@ -57,6 +57,8 @@ class CubenetVocoder(pl.LightningModule):
                                    output=output)
         self._val_loss_hr = 9999
         self._val_loss_lr = 9999
+        self.automatic_optimization = False
+        self._global_step = 0
 
     def forward(self, X):
         if 'x' in X:
@@ -105,7 +107,17 @@ class CubenetVocoder(pl.LightningModule):
         return self.forward(batch)
 
     def training_step(self, batch, batch_idx):
-        return self.forward(batch)
+        opt = self.optimizers()
+        opt.zero_grad()
+
+        loss = self.forward(batch)
+        self.manual_backward(loss['loss'])
+        self.clip_gradients(opt, 5, gradient_clip_algorithm='norm')
+        opt.step()
+        self._global_step += 1
+        opt.param_groups[0]['lr'] = self._compute_lr(self._learning_rate, 5e-5, self._global_step)
+        self.log_dict(loss, prog_bar=True)
+        return loss
 
     def validation_epoch_end(self, outputs) -> None:
         loss_lr = sum([x['lr'] for x in outputs]) / len(outputs)
@@ -117,7 +129,7 @@ class CubenetVocoder(pl.LightningModule):
         self._val_loss_lr = loss_lr
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self._learning_rate)
+        return torch.optim.Adam(self.parameters(), lr=self._learning_rate, amsgrad=True)
 
     @torch.jit.ignore
     def _get_device(self):
@@ -132,14 +144,14 @@ class CubenetVocoder(pl.LightningModule):
 
     @torch.jit.ignore
     def load(self, path):
-        # from ipdb import set_trace
-        # set_trace()
-        # tmp = torch.load(path, map_location='cpu')
         self.load_state_dict(torch.load(path, map_location='cpu'))
+
+    def _compute_lr(self, initial_lr, delta, step):
+        return initial_lr / (1 + delta * step)
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-vctk-1-512-mulaw'
+    fname = 'data/voc-anca-2-256-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers_hr = conf['num_layers_hr']
     layer_size_hr = conf['layer_size_hr']
@@ -167,13 +179,13 @@ if __name__ == '__main__':
 
     dio = DatasetIO()
 
-    wav, sr = librosa.load('data/test1.wav', sr=sample_rate)
+    wav, sr = librosa.load('data/test.wav', sr=sample_rate)
     from cube.networks.loss import MULAWOutput
 
     wav2 = MULAWOutput().decode(MULAWOutput().encode(wav))
     dio.write_wave("data/mulaw.wav", wav2 * 32000, sample_rate, dtype=np.int16)
 
-    wav_low, sr = librosa.load('data/test1.wav', sr=sample_rate_low)
+    wav_low, sr = librosa.load('data/test.wav', sr=sample_rate_low)
     mel_vocoder = MelVocoder()
     mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80,
                                      use_preemphasis=False)
@@ -183,6 +195,8 @@ if __name__ == '__main__':
     vocoder.eval()
     start = time.time()
     # normalize mel
+    x_low_hi = vocoder._wavernn_hr._upsample_lowres_i(x_low.unsqueeze(1))
+    dio.write_wave("data/high.wav", x_low_hi.detach().cpu().numpy().squeeze() * 32000, sample_rate, dtype=np.int16)
     output_lr, output_hr = vocoder({'mel': mel, 'x_low': x_low})
     # from ipdb import set_trace
 

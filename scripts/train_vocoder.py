@@ -118,7 +118,6 @@ def _train(params):
         accelerator=params.accelerator,
         devices=params.devices,
         max_epochs=-1,
-        gradient_clip_val=1,
         callbacks=[PrintAndSaveCallback(params.output_base)]
     )
 
