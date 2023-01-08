@@ -485,16 +485,16 @@ class WaveRNN(nn.Module):
                 output = self._output(preoutput)
                 output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
                 samples = self._output_functions.sample(output)
-                if self._use_lowres and ii < interp_x.shape[1]:
-                    last_x = (samples + interp_x[:, ii, :]).unsqueeze(1)
-                else:
-                    last_x = samples.unsqueeze(1)
+                # if self._use_lowres and ii < interp_x.shape[1]:
+                #     last_x = (samples + interp_x[:, ii, :]).unsqueeze(1)
+                # else:
+                last_x = samples.unsqueeze(1)
                 output_list.append(samples.unsqueeze(1))
 
         output_list = torch.cat(output_list, dim=1)
-        if self._use_lowres:
-            min_s = min(interp_x.shape[1], output_list.shape[1])
-            output_list = output_list[:, :min_s].squeeze() + interp_x[:, :min_s].squeeze()
+        # if self._use_lowres:
+        #     min_s = min(interp_x.shape[1], output_list.shape[1])
+        #     output_list = output_list[:, :min_s].squeeze() + interp_x[:, :min_s].squeeze()
         return output_list.detach().cpu().numpy()  # self._output_functions.decode(output_list)
 
     def _train_forward(self, X):
@@ -536,9 +536,6 @@ class WaveRNN(nn.Module):
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
         gs_audio = batch['x']
-        if self._use_lowres:
-            interp_x = self._upsample_lowres_i(batch['x_low'].unsqueeze(1)).squeeze(1)
-            gs_audio = gs_audio - interp_x
         target_x = gs_audio[:, 1:]
         pred_x = output[:, :-1]
         loss = self._output_functions.loss(pred_x, target_x)
@@ -547,10 +544,6 @@ class WaveRNN(nn.Module):
     def training_step(self, batch, batch_idx):
         output = self.forward(batch)
         gs_audio = batch['x']
-        if self._use_lowres:
-            interp_x = self._upsample_lowres_i(batch['x_low'].unsqueeze(1)).squeeze(1)
-            gs_audio = gs_audio - interp_x
-
         target_x = gs_audio[:, 1:]
         pred_x = output[:, :-1]
         loss = self._output_functions.loss(pred_x, target_x)

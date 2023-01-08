@@ -173,6 +173,18 @@ if __name__ == '__main__':
     vocoder.load('{0}.last'.format(fname))
     vocoder._wavernn_lr.load('{0}.lr.best'.format(fname))
     vocoder._wavernn_hr.load('{0}.hr.best'.format(fname))
+    # import torch.quantization
+    #
+    # # set quantization config for server (x86)
+    # vocoder.qconfig = torch.quantization.get_default_qconfig('qnnpack')
+    #
+    # # insert observers
+    # torch.quantization.prepare(vocoder, inplace=True)
+    # # Calibrate the model and collect statistics
+    #
+    # # convert to quantized version
+    # torch.quantization.convert(vocoder, inplace=True)
+
     import librosa
     from cube.io_utils.vocoder import MelVocoder
     from cube.io_utils.dataset import DatasetIO
