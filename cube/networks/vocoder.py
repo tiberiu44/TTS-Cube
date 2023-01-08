@@ -115,7 +115,9 @@ class CubenetVocoder(pl.LightningModule):
         self.clip_gradients(opt, 5, gradient_clip_algorithm='norm')
         opt.step()
         self._global_step += 1
-        opt.param_groups[0]['lr'] = self._compute_lr(self._learning_rate, 5e-5, self._global_step)
+        alpha = self._compute_lr(self._learning_rate, 5e-5, self._global_step)
+        opt.param_groups[0]['lr'] = alpha
+        loss['alpha'] = alpha
         self.log_dict(loss, prog_bar=True)
         return loss
 
@@ -151,7 +153,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-2-256-mulaw'
+    fname = 'data/voc-anca-3-64-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers_hr = conf['num_layers_hr']
     layer_size_hr = conf['layer_size_hr']
