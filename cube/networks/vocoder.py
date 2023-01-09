@@ -59,6 +59,8 @@ class CubenetVocoder(pl.LightningModule):
         self._val_loss_lr = 9999
         self.automatic_optimization = False
         self._global_step = 0
+        self._upsample = upsample
+        self._upsample_low = upsample_low
 
     def forward(self, X):
         if 'x' in X:
@@ -94,14 +96,38 @@ class CubenetVocoder(pl.LightningModule):
     def _inference(self, X):
         with torch.no_grad():
             x_lr = self._wavernn_lr(X)
-            x_hr = self._wavernn_hr(
-                {
-                    'mel': X['mel'],
-                    # 'x_low': torch.tensor(x_lr).squeeze().unsqueeze(0)
-                    'x_low': X['x_low']
-                }
+
+            x_low = X['x_low']  # torch.tensor(x_lr)
+            inference_batch = self._inference_batch(X['mel'], x_low, num_batches=20)
+            batched_x_hr = self._wavernn_hr(
+                inference_batch
             )
+            x_hr = self._compose_batched_inference(batched_x_hr)
         return x_lr, x_hr
+
+    def _compose_batched_inference(self, batched_x):
+        batched_x = batched_x[:, self._upsample:]
+        return batched_x.reshape(1, -1)
+
+    def _inference_batch(self, mel, x_low, num_batches=20):
+        if mel.shape[1] < num_batches:
+            num_batches = mel.shape[1]
+        mel = mel[:, :mel.shape[1] // num_batches * num_batches]
+
+        x_low = x_low[:, :x_low.shape[1] // num_batches * num_batches]
+        mel_split = mel.reshape(num_batches, -1, mel.shape[2]).cpu().numpy()
+        x_low_split = x_low.reshape(num_batches, -1).cpu().numpy()
+        mel = np.ones((mel_split.shape[0], mel_split.shape[1] + 1, mel_split.shape[2])) * -5
+        mel[:, 1:, :] = mel_split
+        mel[1:, 0, :] = mel_split[:-1, -1, :]
+        x_low = np.zeros((x_low_split.shape[0], x_low_split.shape[1] + self._upsample_low))
+        x_low[:, self._upsample_low:] = x_low_split
+        x_low[1:, 0:self._upsample_low] = x_low_split[:-1, -self._upsample_low:]
+
+        return {
+            'mel': torch.tensor(mel, dtype=torch.float),
+            'x_low': torch.tensor(x_low, dtype=torch.float)
+        }
 
     def validation_step(self, batch, batch_idx):
         return self.forward(batch)
@@ -153,7 +179,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-3-64-mulaw'
+    fname = 'data/voc-vctk-2-256-mulaw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers_hr = conf['num_layers_hr']
     layer_size_hr = conf['layer_size_hr']
