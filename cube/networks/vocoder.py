@@ -98,7 +98,8 @@ class CubenetVocoder(pl.LightningModule):
             x_lr = self._wavernn_lr(X)
 
             x_low = X['x_low']  # torch.tensor(x_lr)
-            inference_batch = self._inference_batch(X['mel'], x_low, num_batches=20)
+            # x_low = torch.tensor(x_lr)
+            inference_batch = self._inference_batch(X['mel'], x_low, num_batches=2)
             batched_x_hr = self._wavernn_hr(
                 inference_batch
             )
@@ -109,7 +110,7 @@ class CubenetVocoder(pl.LightningModule):
         batched_x = batched_x[:, self._upsample:]
         return batched_x.reshape(1, -1)
 
-    def _inference_batch(self, mel, x_low, num_batches=20):
+    def _inference_batch(self, mel, x_low, num_batches=5):
         if mel.shape[1] < num_batches:
             num_batches = mel.shape[1]
         mel = mel[:, :mel.shape[1] // num_batches * num_batches]
@@ -133,16 +134,23 @@ class CubenetVocoder(pl.LightningModule):
         return self.forward(batch)
 
     def training_step(self, batch, batch_idx):
-        opt = self.optimizers()
-        opt.zero_grad()
+        opt_lr, opt_hr = self.optimizers()
+        opt_lr.zero_grad()
+        opt_hr.zero_grad()
 
         loss = self.forward(batch)
-        self.manual_backward(loss['loss'])
-        self.clip_gradients(opt, 5, gradient_clip_algorithm='norm')
-        opt.step()
+        loss_lr = loss['lr']
+        loss_hr = loss['hr']
+        loss_lr.backward()
+        loss_hr.backward()
+        torch.nn.utils.clip_grad_norm(self._wavernn_lr.parameters(), 5)
+        torch.nn.utils.clip_grad_norm(self._wavernn_hr.parameters(), 5)
+        opt_lr.step()
+        opt_hr.step()
         self._global_step += 1
         alpha = self._compute_lr(self._learning_rate, 5e-5, self._global_step)
-        opt.param_groups[0]['lr'] = alpha
+        opt_lr.param_groups[0]['lr'] = alpha
+        opt_hr.param_groups[0]['lr'] = alpha
         loss['alpha'] = alpha
         self.log_dict(loss, prog_bar=True)
         return loss
@@ -157,7 +165,11 @@ class CubenetVocoder(pl.LightningModule):
         self._val_loss_lr = loss_lr
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self._learning_rate, amsgrad=True)
+        return [
+            torch.optim.Adam(self._wavernn_lr.parameters(), lr=self._learning_rate, amsgrad=True),
+            torch.optim.Adam(self._wavernn_hr.parameters(), lr=self._learning_rate, amsgrad=True)
+        ]
+        # return torch.optim.Adam(self.parameters(), lr=self._learning_rate, amsgrad=True)
 
     @torch.jit.ignore
     def _get_device(self):
@@ -219,13 +231,13 @@ if __name__ == '__main__':
 
     dio = DatasetIO()
 
-    wav, sr = librosa.load('data/test.wav', sr=sample_rate)
+    wav, sr = librosa.load('data/test1.wav', sr=sample_rate)
     from cube.networks.loss import MULAWOutput
 
     wav2 = MULAWOutput().decode(MULAWOutput().encode(wav))
     dio.write_wave("data/mulaw.wav", wav2 * 32000, sample_rate, dtype=np.int16)
 
-    wav_low, sr = librosa.load('data/test.wav', sr=sample_rate_low)
+    wav_low, sr = librosa.load('data/test1.wav', sr=sample_rate_low)
     mel_vocoder = MelVocoder()
     mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80,
                                      use_preemphasis=False)
