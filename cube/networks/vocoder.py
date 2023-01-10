@@ -166,8 +166,8 @@ class CubenetVocoder(pl.LightningModule):
 
     def configure_optimizers(self):
         return [
-            torch.optim.Adam(self._wavernn_lr.parameters(), lr=self._learning_rate, amsgrad=True),
-            torch.optim.Adam(self._wavernn_hr.parameters(), lr=self._learning_rate, amsgrad=True)
+            torch.optim.Adam(self._wavernn_lr.parameters(), lr=self._learning_rate),
+            torch.optim.Adam(self._wavernn_hr.parameters(), lr=self._learning_rate)
         ]
         # return torch.optim.Adam(self.parameters(), lr=self._learning_rate, amsgrad=True)
 
