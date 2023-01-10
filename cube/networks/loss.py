@@ -277,6 +277,40 @@ class MULAWOutput:
         return -0.019, 0.51
 
 
+class RAWOutput:
+    def __init__(self):
+        self._loss = CrossEntropyLoss()
+
+    def loss(self, y_hat, y):
+        y = self.encode(y)
+        return self._loss(y_hat.reshape(y_hat.shape[0] * y_hat.shape[1], -1), y.reshape(y.shape[0] * y.shape[1]))
+
+    def sample(self, y):
+        distrib = Categorical(logits=y)
+        sample = distrib.sample()
+        return self.decode(sample)
+        # probs = torch.softmax(y, dim=-1)
+        # from ipdb import set_trace
+        # set_trace()
+        # return self.decode(torch.argmax(y, dim=-1))
+
+    def encode(self, x):
+        y = torch.clip(((x + 1.0) / 2) * 255, 0, 255).long()
+        return y
+
+    def decode(self, x):
+        x = ((x / 256) - 0.5) * 2
+        return x
+
+    @property
+    def sample_size(self):
+        return 256
+
+    @property
+    def stats(self):
+        return -0.019, 0.15
+
+
 if __name__ == '__main__':
     m = MULAWOutput()
     x_orig = np.array([1, 0.9, 0, -0.9, -1])

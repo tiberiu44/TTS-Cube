@@ -162,7 +162,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', dest='lr', default=1e-4, type=float,
                         help='Learning rate (default=1e-4)')
     parser.add_argument('--output', dest='output', default='mol',
-                        help='Output type (mol|gm|mulaw|beta) (default=mol)')
+                        help='Output type (mol|gm|mulaw|beta|raw) (default=mol)')
 
     parser.add_argument('--resume', dest='resume', action='store_true')
 

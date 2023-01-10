@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import tqdm
-from cube.networks.loss import BetaOutput, GaussianOutput, MULAWOutput, MOLOutput
+from cube.networks.loss import BetaOutput, GaussianOutput, MULAWOutput, MOLOutput, RAWOutput
 
 
 class LinearNorm(torch.nn.Module):
@@ -435,6 +435,8 @@ class WaveRNN(nn.Module):
             self._output_functions = BetaOutput()
         elif output == 'mulaw':
             self._output_functions = MULAWOutput()
+        elif output == 'raw':
+            self._output_functions = RAWOutput()
 
         self._output = LinearNorm(256, self._output_functions.sample_size, w_init_gain='linear')
         self._val_loss = 9999
