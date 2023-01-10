@@ -299,7 +299,7 @@ class RAWOutput:
         return y
 
     def decode(self, x):
-        x = ((x / 256) - 0.5) * 2
+        x = ((x / 255) - 0.5) * 2
         return x
 
     @property
