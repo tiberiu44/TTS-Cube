@@ -542,6 +542,7 @@ class WaveRNN(nn.Module):
         x = batch['x']
         x = x[:, :-1]
         x = torch.nn.functional.pad(x, (1, 0), mode='constant', value=0)
+        batch['x'] = x
         output = self.forward(batch)
         target_x = gs_audio
         pred_x = output
@@ -553,6 +554,7 @@ class WaveRNN(nn.Module):
         x = batch['x']
         x = x[:, :-1]
         x = torch.nn.functional.pad(x, (1, 0), mode='constant', value=0)
+        batch['x'] = x
         output = self.forward(batch)
         target_x = gs_audio
         pred_x = output
