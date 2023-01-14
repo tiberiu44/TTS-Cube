@@ -538,18 +538,24 @@ class WaveRNN(nn.Module):
         return output
 
     def validation_step(self, batch, batch_idx):
-        output = self.forward(batch)
         gs_audio = batch['x']
-        target_x = gs_audio[:, 1:]
-        pred_x = output[:, :-1]
+        x = batch['x']
+        x = x[:, :-1]
+        x = torch.nn.functional.pad(x, (1, 0), mode='constant', value=0)
+        output = self.forward(batch)
+        target_x = gs_audio
+        pred_x = output
         loss = self._output_functions.loss(pred_x, target_x)
         return loss
 
     def training_step(self, batch, batch_idx):
-        output = self.forward(batch)
         gs_audio = batch['x']
-        target_x = gs_audio[:, 1:]
-        pred_x = output[:, :-1]
+        x = batch['x']
+        x = x[:, :-1]
+        x = torch.nn.functional.pad(x, (1, 0), mode='constant', value=0)
+        output = self.forward(batch)
+        target_x = gs_audio
+        pred_x = output
         loss = self._output_functions.loss(pred_x, target_x)
         return loss
 
