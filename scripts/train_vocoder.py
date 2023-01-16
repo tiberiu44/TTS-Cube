@@ -21,10 +21,8 @@ import pytorch_lightning as pl
 
 sys.path.append('')
 from cube.networks.vocoder import CubenetVocoder
-from pytorch_lightning.callbacks import EarlyStopping
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
-from argparse import BooleanOptionalAction
 from cube.io_utils.io_vocoder import VocoderDataset, VocoderCollate
 
 
