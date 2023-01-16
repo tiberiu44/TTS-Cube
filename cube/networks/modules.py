@@ -399,27 +399,15 @@ class WaveRNN(nn.Module):
                  output='mol'):
         super(WaveRNN, self).__init__()
         self._upsample_lowres_i = UpsampleNetI(upsample_low)
-        # hardcode upsample layers
-        # if upsample == 240:
-        #     self._upsample_lowres_i = UpsampleNetI(upsample_low)
-        #     upsample = [5, 4, 4, 3]  # 240
-        #     upsample_low = [2, 5]
-        # else:
-        #     upsample = [2, 2, 2, 3]  # 24
         self._learning_rate = learning_rate
         # self._upsample_mel = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
         self._upsample_mel = UpsampleNetR(upsample=upsample)
         self._use_lowres = use_lowres
         if self._use_lowres:
             self._upsample_lowres = UpsampleNetR(upsample=upsample_low)
-            self._lowres_conv = nn.ModuleList()
-            ic = 1
-            for ii in range(3):
-                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=7, padding=3))
-                ic = 20
         ic = 80 + 1
         if use_lowres:
-            ic += 21
+            ic += 1
         self._skip = LinearNorm(ic, layer_size, w_init_gain='tanh')
         rnn_list = []
         for ii in range(num_layers):
@@ -455,17 +443,13 @@ class WaveRNN(nn.Module):
             if self._use_lowres:
                 low_x = X['x_low']
                 interp_x = self._upsample_lowres_i(low_x.unsqueeze(1)).permute(0, 2, 1)
-                hidden = low_x.unsqueeze(1)
-                for conv in self._lowres_conv:
-                    hidden = torch.tanh(conv(hidden))
-                upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
+                upsampled_x = interp_x
 
             upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
             cond = upsampled_mel
             if self._use_lowres:
                 msize = min(upsampled_mel.shape[1], upsampled_x.shape[1], interp_x.shape[1])
                 cond = torch.cat([upsampled_mel[:, :msize, :],
-                                  upsampled_x[:, :msize, :],
                                   interp_x[:, :msize, :]],
                                  dim=-1)
 
@@ -510,11 +494,7 @@ class WaveRNN(nn.Module):
         if self._use_lowres:
             low_x = X['x_low']
             interp_x = self._upsample_lowres_i(low_x.unsqueeze(1)).squeeze(1)
-            hidden = low_x.unsqueeze(1)
-            for conv in self._lowres_conv:
-                hidden = torch.tanh(conv(hidden))
-
-            upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
+            upsampled_x = interp_x.permute(0, 2, 1)
             msize = min(upsampled_mel.shape[1], gs_x.shape[1], upsampled_x.shape[1], interp_x.shape[1])
             upsampled_x = upsampled_x[:, :msize, :]
         else:
@@ -523,7 +503,7 @@ class WaveRNN(nn.Module):
         upsampled_mel = upsampled_mel[:, :msize, :]
         gs_x = gs_x[:, :msize].unsqueeze(2)
         if self._use_lowres:
-            hidden = torch.cat([upsampled_mel, upsampled_x, interp_x.unsqueeze(2), gs_x], dim=-1)
+            hidden = torch.cat([upsampled_mel, upsampled_x, gs_x], dim=-1)
         else:
             hidden = torch.cat([upsampled_mel, gs_x], dim=-1)
         # res = self._skip(hidden)

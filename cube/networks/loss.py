@@ -289,10 +289,6 @@ class RAWOutput:
         distrib = Categorical(logits=y)
         sample = distrib.sample()
         return self.decode(sample)
-        # probs = torch.softmax(y, dim=-1)
-        # from ipdb import set_trace
-        # set_trace()
-        # return self.decode(torch.argmax(y, dim=-1))
 
     def encode(self, x):
         y = torch.clip(((x + 1.0) / 2) * 255, 0, 255).long()

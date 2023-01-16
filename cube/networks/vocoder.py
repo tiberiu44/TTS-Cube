@@ -191,7 +191,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-anca-2-256-raw'
+    fname = 'data/voc-blizzard-neb-2-512-raw'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers_hr = conf['num_layers_hr']
     layer_size_hr = conf['layer_size_hr']
@@ -211,8 +211,8 @@ if __name__ == '__main__':
                              output=output)
     # vocoder = CubenetVocoder(num_layers=1, layer_size=1024)
     vocoder.load('{0}.last'.format(fname))
-    vocoder._wavernn_lr.load('{0}.lr.best'.format(fname))
-    vocoder._wavernn_hr.load('{0}.hr.best'.format(fname))
+    # vocoder._wavernn_lr.load('{0}.lr.best'.format(fname))
+    # vocoder._wavernn_hr.load('{0}.hr.best'.format(fname))
     # import torch.quantization
     #
     # # set quantization config for server (x86)
@@ -231,24 +231,26 @@ if __name__ == '__main__':
 
     dio = DatasetIO()
 
-    wav, sr = librosa.load('data/test.wav', sr=sample_rate)
+    wav, sr = librosa.load('data/test2.wav', sr=sample_rate)
+    wav = wav / np.max(np.abs(wav)) * 0.98
     from cube.networks.loss import MULAWOutput
 
     wav2 = MULAWOutput().decode(MULAWOutput().encode(wav))
-    dio.write_wave("data/mulaw.wav", wav2 * 32000, sample_rate, dtype=np.int16)
+    dio.write_wave("data/mulaw.wav", wav2 * 32767, sample_rate, dtype=np.int16)
 
-    wav_low, sr = librosa.load('data/test.wav', sr=sample_rate_low)
+    wav_low, sr = librosa.load('data/test2.wav', sr=sample_rate_low)
+    wav_low = wav_low / np.max(np.abs(wav_low)) * 0.98
     mel_vocoder = MelVocoder()
     mel = mel_vocoder.melspectrogram(wav, sample_rate=sample_rate, hop_size=hop_size, num_mels=80,
                                      use_preemphasis=False)
-    mel = torch.tensor(mel).unsqueeze(0)
+    mel = torch.tensor(mel, dtype=torch.float).unsqueeze(0)
     x_low = torch.tensor(wav_low).unsqueeze(0)
     # dio.write_wave("data/load.wav", x_low.squeeze() * 32000, sample_rate_low, dtype=np.int16)
     vocoder.eval()
     start = time.time()
     # normalize mel
     x_low_hi = vocoder._wavernn_hr._upsample_lowres_i(x_low.unsqueeze(1))
-    dio.write_wave("data/high.wav", x_low_hi.detach().cpu().numpy().squeeze() * 32000, sample_rate, dtype=np.int16)
+    dio.write_wave("data/high.wav", x_low_hi.detach().cpu().numpy().squeeze() * 32767, sample_rate, dtype=np.int16)
     output_lr, output_hr = vocoder({'mel': mel, 'x_low': x_low})
     # from ipdb import set_trace
 
@@ -256,5 +258,5 @@ if __name__ == '__main__':
     stop = time.time()
     print("generated {0} seconds of audio in {1}".format(len(wav) / sample_rate, stop - start))
 
-    dio.write_wave("data/generated-lr.wav", output_lr.squeeze() * 32000, sample_rate_low, dtype=np.int16)
-    dio.write_wave("data/generated-hr.wav", output_hr.squeeze() * 32000, sample_rate, dtype=np.int16)
+    dio.write_wave("data/generated-lr.wav", output_lr.squeeze() * 32767, sample_rate_low, dtype=np.int16)
+    dio.write_wave("data/generated-hr.wav", output_hr.squeeze() * 32767, sample_rate, dtype=np.int16)
