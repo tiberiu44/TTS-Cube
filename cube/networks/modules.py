@@ -493,7 +493,7 @@ class WaveRNN(nn.Module):
         # check if we are using lowres signal conditioning
         if self._use_lowres:
             low_x = X['x_low']
-            interp_x = self._upsample_lowres_i(low_x.unsqueeze(1)).squeeze(1)
+            interp_x = self._upsample_lowres_i(low_x.unsqueeze(1))
             upsampled_x = interp_x.permute(0, 2, 1)
             msize = min(upsampled_mel.shape[1], gs_x.shape[1], upsampled_x.shape[1], interp_x.shape[1])
             upsampled_x = upsampled_x[:, :msize, :]
