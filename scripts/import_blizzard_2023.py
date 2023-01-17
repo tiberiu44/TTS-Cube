@@ -66,6 +66,7 @@ def _import_dataset(params):
     lines = open(params.input_file).readlines()
     valid_sents = 0
     total_time = 0
+    dataset = []
     for ii in tqdm.tqdm(range(len(lines))):
         line = lines[ii].strip()
         parts = line.split('|')
@@ -88,6 +89,35 @@ def _import_dataset(params):
         #         if frame2phone[jj] == ii:
         #             text += " " + str(jj)
         #     print(text)
+        item = {
+            'orig_start': int(parts[1]),
+            'orig_end': int(parts[2]),
+            'orig_filename': parts[0],
+            'orig_text': text,
+            'phones': hybrid,
+            'words': words,
+            'phon2word': phon2word,
+            'frame2phon': frame2phone
+        }
+        dataset.append(item)
+    # creating context
+    for ii in range(len(dataset)):
+        l_start = max(0, ii - params.prev_sentences)
+        l_end = min(len(dataset), ii + params.next_sentences + 1)
+        # shrink window if we are at the beginning or end of a chapter - context not relevant here
+        for jj in range(l_start, ii):
+            if dataset[ii]['orig_filename'] != dataset[jj]['orig_filename']:
+                l_start += 1
+        for jj in range(l_end, ii, 1):
+            if dataset[ii]['orig_filename'] != dataset[jj]['orig_filename']:
+                l_end -= 1
+        left_context = ' '.join([item['orig_text'][1:] for item in dataset[l_start:ii]])
+        right_context = ' '.join([item['orig_text'][1:] for item in dataset[ii + 1:l_end]])
+        dataset[ii]['left_context'] = left_context
+        dataset[ii]['right_context'] = right_context
+    from ipdb import set_trace
+    set_trace()
+
     import datetime
     print("Found {0} valid sentences, with a total audio time of {1}.".format(valid_sents, datetime.timedelta(
         seconds=(total_time / 1000))))
@@ -97,6 +127,12 @@ if __name__ == '__main__':
     parser = optparse.OptionParser()
     parser.add_option('--input-file', action='store', dest='input_file',
                       help='File with alignments')
+    parser.add_option('--prev-sentences', type='int', dest='prev_sentences', default=5,
+                      help='How many previous sentences to use for context (default=5)')
+    parser.add_option('--next-sentences', type='int', dest='next_sentences', default=5,
+                      help='How of the following sentences to use for context (default=5)')
+    parser.add_option('--dev-ratio', type='float', dest='dev_ratio', default=0.001,
+                      help='Ratio between dev and train (default=0.001)')
     parser.add_option('--speaker', action='store', dest='speaker', default="none",
                       help='What label to use for the speaker (default="none")')
 
