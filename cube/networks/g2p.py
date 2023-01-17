@@ -228,7 +228,10 @@ class Token:
         self.is_word = is_word
 
     def __repr__(self):
-        return '{0}'.format(self.transcription)
+        if len(self.transcription) == 0:
+            return '"{0}"'.format(self.word)
+        else:
+            return '{0}'.format(self.transcription)
 
 
 class SimpleTokenizer:

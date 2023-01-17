@@ -211,8 +211,8 @@ if __name__ == '__main__':
                              output=output)
     # vocoder = CubenetVocoder(num_layers=1, layer_size=1024)
     vocoder.load('{0}.last'.format(fname))
-    # vocoder._wavernn_lr.load('{0}.lr.best'.format(fname))
-    # vocoder._wavernn_hr.load('{0}.hr.best'.format(fname))
+    vocoder._wavernn_lr.load('{0}.lr.best'.format(fname))
+    vocoder._wavernn_hr.load('{0}.hr.best'.format(fname))
     # import torch.quantization
     #
     # # set quantization config for server (x86)
