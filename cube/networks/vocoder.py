@@ -191,7 +191,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-blizzard-neb-2-512-raw'
+    fname = 'data/voc-blizzard-neb-2-512-mol'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers_hr = conf['num_layers_hr']
     layer_size_hr = conf['layer_size_hr']

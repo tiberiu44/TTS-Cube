@@ -51,8 +51,8 @@ class VocoderDataset(Dataset):
         else:
             wav, sr = librosa.load(filename, sr=self._sample_rate)
             wav_low, sr = librosa.load(filename, sr=self._sample_rate_low)
-            # wav = (wav / np.max(np.abs(wav))) * 0.95
-            # wav_low = (wav_low / np.max(np.abs(wav_low))) * 0.95
+            wav = (wav / np.max(np.abs(wav))) * 0.98
+            wav_low = (wav_low / np.max(np.abs(wav_low))) * 0.98
             mel = self._mel_vocoder.melspectrogram(wav,
                                                    sample_rate=self._sample_rate,
                                                    num_mels=80,
