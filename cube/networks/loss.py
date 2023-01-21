@@ -49,7 +49,7 @@ class GaussianOutput:
 
     def sample(self, y_hat):
         z = torch.randn((y_hat.shape[0], y_hat.shape[1], 1))
-        return (y_hat[:, :, 0] + z * torch.exp(y_hat[:, :, 1])).squeeze(1)
+        return (y_hat[:, :, 0].unsqueeze(2) + z * torch.exp(y_hat[:, :, 1].unsqueeze(2))).squeeze(1)
 
     def encode(self, x):
         return x
