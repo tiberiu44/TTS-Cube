@@ -312,7 +312,7 @@ def phase_1_prepare_corpus(params):
         copyfile(join(base_folder, txt_name), join('data/processed/train', tgt_txt_name))
         # WAVE
         data, sample_rate = dio.read_wave(join(base_folder, wav_name), sample_rate=params.target_sample_rate)
-        f0 = rapt(np.array(data * 32000, dtype=np.float32), params.target_sample_rate, 256, min=30, max=500)
+        f0 = rapt(np.array(data * 32767, dtype=np.float32), params.target_sample_rate, 256, min=30, max=500)
 
         data = _normalize(data)
         data = _highpass_filter(data, params.target_sample_rate)

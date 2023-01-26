@@ -1,3 +1,5 @@
+.DS_Store
+generated_files
 *.pyc
 build/
 dist/

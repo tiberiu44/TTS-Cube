@@ -47,8 +47,8 @@ class GaussianOutput:
                 - math.log(2.0 * torch.pi) - 2. * log_std - torch.pow(y - mean, 2) * torch.exp((-2.0 * log_std)))
         return log_probs.squeeze().mean()
 
-    def sample(self, y_hat):
-        z = torch.randn((y_hat.shape[0], y_hat.shape[1], 1))
+    def sample(self, y_hat, temperature=1.0):
+        z = torch.randn((y_hat.shape[0], y_hat.shape[1], 1)) * 0.8
         return (y_hat[:, :, 0].unsqueeze(2) + z * torch.exp(y_hat[:, :, 1].unsqueeze(2))).squeeze(1)
 
     def encode(self, x):
@@ -160,7 +160,7 @@ class MOLOutput:
 
         return -torch.mean(log_sum_exp(log_probs))
 
-    def sample(self, y, log_scale_min=None):
+    def sample(self, y, log_scale_min=None, temperature=1.0):
         """
         Sample from discretized mixture of logistic distributions
         Args:
@@ -179,7 +179,7 @@ class MOLOutput:
         logit_probs = y[:, :, :nr_mix]
 
         # sample mixture indicator from softmax
-        temp = logit_probs.data.new(logit_probs.size()).uniform_(1e-5, 1 - 1e-5)
+        temp = logit_probs.data.new(logit_probs.size()).uniform_(1e-5, 1 - 1e-5) * temperature
         temp = logit_probs.data - torch.log(- torch.log(temp))
         _, argmax = temp.max(dim=-1)
 
@@ -192,7 +192,7 @@ class MOLOutput:
         # sample from logistic & clip to interval
         # we don't actually round to the nearest 8bit value when sampling
         u = means.data.new(means.size()).uniform_(1e-5, 1.0 - 1e-5)
-        x = means + torch.exp(log_scales) * (torch.log(u) - torch.log(1. - u)) * 1
+        x = means + torch.exp(log_scales) * (torch.log(u) - torch.log(1. - u))
         # u = means.data.new(means.size()).normal_(0, 1) * temperature
         # x = means + torch.exp(log_scales) * u
 

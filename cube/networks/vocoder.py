@@ -97,8 +97,8 @@ class CubenetVocoder(pl.LightningModule):
         with torch.no_grad():
             x_lr = self._wavernn_lr(X)
 
-            x_low = X['x_low']  # torch.tensor(x_lr)
-            # x_low = torch.tensor(x_lr)
+            # x_low = X['x_low']  # torch.tensor(x_lr)
+            x_low = torch.tensor(x_lr)
             inference_batch = self._inference_batch(X['mel'], x_low, num_batches=20)
             batched_x_hr = self._wavernn_hr(
                 inference_batch
@@ -191,7 +191,7 @@ class CubenetVocoder(pl.LightningModule):
 
 
 if __name__ == '__main__':
-    fname = 'data/voc-blizzard-neb-2-512-mol'
+    fname = 'data/voc-blizzard-neb-2-512-sg'
     conf = yaml.load(open('{0}.yaml'.format(fname)), Loader)
     num_layers_hr = conf['num_layers_hr']
     layer_size_hr = conf['layer_size_hr']
@@ -237,6 +237,7 @@ if __name__ == '__main__':
 
     wav2 = MULAWOutput().decode(MULAWOutput().encode(wav))
     dio.write_wave("data/mulaw.wav", wav2 * 32767, sample_rate, dtype=np.int16)
+    dio.write_wave("data/norm.wav", wav * 32767, sample_rate, dtype=np.int16)
 
     wav_low, sr = librosa.load('data/test2.wav', sr=sample_rate_low)
     wav_low = wav_low / np.max(np.abs(wav_low)) * 0.98
@@ -252,9 +253,7 @@ if __name__ == '__main__':
     x_low_hi = vocoder._wavernn_hr._upsample_lowres_i(x_low.unsqueeze(1))
     dio.write_wave("data/high.wav", x_low_hi.detach().cpu().numpy().squeeze() * 32767, sample_rate, dtype=np.int16)
     output_lr, output_hr = vocoder({'mel': mel, 'x_low': x_low})
-    # from ipdb import set_trace
 
-    # set_trace()
     stop = time.time()
     print("generated {0} seconds of audio in {1}".format(len(wav) / sample_rate, stop - start))
 
