@@ -92,15 +92,7 @@ def _train(params):
                            batch_size=params.batch_size,
                            num_workers=params.num_workers,
                            collate_fn=collate.collate_fn)
-    # model = CubenetVocoder(num_layers_hr=params.num_layers_hr,
-    #                        layer_size_hr=params.layer_size_hr,
-    #                        num_layers_lr=params.num_layers_lr,
-    #                        layer_size_lr=params.layer_size_lr,
-    #                        upsample=params.upsample,
-    #                        upsample_low=params.sample_rate // params.sample_rate_low,
-    #                        learning_rate=params.lr,
-    #                        output=params.output)
-
+    
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
         sys.stdout.flush()
