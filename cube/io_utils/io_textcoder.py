@@ -52,7 +52,7 @@ class TextcoderEncodings:
         self.max_duration = 0
         self.max_pitch = 0
 
-    def compute(self, dataset: Text2MelDataset):
+    def compute(self, dataset: TextcoderDataset):
         for example in tqdm.tqdm(dataset, ncols=80, desc='Computing encodings'):
             speaker = example['meta']['speaker']
             if speaker not in self.speaker2int:
@@ -78,8 +78,40 @@ class TextcoderEncodings:
 
 
 class TextcoderCollate:
-    def __init__(self, encodings):
+    def __init__(self, encodings: TextcoderEncodings):
         self._encodings = encodings
+        self._ignore_index = max(encodings.max_pitch, encodings.max_duration)
 
     def collate_fn(self, batch):
-        pass
+        max_char = max([len(example['meta']['phones']) for example in batch])
+        max_mel = max([example['mgc'].shape[0] for example in batch])
+        x_char = np.zeros((len(batch), max_char))
+        y_mgc = np.ones((len(batch), max_mel, 80)) * -5
+        x_speaker = np.zeros((len(batch), 1))
+        y_dur = np.zeros((len(batch), max_char))
+        y_pitch = np.ones((len(batch), max_mel)) * self._ignore_index
+        y_frame2phone = []
+        for ii in range(len(batch)):
+            example = batch[ii]
+            y_mgc[ii, :example['mgc'].shape[0], :] = example['mgc']
+            x_speaker[ii] = self._encodings.speaker2int[example['meta']['speaker']] + 1
+            for jj in range(len(example['meta']['phones'])):
+                phoneme = example['meta']['phones'][jj]
+                if phoneme in self._encodings.phon2int:
+                    x_char[ii, jj] = self._encodings.phon2int[phoneme] + 1
+            y_frame2phone.append(example['meta']['frame2phon'])
+            for phone_idx in y_frame2phone[-1]:
+                y_dur[ii, phone_idx] += 1
+            for jj in range(max_char - len(example['meta']['phones'])):
+                y_dur[ii, len(example['meta']['phones']) + jj] = self._ignore_index
+            y_pitch[ii, :example['pitch'].shape[0]] = example['pitch']
+
+        return {
+            'x_char': torch.tensor(x_char, dtype=torch.long),
+            'x_speaker': torch.tensor(x_speaker, dtype=torch.long),
+            'y_mgc': torch.tensor(y_mgc, dtype=torch.float),
+            'y_frame2phone': y_frame2phone,
+            'y_pitch': torch.tensor(y_pitch, dtype=torch.long),
+            'y_dur': torch.tensor(y_dur, dtype=torch.long)
+
+        }

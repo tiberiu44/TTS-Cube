@@ -9,7 +9,7 @@ from cube.networks.modules import ConvNorm, LinearNorm, PreNet, PostNet
 
 
 class CubenetTextcoder(pl.LightningModule):
-    def __init__(self, encodings: TextcoderEncodings, pframes: int = 3):
+    def __init__(self, encodings: TextcoderEncodings, pframes: int = 3, loss=nn.CrossEntropyLoss()):
         super(CubenetTextcoder, self).__init__()
         PHON_EMB_SIZE = 64
         SPEAKER_EMB_SIZE = 128
@@ -32,9 +32,9 @@ class CubenetTextcoder(pl.LightningModule):
         MEL_SIZE = 80
         self._encodings = encodings
         # phoneme embeddings
-        self._phon_emb = nn.Embedding(len(encodings.phon2int), PHON_EMB_SIZE)
+        self._phon_emb = nn.Embedding(len(encodings.phon2int) + 1, PHON_EMB_SIZE, padding_idx=0)
         # speaker embeddings
-        self._speaker_emb = nn.Embedding(len(encodings.speaker2int), SPEAKER_EMB_SIZE)
+        self._speaker_emb = nn.Embedding(len(encodings.speaker2int) + 1, SPEAKER_EMB_SIZE, padding_idx=0)
         # phoneme/char CNN
         inp_s = PHON_EMB_SIZE
         char_cnn = []
@@ -69,13 +69,13 @@ class CubenetTextcoder(pl.LightningModule):
                                 batch_first=True)
         self._dur_output = LinearNorm(DUR_RNN_SIZE * 2, encodings.max_duration)
         # pitch
-        # this comes after the textcnn+speaker_emb+external_cond(could be a transformer)
-        self._pitch_rnn = nn.LSTM(input_size=CHAR_RNN_SIZE * 2 + SPEAKER_EMB_SIZE + EXTERNAL_COND,
+        # this comes after the rnn_overlay+speaker_emb+external_cond(could be a transformer)
+        self._pitch_rnn = nn.LSTM(input_size=OVERLAY_RNN_SIZE * 2 + SPEAKER_EMB_SIZE + EXTERNAL_COND,
                                   hidden_size=PITCH_RNN_SIZE,
                                   num_layers=PITCH_RNN_LAYERS,
                                   bidirectional=True,
                                   batch_first=True)
-        self._pitch_output = LinearNorm(PITCH_RNN_SIZE * 2, encodings.max_pitch)
+        self._pitch_output = LinearNorm(PITCH_RNN_SIZE * 2, int(encodings.max_pitch))
         # mel
         # this comes after the rnn_overlay
         self._mel_rnn = nn.LSTM(input_size=OVERLAY_RNN_SIZE * 2 + PRENET_SIZE + SPEAKER_EMB_SIZE + EXTERNAL_COND,
@@ -86,21 +86,60 @@ class CubenetTextcoder(pl.LightningModule):
         self._mel_output = LinearNorm(MEL_RNN_SIZE, MEL_SIZE * pframes)
         self._prenet = PreNet(MEL_SIZE, PRENET_SIZE, PRENET_LAYERS)
         self._postnet = PostNet(MEL_SIZE)
+        self.automatic_optimization = False
+        self._loss_l1 = nn.L1Loss()
+        self._loss_mse = nn.MSELoss()
+        self._loss_cross = nn.CrossEntropyLoss(ignore_index=max(encodings.max_pitch, encodings.max_duration))
+        self._val_loss_durs = 9999
+        self._val_loss_pitch = 9999
+        self._val_loss_mel = 9999
+        self._val_loss_total = 999
 
     def forward(self, X):
         pass
 
     def training_step(self, batch, batch_ids):
-        pass
+        opt = self.optimizers()
+        opt.zero_grad()
+        dur, pitch, pre_mel, post_mel = self.forward(batch)
+        loss_duration = self._loss_cross(dur, batch['y_dur'])
+        loss_pitch = self._loss_cross(pitch, batch['y_pitch'])
+        loss_mel = self._loss_l1(pre_mel, batch['y_mel']) + self._loss_l1(post_mel, batch['y_mel'])
+        loss = loss_duration + loss_pitch + loss_mel
+        loss.backward()
+        opt.step()
+        output_obj = {
+            'loss': loss,
+            'l_mel': loss_mel,
+            'l_pitch': loss_pitch,
+            'l_dur': loss_duration
+        }
+        self.log_dict(output_obj, prog_bar=True)
+
+        return output_obj
 
     def validation_step(self, batch, batch_ids):
-        pass
+        dur, pitch, pre_mel, post_mel = self.forward(batch)
+        loss_duration = self._loss_cross(dur, batch['y_dur'])
+        loss_pitch = self._loss_cross(pitch, batch['y_pitch'])
+        loss_mel = self._loss_l1(pre_mel, batch['y_mel']) + self._loss_l1(post_mel, batch['y_mel'])
+        output_obj = {
+            'loss': loss_duration + loss_pitch + loss_mel,
+            'l_mel': loss_mel,
+            'l_pitch': loss_pitch,
+            'l_dur': loss_duration
+        }
+        self.log_dict(output_obj, prog_bar=True)
+        return output_obj
 
     def validation_epoch_end(self, outputs: []) -> None:
-        pass
+        loss_total = sum([output['loss'] for output in outputs])
+        loss_total = sum([output['loss'] for output in outputs])
+        loss_total = sum([output['loss'] for output in outputs])
+        loss_total = sum([output['loss'] for output in outputs])
 
     def configure_optimizers(self):
-        return None
+        return torch.optim.Adam(self.parameters())
 
     @torch.jit.ignore
     def save(self, path):
