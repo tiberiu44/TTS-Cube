@@ -20,10 +20,10 @@ import yaml
 import pytorch_lightning as pl
 
 sys.path.append('')
-from cube.networks.vocoder import CubenetVocoder
+from cube.networks.textcoder import CubenetTextcoder
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
-from cube.io_utils.io_text2mel import Text2MelDataset, Text2MelEncodings, Text2MelCollate
+from cube.io_utils.io_textcoder import TextcoderCollate, TextcoderEncodings, TextcoderDataset
 
 
 class PrintAndSaveCallback(pl.callbacks.Callback):
@@ -70,16 +70,16 @@ def _train(params):
     sys.stdout.write('=================Config=================\n')
     sys.stdout.write(open(conf_file).read())
     sys.stdout.write('========================================\n\n')
-    trainset = Text2MelDataset(params.train_folder)
-    devset = Text2MelDataset(params.dev_folder)
+    trainset = TextcoderDataset(params.train_folder)
+    devset = TextcoderDataset(params.dev_folder)
     sys.stdout.write('==================Data==================\n')
     sys.stdout.write('Training files: {0}\n'.format(len(trainset)))
     sys.stdout.write('Validation files: {0}\n'.format(len(devset)))
     sys.stdout.write('========================================\n\n')
     sys.stdout.write('================Training================\n')
-    encodings = Text2MelEncodings()
+    encodings = TextcoderEncodings()
     encodings.compute(trainset)
-    collate = Text2MelCollate(encodings)
+    collate = TextcoderCollate(encodings)
     sys.stdout.write('Number of speakers: {0}\n'.format(len(encodings.speaker2int)))
     sys.stdout.write('Number of phones: {0}\n'.format(len(encodings.phon2int)))
     sys.stdout.write('Maximum F0: {0}\n'.format(encodings.max_pitch))
@@ -92,7 +92,9 @@ def _train(params):
                            batch_size=params.batch_size,
                            num_workers=params.num_workers,
                            collate_fn=collate.collate_fn)
-    
+
+    model = CubenetTextcoder(encodings)
+
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
         sys.stdout.flush()

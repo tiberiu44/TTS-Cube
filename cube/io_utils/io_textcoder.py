@@ -15,7 +15,7 @@ sys.path.append('')
 from torch.utils.data.dataset import Dataset
 
 
-class Text2MelDataset(Dataset):
+class TextcoderDataset(Dataset):
     def __init__(self, base_path: str):
         self._base_path = base_path
         self._examples = []
@@ -45,7 +45,7 @@ class Text2MelDataset(Dataset):
         }
 
 
-class Text2MelEncodings:
+class TextcoderEncodings:
     def __init__(self, filename: str = None):
         self.speaker2int = {}
         self.phon2int = {}
@@ -77,7 +77,7 @@ class Text2MelEncodings:
         pass
 
 
-class Text2MelCollate:
+class TextcoderCollate:
     def __init__(self, encodings):
         self._encodings = encodings
 
