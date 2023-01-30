@@ -107,7 +107,7 @@ def _import_audio(dataset, output_folder, input_folder, sample_rate, hop_size):
         sf.write('{0}.wav'.format(output_base), np.asarray(audio_segment * 32767, dtype=np.int16), sample_rate)
         np.save(open('{0}.mgc'.format(output_base), 'wb'), mel)
         json.dump(item, open('{0}.json'.format(output_base), 'w'))
-        pitch = pysptk.rapt(wav, sample_rate, hopsize=hop_size, min=60, max=400)
+        pitch = pysptk.rapt(audio_segment * 32767, sample_rate, hopsize=hop_size, min=60, max=400)
         np.save(open('{0}.pitch'.format(output_base), 'wb'), pitch)
 
 
