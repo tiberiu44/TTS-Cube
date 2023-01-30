@@ -80,7 +80,7 @@ class TextcoderEncodings:
 class TextcoderCollate:
     def __init__(self, encodings: TextcoderEncodings):
         self._encodings = encodings
-        self._ignore_index = max(encodings.max_pitch, encodings.max_duration)
+        self._ignore_index = max(encodings.max_pitch, encodings.max_duration) + 1
 
     def collate_fn(self, batch):
         max_char = max([len(example['meta']['phones']) for example in batch])

@@ -30,28 +30,21 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
     def __init__(self, store_prefix):
         super().__init__()
         self.store_prefix = store_prefix
-        self._best_loss_lr = 99999
-        self._best_loss_hr = 99999
+        self._best_loss = 99999
 
     def on_validation_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
         epoch = trainer.current_epoch
-        val_loss_lr = pl_module._val_loss_lr
-        val_loss_hr = pl_module._val_loss_hr
-        sys.stdout.write('\n\n\tVal loss lr: {0}\n\tVal loss hr: {1}\n'.format(val_loss_lr, val_loss_hr))
+        val_loss = pl_module._val_loss_total
+        sys.stdout.write('\n\n\tVal loss mel: {0}\n\tVal loss pitch: {1}\n\tVal loss dur: {2}\n'.
+                         format(pl_module._val_loss_mel, pl_module._val_loss_pitch, pl_module._val_loss_durs))
         sys.stdout.flush()
-        if val_loss_lr < self._best_loss_lr:
-            self._best_loss_lr = val_loss_lr
+        if val_loss < self._best_loss:
+            self._best_loss_lr = val_loss
             fname = "{0}.lr.best".format(self.store_prefix)
             sys.stdout.write('\tStoring {0}\n'.format(fname))
             sys.stdout.flush()
-            pl_module._wavernn_lr.save(fname)
-        if val_loss_hr < self._best_loss_hr:
-            self._best_loss_hr = val_loss_hr
-            fname = "{0}.hr.best".format(self.store_prefix)
-            sys.stdout.write('\tStoring {0}\n'.format(fname))
-            sys.stdout.flush()
-            pl_module._wavernn_hr.save(fname)
+            pl_module.save(fname)
 
         fname = "{0}.last".format(self.store_prefix)
         sys.stdout.write('\tStoring {0}\n'.format(fname))
