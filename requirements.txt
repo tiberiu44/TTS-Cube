@@ -7,3 +7,4 @@ pysptk
 torch
 pytorch_lightning
 pillow
+matplotlib

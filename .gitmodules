@@ -1,6 +1,6 @@
 [submodule "cube/models/waveglow"]
 	path = cube/models/waveglow
 	url = https://github.com/NVIDIA/waveglow.git
-[submodule "hifi-gan"]
-	path = hifi-gan
+[submodule "hifigan"]
+	path = hifigan
 	url = git@github.com:tiberiu44/hifi-gan.git
