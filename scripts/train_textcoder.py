@@ -18,6 +18,7 @@ import sys
 import json
 import yaml
 import pytorch_lightning as pl
+import torch
 
 sys.path.append('')
 from cube.networks.textcoder import CubenetTextcoder
@@ -50,6 +51,11 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
         sys.stdout.write('\tStoring {0}\n'.format(fname))
         sys.stdout.flush()
         pl_module.save(fname)
+        fname = "{0}.opt.last".format(self.store_prefix)
+        sys.stdout.write('\tStoring {0}\n'.format(fname))
+        sys.stdout.flush()
+        opt = pl_module.optimizers()
+        torch.save(opt.state_dict(), fname)
 
 
 def _train(params):
@@ -106,7 +112,7 @@ def _train(params):
 if __name__ == '__main__':
     parser = ArgumentParser(description='NLP-Cube Trainer Helper')
     parser.add_argument('--output-base', action='store', dest='output_base',
-                        default='data/text2mel',
+                        default='data/textcoder',
                         help='Where to store the model (default=data/vocoder)')
     parser.add_argument('--batch-size', dest='batch_size', default=16,
                         type=int, help='Batch size (default=16)')
@@ -126,8 +132,8 @@ if __name__ == '__main__':
                         help='Number of parallel samples (default=24000)')
     parser.add_argument('--hop-size', dest='hop_size', type=int, default=240,
                         help='Hop-size for mel (default=240)')
-    parser.add_argument('--lr', dest='lr', default=1e-4, type=float,
-                        help='Learning rate (default=1e-4)')
+    parser.add_argument('--lr', dest='lr', default=2e-4, type=float,
+                        help='Learning rate (default=2e-4)')
     parser.add_argument('--pframes', dest='pframes', type=int, default=3,
                         help='How many frames to generate at the same time (default=3)')
 

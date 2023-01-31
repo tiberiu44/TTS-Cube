@@ -10,7 +10,7 @@ from collections import OrderedDict
 
 
 class CubenetTextcoder(pl.LightningModule):
-    def __init__(self, encodings: TextcoderEncodings, pframes: int = 3, loss=nn.CrossEntropyLoss()):
+    def __init__(self, encodings: TextcoderEncodings, pframes: int = 3, lr: float = 2e-4):
         super(CubenetTextcoder, self).__init__()
         PHON_EMB_SIZE = 64
         SPEAKER_EMB_SIZE = 128
@@ -32,6 +32,7 @@ class CubenetTextcoder(pl.LightningModule):
         PRENET_LAYERS = 2
         MEL_SIZE = 80
         self._pframes = pframes
+        self._lr = lr
         self._encodings = encodings
         # phoneme embeddings
         self._phon_emb = nn.Embedding(len(encodings.phon2int) + 1, PHON_EMB_SIZE, padding_idx=0)
@@ -91,7 +92,7 @@ class CubenetTextcoder(pl.LightningModule):
         self.automatic_optimization = False
         self._loss_l1 = nn.L1Loss()
         self._loss_mse = nn.MSELoss()
-        self._loss_cross = nn.CrossEntropyLoss(ignore_index=max(encodings.max_pitch, encodings.max_duration) + 1)
+        self._loss_cross = nn.CrossEntropyLoss(ignore_index=int(max(encodings.max_pitch, encodings.max_duration) + 1))
         self._val_loss_durs = 9999
         self._val_loss_pitch = 9999
         self._val_loss_mel = 9999
@@ -215,7 +216,7 @@ class CubenetTextcoder(pl.LightningModule):
         self._val_loss_total = loss_total.item()
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters())
+        return torch.optim.Adam(self.parameters(), lr=self._lr)
 
     @torch.jit.ignore
     def save(self, path):
@@ -237,13 +238,13 @@ class CubenetTextcoder(pl.LightningModule):
                                 str(self._mel_output.linear_layer.weight.device.index))
 
     def _expand(self, x, alignments):
-        m_size = max([len(a) // 3 for a in alignments])
+        m_size = max([len(a) // self._pframes for a in alignments])
         tmp = []
         for ii in range(len(alignments)):
             c_batch = []
             for jj in range(len(alignments[ii]) // self._pframes):
-                c_batch.append(x[ii, alignments[ii][jj * 3], :].unsqueeze(0))
-            for jj in range(m_size - len(alignments[ii]) // 3):
+                c_batch.append(x[ii, alignments[ii][jj * self._pframes], :].unsqueeze(0))
+            for jj in range(m_size - len(alignments[ii]) // self._pframes):
                 c_batch.append(x[ii, -1, :].unsqueeze(0))
             c_batch = torch.cat(c_batch, dim=0)
             tmp.append(c_batch.unsqueeze(0))
@@ -251,12 +252,12 @@ class CubenetTextcoder(pl.LightningModule):
 
     def _prepare_mel(self, x):
         lst = [torch.ones((x.shape[0], 1, x.shape[2]), device=self._get_device()) * -5]
-        for ii in range(x.shape[1] // 3):
-            lst.append(x[:, (ii + 1) * 3 - 1, :].unsqueeze(1))
+        for ii in range(x.shape[1] // self._pframes):
+            lst.append(x[:, (ii + 1) * self._pframes - 1, :].unsqueeze(1))
         return torch.cat(lst, dim=1)
 
     def _prepare_pitch(self, x):
         lst = []
-        for ii in range(x.shape[1] // 3):
-            lst.append(x[:, (ii + 1) * 3 - 1].unsqueeze(1))
+        for ii in range(x.shape[1] // self._pframes):
+            lst.append(x[:, (ii + 1) * self._pframes - 1].unsqueeze(1))
         return torch.cat(lst, dim=1)
