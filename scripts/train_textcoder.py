@@ -77,7 +77,11 @@ def _train(params):
     sys.stdout.write('========================================\n\n')
     sys.stdout.write('================Training================\n')
     encodings = TextcoderEncodings()
-    encodings.compute(trainset)
+    if params.resume:
+        encodings.load('{0}.encodings'.format(params.output_base))
+    else:
+        encodings.compute(trainset)
+        encodings.save('{0}.encodings'.format(params.output_base))
     collate = TextcoderCollate(encodings)
     sys.stdout.write('Number of speakers: {0}\n'.format(len(encodings.speaker2int)))
     sys.stdout.write('Number of phones: {0}\n'.format(len(encodings.phon2int)))
