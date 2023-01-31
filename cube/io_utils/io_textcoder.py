@@ -71,10 +71,20 @@ class TextcoderEncodings:
                 self.max_duration = m_dur
 
     def load(self, filename: str):
-        pass
+        input_obj = json.load(open(filename))
+        self.speaker2int = input_obj['speaker2int']
+        self.phon2int = input_obj['phon2int']
+        self.max_pitch = input_obj['max_pitch']
+        self.max_duration = input_obj['max_duration']
 
     def save(self, filename: str):
-        pass
+        output_obj = {
+            'speaker2int': self.speaker2int,
+            'phon2int': self.phon2int,
+            'max_duration': int(self.max_duration),
+            'max_pitch': int(self.max_pitch)
+        }
+        json.dump(output_obj, open(filename, 'w'))
 
 
 class TextcoderCollate:
