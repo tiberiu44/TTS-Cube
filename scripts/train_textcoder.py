@@ -118,7 +118,7 @@ def _train(params):
         accelerator=params.accelerator,
         devices=params.devices,
         max_epochs=-1,
-        callbacks=[PrintAndSaveCallback(params.output_base), params.generate_epoch]
+        callbacks=[PrintAndSaveCallback(params.output_base, params.generate_epoch)]
     )
 
     trainer.fit(model, trainloader, devloader)
