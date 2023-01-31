@@ -36,7 +36,7 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
     def on_validation_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
         epoch = trainer.current_epoch
-        val_loss = pl_module._val_loss_total
+        val_loss = pl_module._val_loss_mel
         sys.stdout.write('\n\n\tVal loss mel: {0}\n\tVal loss pitch: {1}\n\tVal loss dur: {2}\n'.
                          format(pl_module._val_loss_mel, pl_module._val_loss_pitch, pl_module._val_loss_durs))
         sys.stdout.flush()
