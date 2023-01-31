@@ -137,6 +137,57 @@ class CubenetTextcoder(pl.LightningModule):
 
         return output_dur, output_pitch, output_mel, output_mel_post
 
+    def inference(self, X):
+        x_char = X['x_char']
+        x_speaker = X['x_speaker']
+        speaker_cond = self._speaker_emb(x_speaker)
+        # compute character embeddings
+        hidden = self._phon_emb(x_char)
+        hidden = hidden.permute(0, 2, 1)
+        for layer in self._char_cnn:
+            hidden = layer(hidden)
+        hidden = hidden.permute(0, 2, 1)
+        hidden, _ = self._rnn_char(hidden)
+        # done with character processing
+        # append speaker and, if possible, external cond
+        expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
+        hidden = torch.cat([hidden, expanded_speaker], dim=-1)
+        # duration
+        hidden_dur, _ = self._dur_rnn(hidden)
+        output_dur = self._dur_output(hidden_dur)
+        # we have the durations, we need to simulate alignments here
+        output_dur = torch.argmax(output_dur, dim=-1)
+        frame2phone = []
+        phon_index = 0
+        for dur in output_dur.detach().cpu().numpy().squeeze():
+            for ii in range(dur):
+                frame2phone.append(phon_index)
+            phon_index += 1
+        # align/repeat to match alignments
+        hidden = self._expand(hidden, [frame2phone])
+        # overlay
+        hidden, _ = self._rnn_overlay(hidden)
+        # # pitch is not currently used by the model
+        # hidden_pitch, _ = self._pitch_rnn(hidden)
+        # output_pitch = self._pitch_output(hidden_pitch)
+        # mel
+        last_mel = torch.ones((hidden.shape[0], 1, 80), device=self._get_device()) * -5
+        hx = None
+        output_mel_list = []
+        for ii in range(hidden.shape[1]):
+            last_mel = self._prenet(last_mel)
+            hid_tmp = torch.cat([hidden[:, ii, :].unsqueeze(1), last_mel], dim=-1)
+            hidden_mel, hx = self._mel_rnn(hid_tmp, hx=hx)
+            output_mel = self._mel_output(hidden_mel)
+            output_mel_list.append(output_mel)
+            last_mel = output_mel[:, :, -80:]
+        output_mel = torch.cat(output_mel_list, dim=1)
+        output_mel = output_mel.reshape(output_mel.shape[0], -1, 80)
+        post_out = self._postnet(output_mel)
+        output_mel_post = output_mel + post_out
+
+        return output_mel_post
+
     def training_step(self, batch, batch_ids):
         opt = self.optimizers()
         opt.zero_grad()

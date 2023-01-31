@@ -41,8 +41,8 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
                          format(pl_module._val_loss_mel, pl_module._val_loss_pitch, pl_module._val_loss_durs))
         sys.stdout.flush()
         if val_loss < self._best_loss:
-            self._best_loss_lr = val_loss
-            fname = "{0}.lr.best".format(self.store_prefix)
+            self._best_loss = val_loss
+            fname = "{0}.best".format(self.store_prefix)
             sys.stdout.write('\tStoring {0}\n'.format(fname))
             sys.stdout.flush()
             pl_module.save(fname)

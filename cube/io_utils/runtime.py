@@ -9,12 +9,12 @@ from PIL import Image
 import tqdm
 
 sys.path.append('')
-sys.path.append('hifigan')
+sys.path.append('hifi-gan')
 
 from cube.networks.textcoder import CubenetTextcoder
 from cube.io_utils.io_textcoder import TextcoderCollate, TextcoderEncodings, TextcoderDataset
-from hifigan.models import Generator
-from hifigan.env import AttrDict
+from models import Generator
+from env import AttrDict
 import scipy
 
 
@@ -35,7 +35,7 @@ def render_spectrogram(mgc, output_file):
 
 
 def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str = 'data/processed/dev',
-                      output_path: str = 'generated_files/'):
+                      output_path: str = 'generated_files/', forced_synthesis: bool = True):
     # load vocoder
     config_file = os.path.join(os.path.split(vocoder_path)[0], 'config.json')
     with open(config_file) as f:
@@ -61,7 +61,10 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
     with torch.no_grad():
         for ii in tqdm.tqdm(range(len(dataset))):
             X = collate.collate_fn([dataset[ii]])
-            _, _, _, mel = textcoder(X)
+            if forced_synthesis:
+                _, _, _, mel = textcoder(X)
+            else:
+                mel = textcoder.inference(X)
             render_spectrogram(mel.detach().cpu().numpy().squeeze(0),
                                '{0}/{1}.png'.format(output_path, dataset[ii]['meta']['id']))
             mel = torch.log(10 ** (mel))
@@ -71,4 +74,11 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
 
 
 if __name__ == '__main__':
-    synthesize_devset('data/textcoder-neb-baseline', 'data/models/vocoder/neb-noft/g_00600000')
+    synthesize_devset('data/textcoder-neb-baseline',
+                      'data/models/vocoder/neb-noft/g_00600000',
+                      output_path='generated_files/free/',
+                      forced_synthesis=False)
+    # synthesize_devset('data/textcoder-neb-baseline',
+    #                   'data/models/vocoder/neb-noft/g_00600000',
+    #                   output_path='generated_files/forced/',
+    #                   forced_synthesis=True)
