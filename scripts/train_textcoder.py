@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
+import os
 import sys
 import json
 import yaml
@@ -25,13 +25,15 @@ from cube.networks.textcoder import CubenetTextcoder
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 from cube.io_utils.io_textcoder import TextcoderCollate, TextcoderEncodings, TextcoderDataset
+from cube.io_utils.runtime import synthesize_devset
 
 
 class PrintAndSaveCallback(pl.callbacks.Callback):
-    def __init__(self, store_prefix):
+    def __init__(self, store_prefix, generate_epoch):
         super().__init__()
         self.store_prefix = store_prefix
         self._best_loss = 99999
+        self._generate_epoch = generate_epoch
 
     def on_validation_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
@@ -56,6 +58,15 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
         sys.stdout.flush()
         opt = pl_module.optimizers()
         torch.save(opt.state_dict(), fname)
+        if epoch % self._generate_epoch == 0:
+            sys.stdout.write('\tGenerating validation set\n')
+            sys.stdout.flush()
+            os.makedirs('generated_files/free/', exist_ok=True)
+            synthesize_devset(self.store_prefix,
+                              'data/models/vocoder/neb-noft/g_00600000',
+                              output_path='generated_files/free/',
+                              forced_synthesis=False,
+                              limit=10)
 
 
 def _train(params):
@@ -140,6 +151,9 @@ if __name__ == '__main__':
                         help='Learning rate (default=2e-4)')
     parser.add_argument('--pframes', dest='pframes', type=int, default=3,
                         help='How many frames to generate at the same time (default=3)')
+    parser.add_argument('--epoch-generation', dest='epoch_generation', type=int, default=10,
+                        help='End-to-end generation of validation set at every n-th epoch (default=10). '
+                             'Files are stored in generated_files/free')
 
     parser.add_argument('--resume', dest='resume', action='store_true')
 

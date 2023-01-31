@@ -35,7 +35,7 @@ def render_spectrogram(mgc, output_file):
 
 
 def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str = 'data/processed/dev',
-                      output_path: str = 'generated_files/', forced_synthesis: bool = True):
+                      output_path: str = 'generated_files/', forced_synthesis: bool = True, limit=-1):
     # load vocoder
     config_file = os.path.join(os.path.split(vocoder_path)[0], 'config.json')
     with open(config_file) as f:
@@ -58,8 +58,11 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
     # load validation set
     dataset = TextcoderDataset(devset_path)
     collate = TextcoderCollate(enc)
+    m_gen = len(dataset)
+    if limit != -1 and limit < m_gen:
+        m_gen = limit
     with torch.no_grad():
-        for ii in tqdm.tqdm(range(len(dataset))):
+        for ii in tqdm.tqdm(range(m_gen)):
             X = collate.collate_fn([dataset[ii]])
             if forced_synthesis:
                 _, _, _, mel = textcoder(X)
