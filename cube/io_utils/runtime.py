@@ -9,12 +9,12 @@ from PIL import Image
 import tqdm
 
 sys.path.append('')
-sys.path.append('hifi-gan')
+sys.path.append('hifigan')
 
 from cube.networks.textcoder import CubenetTextcoder
 from cube.io_utils.io_textcoder import TextcoderCollate, TextcoderEncodings, TextcoderDataset
-from models import Generator
-from env import AttrDict
+from hifigan.models import Generator
+from hifigan.env import AttrDict
 import scipy
 
 
