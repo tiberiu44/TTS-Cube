@@ -1,3 +1,6 @@
+lightning_logs
+.DS_Store
+generated_files
 *.pyc
 build/
 dist/
@@ -15,9 +18,9 @@ venv*
 *.so
 data/
 cube/lib/cube_runtime.cpp
-cube/models/clarinet/train.py
-cube/models/clarinet/train_student.py
-
+cube/networks/clarinet/train.py
+cube/networks/clarinet/train_student.py
+examples
 # CMake
 cmake-build-debug/
 cmake-build-release/
