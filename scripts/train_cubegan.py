@@ -25,7 +25,7 @@ from cube.networks.cubegan import Cubegan
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 from cube.io_utils.io_cubegan import CubeganEncodings, CubeganDataset, CubeganCollate
-from cube.io_utils.runtime import synthesize_devset
+from cube.io_utils.runtime import cubegan_synthesize_dataset
 
 
 class PrintAndSaveCallback(pl.callbacks.Callback):
@@ -58,15 +58,14 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
         sys.stdout.flush()
         opt = pl_module.optimizers()
         # torch.save(opt.state_dict(), fname)
-        if (epoch + 1) % self._generate_epoch == 0:
+        if epoch % self._generate_epoch == 0:
             sys.stdout.write('\tGenerating validation set\n')
             sys.stdout.flush()
             os.makedirs('generated_files/free/', exist_ok=True)
-            synthesize_devset(self.store_prefix,
-                              'data/models/vocoder/neb-noft/g_00600000',
-                              output_path='generated_files/free/',
-                              forced_synthesis=False,
-                              limit=10)
+            cubegan_synthesize_dataset(pl_module,
+                                       output_path='generated_files/free/',
+                                       devset_path='data/processed/dev/',
+                                       limit=10)
 
 
 def _train(params):

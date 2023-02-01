@@ -750,7 +750,7 @@ class Languasito(nn.Module):
         output_pitch = self._pitch_output(hidden_pitch)
         # conditioning
         pitch = torch.argmax(output_pitch, dim=-1)
-        hidden_cond = torch.cat([hidden_overlay, pitch / self._max_pitch], dim=-1)
+        hidden_cond = torch.cat([hidden_overlay, pitch.unsqueeze(2) / self._max_pitch], dim=-1)
         hidden, _ = self._rnn_cond(hidden_cond)
         conditioning = self._cond_output(hidden)
 

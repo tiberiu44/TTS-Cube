@@ -25,6 +25,7 @@ class Cubegan(pl.LightningModule):
     def __init__(self, encodings: CubeganEncodings, lr: float = 2e-4):
         super(Cubegan, self).__init__()
         self._lr = lr
+        self._encodings = encodings
         self._val_loss_durs = 9999
         self._val_loss_pitch = 9999
         self._val_loss_mel = 9999
@@ -49,7 +50,9 @@ class Cubegan(pl.LightningModule):
         pass
 
     def inference(self, X):
-        pass
+        with torch.no_grad():
+            conditioning = self._languasito.inference(X)
+            return self._generator(conditioning.permute(0, 2, 1))
 
     def training_step(self, batch, batch_ids):
         opt_g, opt_d = self.optimizers()
@@ -79,9 +82,10 @@ class Cubegan(pl.LightningModule):
         y_g_hat = y_g_hat[:, :, :m_size]
 
         # select random section of audio (because we canot train the gan on the entire sequence)
-        r = random.randint(0, m_size - 1 - 12000)
-        y = y[:, :, r:r + 12000]
-        y_g_hat = y_g_hat[:, :, r:r + 12000]
+        if y.shape[2] > 48000:
+            r = random.randint(0, m_size - 1 - 48000)
+            y = y[:, :, r:r + 48000]
+            y_g_hat = y_g_hat[:, :, r:r + 48000]
         y_mel = mel_spectrogram(y.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
         y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
 

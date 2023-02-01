@@ -12,7 +12,9 @@ sys.path.append('')
 sys.path.append('hifigan')
 
 from cube.networks.textcoder import CubenetTextcoder
+from cube.networks.cubegan import Cubegan
 from cube.io_utils.io_textcoder import TextcoderCollate, TextcoderEncodings, TextcoderDataset
+from cube.io_utils.io_cubegan import CubeganEncodings, CubeganCollate, CubeganDataset
 from hifigan.models import Generator
 from hifigan.env import AttrDict
 import scipy
@@ -72,6 +74,24 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
                                '{0}/{1}.png'.format(output_path, dataset[ii]['meta']['id']))
             mel = torch.log(10 ** (mel))
             audio = vocoder(mel.permute(0, 2, 1)).detach().cpu().numpy().squeeze()
+            audio = np.array(audio * 32767, dtype=np.int16)
+            scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
+
+
+def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1):
+    # load textcoder
+    enc = model._encodings
+    collate = CubeganCollate(enc)
+    # load validation set
+    dataset = TextcoderDataset(devset_path)
+    m_gen = len(dataset)
+    if limit != -1 and limit < m_gen:
+        m_gen = limit
+    with torch.no_grad():
+        for ii in tqdm.tqdm(range(m_gen)):
+            X = collate.collate_fn([dataset[ii]])
+
+            audio = model.inference(X)
             audio = np.array(audio * 32767, dtype=np.int16)
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
 

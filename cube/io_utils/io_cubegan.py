@@ -119,9 +119,10 @@ class CubeganCollate:
             for jj in range(max_char - len(example['meta']['phones'])):
                 y_dur[ii, len(example['meta']['phones']) + jj] = self._ignore_index
             y_pitch[ii, :example['pitch'].shape[0]] = example['pitch']
-            audio = example['audio']
-            m_size = min(y_audio.shape[1], audio.shape[0])
-            y_audio[ii, :m_size] = audio[:m_size]
+            if 'audio' in example:
+                audio = example['audio']
+                m_size = min(y_audio.shape[1], audio.shape[0])
+                y_audio[ii, :m_size] = audio[:m_size]
 
         return {
             'x_char': torch.tensor(x_char, dtype=torch.long),
