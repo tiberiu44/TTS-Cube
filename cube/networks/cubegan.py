@@ -38,8 +38,12 @@ class Cubegan(pl.LightningModule):
         self._languasito = Languasito(len(encodings.phon2int), len(encodings.speaker2int), encodings.max_pitch,
                                       encodings.max_duration)
         self._loss_cross = nn.CrossEntropyLoss(ignore_index=int(max(encodings.max_pitch, encodings.max_duration) + 1))
+        self._generator.train()
+        self._mpd.train()
+        self._msd.train()
 
         self._loss_l1 = nn.L1Loss()
+        self.automatic_optimization = False
 
     def forward(self, X):
         pass
@@ -47,8 +51,11 @@ class Cubegan(pl.LightningModule):
     def inference(self, X):
         pass
 
-    def training_step(self, batch, batch_ids, optimizer_idx):
+    def training_step(self, batch, batch_ids):
         opt_g, opt_d = self.optimizers()
+        self._msd.train()
+        self._mpd.train()
+
         p_dur, p_pitch, conditioning = self._languasito(batch)
         t_dur = batch['y_dur']
         t_pitch = batch['y_pitch']
@@ -75,12 +82,11 @@ class Cubegan(pl.LightningModule):
         r = random.randint(0, m_size - 1 - 12000)
         y = y[:, :, r:r + 12000]
         y_g_hat = y_g_hat[:, :, r:r + 12000]
-        y_mel = mel_spectrogram(y.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000).detach()
+        y_mel = mel_spectrogram(y.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
         y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
 
-        from ipdb import set_trace
-        set_trace()
         opt_d.zero_grad()
+
         # MPD
         y_df_hat_r, y_df_hat_g, _, _ = self._mpd(y, y_g_hat.detach())
         loss_disc_f, losses_disc_f_r, losses_disc_f_g = discriminator_loss(y_df_hat_r, y_df_hat_g)
