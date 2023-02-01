@@ -143,10 +143,10 @@ class Cubegan(pl.LightningModule):
         y_g_hat = y_g_hat[:, :, :m_size]
 
         # select random section of audio (because we canot train the gan on the entire sequence)
-        if y.shape[2] > 48000:
-            r = random.randint(0, m_size - 1 - 48000)
-            y = y[:, :, r:r + 48000]
-            y_g_hat = y_g_hat[:, :, r:r + 48000]
+        if y.shape[2] > 12000:
+            r = random.randint(0, m_size - 1 - 12000)
+            y = y[:, :, r:r + 12000]
+            y_g_hat = y_g_hat[:, :, r:r + 12000]
         y_mel = mel_spectrogram(y.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
         y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
 
