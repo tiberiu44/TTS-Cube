@@ -138,11 +138,11 @@ class Cubegan(pl.LightningModule):
 
         y = batch['y_audio'].unsqueeze(1)
 
-        if y.shape[2] > 48000:
-            r = random.randint(0, m_size - 1 - 48000) // 240 * 240
+        if y.shape[2] > 48000 - 240:
+            r = random.randint(0, y.shape[2] - 1 - 480000 - 240) // 240 * 240
             y = y[:, :, r:r + 48000]
             conditioning = conditioning[:, r // 240:r // 240 + 200]
-            
+
         y_g_hat = self._generator(conditioning.permute(0, 2, 1))
         m_size = min(y.shape[2], y_g_hat.shape[2])
         y = y[:, :, :m_size]
