@@ -71,16 +71,18 @@ class Cubegan(pl.LightningModule):
                                       t_pitch.reshape(-1))
 
         y = batch['y_audio'].unsqueeze(1)
+
+        if y.shape[2] > 48000 - 240:
+            r = random.randint(0, y.shape[2] - 1 - 48000 - 240) // 240 * 240
+            y = y[:, :, r:r + 48000]
+            conditioning = conditioning[:, r // 240:r // 240 + 200, :]
+
         y_g_hat = self._generator(conditioning.permute(0, 2, 1))
         m_size = min(y.shape[2], y_g_hat.shape[2])
         y = y[:, :, :m_size]
         y_g_hat = y_g_hat[:, :, :m_size]
 
         # select random section of audio (because we canot train the gan on the entire sequence)
-        if y.shape[2] > 48000:
-            r = random.randint(0, m_size - 1 - 48000)
-            y = y[:, :, r:r + 48000]
-            y_g_hat = y_g_hat[:, :, r:r + 48000]
         y_mel = mel_spectrogram(y.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
         y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
 
@@ -138,10 +140,10 @@ class Cubegan(pl.LightningModule):
 
         y = batch['y_audio'].unsqueeze(1)
         # select random section of audio (because we canot train the gan on the entire sequence
-        if y.shape[2] > 12000 - 240:
-            r = random.randint(0, y.shape[2] - 1 - 12000 - 240) // 240 * 240
-            y = y[:, :, r:r + 12000]
-            conditioning = conditioning[:, r // 240:r // 240 + 50, :]
+        if y.shape[2] > 48000 - 240:
+            r = random.randint(0, y.shape[2] - 1 - 48000 - 240) // 240 * 240
+            y = y[:, :, r:r + 48000]
+            conditioning = conditioning[:, r // 240:r // 240 + 200, :]
 
         y_g_hat = self._generator(conditioning.permute(0, 2, 1))
         m_size = min(y.shape[2], y_g_hat.shape[2])
