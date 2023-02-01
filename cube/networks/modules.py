@@ -851,10 +851,10 @@ class Languasito(nn.Module):
 
     @torch.jit.ignore
     def _get_device(self):
-        if self._mel_output.linear_layer.weight.device.type == 'cpu':
+        if self._dur_output.linear_layer.weight.device.type == 'cpu':
             return 'cpu'
-        return '{0}:{1}'.format(self._mel_output.linear_layer.weight.device.type,
-                                str(self._mel_output.linear_layer.weight.device.index))
+        return '{0}:{1}'.format(self._dur_output.linear_layer.weight.device.type,
+                                str(self._dur_output.linear_layer.weight.device.index))
 
     def _expand(self, x, alignments):
         m_size = max([len(a) // self._pframes for a in alignments])

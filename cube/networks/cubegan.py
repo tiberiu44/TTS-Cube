@@ -26,10 +26,7 @@ class Cubegan(pl.LightningModule):
         super(Cubegan, self).__init__()
         self._lr = lr
         self._encodings = encodings
-        self._val_loss_durs = 9999
-        self._val_loss_pitch = 9999
-        self._val_loss_mel = 9999
-        self._val_loss_total = 999
+        self._val_loss = 9999
 
         json_config = json.load(open('hifigan/config_v1.json'))
         h = AttrDict(json_config)
@@ -56,8 +53,6 @@ class Cubegan(pl.LightningModule):
 
     def training_step(self, batch, batch_ids):
         opt_g, opt_d = self.optimizers()
-        self._msd.train()
-        self._mpd.train()
 
         p_dur, p_pitch, conditioning = self._languasito(batch)
         t_dur = batch['y_dur']
@@ -120,12 +115,68 @@ class Cubegan(pl.LightningModule):
 
         loss_gen_all.backward()
         opt_g.step()
+        output_obj = {'loss_g': loss_gen_all, 'loss_d': loss_disc_all, 'loss': loss_gen_all + loss_disc_all}
+        self.log_dict(output_obj, prog_bar=True)
+        return output_obj
 
     def validation_step(self, batch, batch_ids):
-        return 0
+        p_dur, p_pitch, conditioning = self._languasito(batch)
+        t_dur = batch['y_dur']
+        t_pitch = batch['y_pitch']
+        # match shapes
+        m_size = min(t_dur.shape[1], p_dur.shape[1])
+        t_dur = t_dur[:, :m_size]
+        p_dur = p_dur[:, :m_size, :]
+        m_size = min(t_pitch.shape[1], p_pitch.shape[1])
+        t_pitch = t_pitch[:, :m_size]
+        p_pitch = p_pitch[:, :m_size, :]
+
+        loss_duration = self._loss_cross(p_dur.reshape(-1, p_dur.shape[2]), t_dur.reshape(-1))
+
+        loss_pitch = self._loss_cross(p_pitch.reshape(-1, p_pitch.shape[2]),
+                                      t_pitch.reshape(-1))
+
+        y = batch['y_audio'].unsqueeze(1)
+        y_g_hat = self._generator(conditioning.permute(0, 2, 1))
+        m_size = min(y.shape[2], y_g_hat.shape[2])
+        y = y[:, :, :m_size]
+        y_g_hat = y_g_hat[:, :, :m_size]
+
+        # select random section of audio (because we canot train the gan on the entire sequence)
+        if y.shape[2] > 48000:
+            r = random.randint(0, m_size - 1 - 48000)
+            y = y[:, :, r:r + 48000]
+            y_g_hat = y_g_hat[:, :, r:r + 48000]
+        y_mel = mel_spectrogram(y.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
+        y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
+
+        # MPD
+        y_df_hat_r, y_df_hat_g, _, _ = self._mpd(y, y_g_hat.detach())
+        loss_disc_f, losses_disc_f_r, losses_disc_f_g = discriminator_loss(y_df_hat_r, y_df_hat_g)
+
+        # MSD
+        y_ds_hat_r, y_ds_hat_g, _, _ = self._msd(y, y_g_hat.detach())
+        loss_disc_s, losses_disc_s_r, losses_disc_s_g = discriminator_loss(y_ds_hat_r, y_ds_hat_g)
+
+        loss_disc_all = loss_disc_s + loss_disc_f
+
+        # Generator
+        # L1 Mel-Spectrogram Loss
+        loss_mel = self._loss_l1(y_mel, y_g_hat_mel) * 45
+
+        y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = self._mpd(y, y_g_hat)
+        y_ds_hat_r, y_ds_hat_g, fmap_s_r, fmap_s_g = self._msd(y, y_g_hat)
+        loss_fm_f = feature_loss(fmap_f_r, fmap_f_g)
+        loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
+        loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
+        loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
+        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_pitch + loss_duration
+
+        return {'loss_g': loss_gen_all, 'loss_d': loss_disc_all, 'loss': loss_gen_all + loss_disc_all}
 
     def validation_epoch_end(self, outputs: []) -> None:
-        pass
+        total_loss = sum(x['loss'] for x in outputs) / len(outputs)
+        self._val_loss = total_loss
 
     def configure_optimizers(self):
         optim_g = torch.optim.AdamW(itertools.chain(self._generator.parameters(),
@@ -148,3 +199,6 @@ class Cubegan(pl.LightningModule):
     @staticmethod
     def _compute_lr(initial_lr, delta, step):
         return initial_lr / (1 + delta * step)
+
+    def get_device(self):
+        return self._languasito._get_device()

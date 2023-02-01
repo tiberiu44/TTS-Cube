@@ -79,7 +79,6 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
 
 
 def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1):
-    # load textcoder
     enc = model._encodings
     collate = CubeganCollate(enc)
     # load validation set
@@ -90,7 +89,9 @@ def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-
     with torch.no_grad():
         for ii in tqdm.tqdm(range(m_gen)):
             X = collate.collate_fn([dataset[ii]])
-
+            for key in X:
+                if isinstance(X[key], torch.Tensor):
+                    X[key] = X[key].to(model.get_device())
             audio = model.inference(X)
             audio = np.array(audio * 32767, dtype=np.int16)
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
