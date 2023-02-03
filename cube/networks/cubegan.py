@@ -44,7 +44,9 @@ class Cubegan(pl.LightningModule):
         self.automatic_optimization = False
 
     def forward(self, X):
-        pass
+        with torch.no_grad():
+            _, _, conditioning = self._languasito(X)
+            return self._generator(conditioning.permute(0, 2, 1))
 
     def inference(self, X):
         with torch.no_grad():
@@ -70,13 +72,23 @@ class Cubegan(pl.LightningModule):
         loss_pitch = self._loss_cross(p_pitch.reshape(-1, p_pitch.shape[2]),
                                       t_pitch.reshape(-1))
 
-        y = batch['y_audio'].unsqueeze(1)
+        y = batch['y_audio']
 
-        if y.shape[2] > 12000 - 240:
-            r = random.randint(0, y.shape[2] - 1 - 12000 - 240) // 240 * 240
-            y = y[:, :, r:r + 12000]
-            conditioning = conditioning[:, r // 240:r // 240 + 50, :]
+        if y.shape[1] > 12000 - 240:
+            y_t_list = []
+            c_list = []
+            for ii in range(y.shape[0]):
+                max_frame = len(batch['y_frame2phone'][ii])
+                if max_frame > 51:
+                    r = random.randint(0, max_frame - 50 - 1)
+                else:
+                    r = 0
+                c_list.append(conditioning[ii, r:r + 50, :].unsqueeze(0))
+                y_t_list.append(y[ii, r * 240:r * 240 + 12000].unsqueeze(0))
+            y = torch.cat(y_t_list, dim=0)
+            conditioning = torch.cat(c_list, dim=0)
 
+        y = y.unsqueeze(1)
         y_g_hat = self._generator(conditioning.permute(0, 2, 1))
         m_size = min(y.shape[2], y_g_hat.shape[2])
         y = y[:, :, :m_size]
@@ -138,12 +150,23 @@ class Cubegan(pl.LightningModule):
         loss_pitch = self._loss_cross(p_pitch.reshape(-1, p_pitch.shape[2]),
                                       t_pitch.reshape(-1))
 
-        y = batch['y_audio'].unsqueeze(1)
+        y = batch['y_audio']
         # select random section of audio (because we canot train the gan on the entire sequence
-        if y.shape[2] > 48000 - 240:
-            r = random.randint(0, y.shape[2] - 1 - 48000 - 240) // 240 * 240
-            y = y[:, :, r:r + 48000]
-            conditioning = conditioning[:, r // 240:r // 240 + 200, :]
+        if y.shape[1] > 48000 - 240:
+            y_t_list = []
+            c_list = []
+            for ii in range(y.shape[0]):
+                max_frame = len(batch['y_frame2phone'][ii])
+                if max_frame > 201:
+                    r = random.randint(0, max_frame - 200 - 1)
+                else:
+                    r = 0
+                c_list.append(conditioning[ii, r:r + 200, :].unsqueeze(0))
+                y_t_list.append(y[ii, r * 240:r * 240 + 48000].unsqueeze(0))
+            y = torch.cat(y_t_list, dim=0)
+            conditioning = torch.cat(c_list, dim=0)
+
+        y = y.unsqueeze(1)
 
         y_g_hat = self._generator(conditioning.permute(0, 2, 1))
         m_size = min(y.shape[2], y_g_hat.shape[2])

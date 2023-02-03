@@ -78,7 +78,7 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
 
 
-def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1):
+def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True):
     enc = model._encodings
     collate = CubeganCollate(enc)
     # load validation set
@@ -92,16 +92,25 @@ def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-
             for key in X:
                 if isinstance(X[key], torch.Tensor):
                     X[key] = X[key].to(model.get_device())
-            audio = model.inference(X)
-            audio = (audio.detach().cpu().numpy() * 32767).squeeze()
+            if free:
+                audio = model.inference(X)
+            else:
+                audio = model(X)
+            audio = audio.detach().cpu().numpy().squeeze()
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
 
 
 if __name__ == '__main__':
-    synthesize_devset('data/textcoder-neb-baseline',
-                      'data/models/vocoder/neb-noft/g_00600000',
-                      output_path='generated_files/free/',
-                      forced_synthesis=False)
+    encodings = CubeganEncodings()
+    encodings.load('data/cubegan-neb-baseline.encodings')
+    model = Cubegan(encodings)
+    model.load('data/cubegan-neb-baseline.last')
+    model.eval()
+    cubegan_synthesize_dataset(model, 'generated_files/forced/tmp/', 'data/processed/dev', free=False)
+    # synthesize_devset('data/textcoder-neb-baseline',
+    #                   'data/models/vocoder/neb-noft/g_00600000',
+    #                   output_path='generated_files/free/',
+    #                   forced_synthesis=False)
     # synthesize_devset('data/textcoder-neb-baseline',
     #                   'data/models/vocoder/neb-noft/g_00600000',
     #                   output_path='generated_files/forced/',
