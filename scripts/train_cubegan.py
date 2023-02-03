@@ -58,7 +58,7 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
         sys.stdout.flush()
         opt = pl_module.optimizers()
         # torch.save(opt.state_dict(), fname)
-        if False and epoch % self._generate_epoch == 0:
+        if epoch % self._generate_epoch == 0:
             sys.stdout.write('\tGenerating validation set\n')
             sys.stdout.flush()
             os.makedirs('generated_files/free/', exist_ok=True)
