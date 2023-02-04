@@ -916,7 +916,7 @@ class Languasito2(nn.Module):
         output_dur = self._dur_output(hidden_dur)
 
         # align/repeat to match alignments
-        hidden = self._expand(hidden_char_speaker_ext, X['y_frame2phone'])
+        hidden = self._expand_i(hidden_char_speaker_ext, X['y_frame2phone'])
         # pitch
         hidden_pitch, _ = self._pitch_rnn(hidden)
         output_pitch = self._pitch_output(hidden_pitch)
@@ -939,7 +939,7 @@ class Languasito2(nn.Module):
         expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
         pitch = X['y_pitch'].unsqueeze(2) / self._max_pitch
         hidden = torch.cat([hidden, expanded_speaker], dim=-1)
-        hidden = self._expand(hidden, X['y_frame2phone'])
+        hidden = self._expand_i(hidden, X['y_frame2phone'])
         m_size = min(hidden.shape[1], pitch.shape[1])
         hidden = torch.cat([hidden[:, :m_size, :], pitch[:, :m_size, :]], dim=-1)
         hidden, _ = self._cond_rnn(hidden)
@@ -998,6 +998,18 @@ class Languasito2(nn.Module):
             c_batch = torch.cat(c_batch, dim=0)
             tmp.append(c_batch.unsqueeze(0))
         return torch.cat(tmp, dim=0)
+
+    def _expand_i(self, x, alignments):
+        m_size = max([len(a) // self._pframes for a in alignments])
+        index = np.zeros((x.shape[0], m_size, 2))
+        for ii in range(len(alignments)):
+            for jj in range(len(alignments[ii])):
+                index[ii, jj, 0] = ii
+                index[ii, jj, 1] = alignments[ii][jj]
+            for jj in range(m_size - len(alignments[ii])):
+                index[ii, jj + len(alignments[ii]), 0] = ii
+                index[ii, jj + len(alignments[ii]), 1] = alignments[ii][-1]
+        return x[index[:, :, 0], index[:, :, 1]]
 
     def _prepare_mel(self, x):
         lst = [torch.ones((x.shape[0], 1, x.shape[2]), device=self._get_device()) * -5]
