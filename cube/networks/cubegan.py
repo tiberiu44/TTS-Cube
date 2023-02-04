@@ -13,7 +13,7 @@ import itertools
 sys.path.append('')
 sys.path.append('hifigan')
 from cube.io_utils.io_cubegan import CubeganEncodings
-from cube.networks.modules import ConvNorm, LinearNorm, PreNet, PostNet, Languasito
+from cube.networks.modules import ConvNorm, LinearNorm, PreNet, PostNet, Languasito2
 from collections import OrderedDict
 from hifigan.models import Generator, MultiPeriodDiscriminator, MultiScaleDiscriminator, feature_loss, generator_loss, \
     discriminator_loss
@@ -33,8 +33,8 @@ class Cubegan(pl.LightningModule):
         self._generator = Generator(h)
         self._mpd = MultiPeriodDiscriminator()
         self._msd = MultiScaleDiscriminator()
-        self._languasito = Languasito(len(encodings.phon2int), len(encodings.speaker2int), encodings.max_pitch,
-                                      encodings.max_duration)
+        self._languasito = Languasito2(len(encodings.phon2int), len(encodings.speaker2int), encodings.max_pitch,
+                                       encodings.max_duration)
         self._loss_cross = nn.CrossEntropyLoss(ignore_index=int(max(encodings.max_pitch, encodings.max_duration) + 1))
         self._generator.train()
         self._mpd.train()
@@ -54,7 +54,7 @@ class Cubegan(pl.LightningModule):
             return self._generator(conditioning.permute(0, 2, 1))
 
     def training_step(self, batch, batch_ids):
-        opt_g, opt_d = self.optimizers()
+        opt_g, opt_d, opt_t = self.optimizers()
 
         p_dur, p_pitch, conditioning = self._languasito(batch)
         t_dur = batch['y_dur']
@@ -125,11 +125,16 @@ class Cubegan(pl.LightningModule):
         loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
         loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
         loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
-        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_pitch + loss_duration
+        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
 
         loss_gen_all.backward()
         opt_g.step()
-        output_obj = {'loss_g': loss_gen_all, 'loss_d': loss_disc_all, 'loss': loss_gen_all + loss_disc_all}
+        opt_t.zero_grad()
+        loss_text = loss_pitch + loss_duration
+        loss_text.backward()
+        opt_t.step()
+        output_obj = {'loss_g': loss_gen_all, 'loss_t': loss_text, 'loss_d': loss_disc_all,
+                      'loss_v': loss_gen_all + loss_disc_all, 'loss': loss_gen_all + loss_disc_all + loss_text}
         self.log_dict(output_obj, prog_bar=True)
         return output_obj
 
@@ -188,7 +193,7 @@ class Cubegan(pl.LightningModule):
 
         # Generator
         # L1 Mel-Spectrogram Loss
-        loss_mel = self._loss_l1(y_mel, y_g_hat_mel) * 45
+        loss_mel = self._loss_l1(y_mel, y_g_hat_mel)
 
         y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = self._mpd(y, y_g_hat)
         y_ds_hat_r, y_ds_hat_g, fmap_s_r, fmap_s_g = self._msd(y, y_g_hat)
@@ -196,23 +201,42 @@ class Cubegan(pl.LightningModule):
         loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
         loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
         loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
-        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_pitch + loss_duration
+        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
+        loss_text = loss_pitch + loss_duration
 
-        return {'loss_g': loss_gen_all, 'loss_d': loss_disc_all, 'loss': loss_gen_all + loss_disc_all}
+        return {'loss_g': loss_gen_all,
+                'loss_d': loss_disc_all,
+                'loss': loss_gen_all + loss_disc_all + loss_text,
+                'loss_v': loss_gen_all + loss_disc_all,
+                'loss_mel': loss_mel}
 
     def validation_epoch_end(self, outputs: []) -> None:
-        total_loss = sum(x['loss'] for x in outputs) / len(outputs)
-        self._val_loss = total_loss
+        target_loss = sum(x['loss_mel'] for x in outputs) / len(outputs)
+        self._val_loss = target_loss
 
     def configure_optimizers(self):
         optim_g = torch.optim.AdamW(itertools.chain(self._generator.parameters(),
-                                                    self._languasito.parameters()),
-                                    self._lr, betas=[0.8, 0.99])
+                                                    self._languasito._phon_emb_g.parameters(),
+                                                    self._languasito._speaker_emb_g.parameters(),
+                                                    self._languasito._char_cnn_g.parameters(),
+                                                    self._languasito._char_rnn_g.parameters(),
+                                                    self._languasito._cond_rnn.parameters(),
+                                                    self._languasito._cond_output.parameters()),
+                                    2e-4, betas=[0.8, 0.99])
         optim_d = torch.optim.AdamW(itertools.chain(self._msd.parameters(),
                                                     self._mpd.parameters()
                                                     ),
-                                    self._lr, betas=[0.8, 0.99])
-        return optim_g, optim_d
+                                    2e-4, betas=[0.8, 0.99])
+        optim_t = torch.optim.AdamW(itertools.chain(self._languasito._phon_emb_t.parameters(),
+                                                    self._languasito._speaker_emb_t.parameters(),
+                                                    self._languasito._char_cnn_t.parameters(),
+                                                    self._languasito._char_rnn_t.parameters(),
+                                                    self._languasito._dur_rnn.parameters(),
+                                                    self._languasito._dur_output.parameters(),
+                                                    self._languasito._pitch_rnn.parameters(),
+                                                    self._languasito._pitch_output.parameters()),
+                                     1e-4, betas=[0.8, 0.99])
+        return optim_g, optim_d, optim_t
 
     @torch.jit.ignore
     def save(self, path):
