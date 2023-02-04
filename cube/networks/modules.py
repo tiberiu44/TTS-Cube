@@ -851,7 +851,7 @@ class Languasito2(nn.Module):
             char_cnn_g.append(nn.Tanh())
             inp_s = CHAR_CNN_SIZE
         self._char_cnn_t = nn.ModuleList(char_cnn_t)
-        self._char_cnn_g = nn.ModuleList(char_cnn_t)
+        self._char_cnn_g = nn.ModuleList(char_cnn_g)
         # phoneme/char RNN
         self._char_rnn_t = nn.LSTM(input_size=inp_s,
                                    hidden_size=CHAR_RNN_SIZE,
