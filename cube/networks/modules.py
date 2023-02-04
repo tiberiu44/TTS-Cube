@@ -806,16 +806,16 @@ class Languasito2(nn.Module):
         super(Languasito2, self).__init__()
         PHON_EMB_SIZE = 64
         SPEAKER_EMB_SIZE = 128
-        CHAR_CNN_SIZE = 256
+        CHAR_CNN_SIZE = 64
         CHAR_CNN_KS = 3
         CHAR_CNN_NL = 3
         CHAR_RNN_NL = 2
-        CHAR_RNN_SIZE = 256
+        CHAR_RNN_SIZE = 128
         EXTERNAL_COND = 0  # this will be used to add external conditioning (e.g. transformer) - not currently used
-        DUR_RNN_SIZE = 256
-        DUR_RNN_LAYERS = 2
-        PITCH_RNN_SIZE = 256
-        PITCH_RNN_LAYERS = 2
+        DUR_RNN_SIZE = 128
+        DUR_RNN_LAYERS = 1
+        PITCH_RNN_SIZE = 128
+        PITCH_RNN_LAYERS = 1
         COND_RNN_SIZE = 64
         COND_RNN_LAYERS = 2
         COND_SIZE = 80
