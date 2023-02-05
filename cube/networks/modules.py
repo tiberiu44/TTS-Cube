@@ -916,6 +916,15 @@ class Languasito2(nn.Module):
         output_dur = self._dur_output(hidden_dur)
 
         # align/repeat to match alignments
+        if 'y_frame2phone' not in X: #we are in runtime mode
+            durs = torch.argmax(output_dur, dim=-1).detach().cpu().numpy().squeeze()
+            frame2phone = []
+            phon_index = 0
+            for dur in durs:
+                for ii in range(dur):
+                    frame2phone.append(phon_index)
+                phon_index += 1
+            X['y_frame2phone'] = [frame2phone]
         hidden = self._expand_i(hidden_char_speaker_ext, X['y_frame2phone'])
         # pitch
         hidden_pitch, _ = self._pitch_rnn(hidden)
@@ -951,18 +960,20 @@ class Languasito2(nn.Module):
         return output_dur, output_pitch, conditioning
 
     def inference(self, X):
+        del X['y_frame2phone']
         output_dur, output_pitch = self._text_forward(X)
         output_dur = torch.argmax(output_dur, dim=-1)
         output_pitch = torch.argmax(output_pitch, dim=-1)
 
-        frame2phone = []
-        phon_index = 0
-        for dur in output_dur.detach().cpu().numpy().squeeze():
-            for ii in range(dur):
-                frame2phone.append(phon_index)
-            phon_index += 1
+        # frame2phone = []
+        # phon_index = 0
+        # for dur in output_dur.detach().cpu().numpy().squeeze():
+        #     for ii in range(dur):
+        #         frame2phone.append(phon_index)
+        #     phon_index += 1
+        # from ipdb import set_trace
+        # set_trace()
         X['y_pitch'] = output_pitch
-        X['y_frame2phone'] = [frame2phone]
         conditioning = self._cond_forward(X)
 
         return conditioning
