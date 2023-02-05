@@ -916,7 +916,7 @@ class Languasito2(nn.Module):
         output_dur = self._dur_output(hidden_dur)
 
         # align/repeat to match alignments
-        if 'y_frame2phone' not in X: #we are in runtime mode
+        if 'y_frame2phone' not in X:  # we are in runtime mode
             durs = torch.argmax(output_dur, dim=-1).detach().cpu().numpy().squeeze()
             frame2phone = []
             phon_index = 0
@@ -962,7 +962,7 @@ class Languasito2(nn.Module):
     def inference(self, X):
         del X['y_frame2phone']
         output_dur, output_pitch = self._text_forward(X)
-        output_dur = torch.argmax(output_dur, dim=-1)
+        # output_dur = torch.argmax(output_dur, dim=-1)
         output_pitch = torch.argmax(output_pitch, dim=-1)
 
         # frame2phone = []
