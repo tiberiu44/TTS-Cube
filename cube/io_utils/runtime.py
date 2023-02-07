@@ -17,7 +17,7 @@ from cube.io_utils.io_textcoder import TextcoderCollate, TextcoderEncodings, Tex
 from cube.io_utils.io_cubegan import CubeganEncodings, CubeganCollate, CubeganDataset
 from hifigan.models import Generator
 from hifigan.env import AttrDict
-import scipy
+import scipy.io
 
 
 def render_spectrogram(mgc, output_file):
