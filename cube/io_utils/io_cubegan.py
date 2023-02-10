@@ -14,6 +14,7 @@ import tqdm
 sys.path.append('')
 
 from torch.utils.data.dataset import Dataset
+from cube.networks.g2p import SimpleTokenizer
 
 
 class CubeganDataset(Dataset):
@@ -21,15 +22,19 @@ class CubeganDataset(Dataset):
         self._base_path = base_path
         self._examples = []
         train_files_tmp = [join(base_path, f) for f in listdir(base_path) if isfile(join(base_path, f))]
+        tok = SimpleTokenizer()
 
-        for file in train_files_tmp:
+        for file in tqdm.tqdm(train_files_tmp, desc='\tLoading dataset', ncols=80):
             if file[-4:] == '.mgc':
                 bpath = file[:-4]
                 # check all files exist
                 json_file = '{0}.json'.format(bpath)
                 pitch_file = '{0}.pitch'.format(bpath)
                 if os.path.exists(json_file) and os.path.exists(pitch_file):
-                    self._examples.append(json.load(open(json_file)))
+                    example = json.load(open(json_file))
+                    example['words_left'] = tok(example['left_context'])
+                    example['words_right'] = tok(example['right_context'])
+                    self._examples.append(example)
 
     def __len__(self):
         return len(self._examples)
