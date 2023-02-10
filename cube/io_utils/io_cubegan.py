@@ -15,6 +15,8 @@ sys.path.append('')
 
 from torch.utils.data.dataset import Dataset
 from cube.networks.g2p import SimpleTokenizer
+import fasttext.util
+import fasttext
 
 
 class CubeganDataset(Dataset):
@@ -96,14 +98,23 @@ class CubeganEncodings:
 
 
 class CubeganCollate:
-    def __init__(self, encodings: CubeganEncodings):
+    def __init__(self, encodings: CubeganEncodings, conditioning_type=None):
         self._encodings = encodings
         self._ignore_index = int(max(encodings.max_pitch, encodings.max_duration) + 1)
+        self._conditioning_type = None
+        if conditioning_type is not None and conditioning_type.startswith('fasttext'):
+            fasttext.util.download_model('fr', if_exists='ignore')
+            self._ft = fasttext.load_model('cc.fr.300.bin')
+            self._conditioning_type = 'fasttext'
 
     def collate_fn(self, batch):
         max_char = max([len(example['meta']['phones']) for example in batch])
         max_mel = max([example['mgc'].shape[0] for example in batch])
         x_char = np.zeros((len(batch), max_char))
+        x_words = None
+        if self._conditioning_type == 'fasttext':
+            x_words = self._get_ft_embeddings(batch)
+        x_phoneme2word = np.zeros((len(batch), max_char), dtype=np.long)
         y_mgc = np.ones((len(batch), max_mel, 80)) * -5
         x_speaker = np.zeros((len(batch), 1))
         y_dur = np.zeros((len(batch), max_char))
@@ -119,6 +130,9 @@ class CubeganCollate:
                 if phoneme in self._encodings.phon2int:
                     x_char[ii, jj] = self._encodings.phon2int[phoneme] + 1
             y_frame2phone.append(example['meta']['frame2phon'])
+            phone2word = example['meta']['phon2word']
+            # this works for fasttext, not sure about bert
+            x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) + len(example['meta']['words_left'])
             for phone_idx in y_frame2phone[-1]:
                 y_dur[ii, phone_idx] += 1
             for jj in range(max_char - len(example['meta']['phones'])):
@@ -129,8 +143,12 @@ class CubeganCollate:
                 m_size = min(y_audio.shape[1], audio.shape[0])
                 y_audio[ii, :m_size] = audio[:m_size]
 
+        if x_words is not None:
+            x_words = torch.tensor(x_words, dtype=torch.float)
         return {
             'x_char': torch.tensor(x_char, dtype=torch.long),
+            'x_words': x_words,
+            'x_phon2word': torch.tensor(x_phoneme2word),
             'x_speaker': torch.tensor(x_speaker, dtype=torch.long),
             'y_mgc': torch.tensor(y_mgc, dtype=torch.float),
             'y_frame2phone': y_frame2phone,
@@ -138,3 +156,16 @@ class CubeganCollate:
             'y_dur': torch.tensor(y_dur, dtype=torch.long),
             'y_audio': torch.tensor(y_audio, dtype=torch.float)
         }
+
+    def _get_ft_embeddings(self, batch):
+        max_words = max([len(example['meta']['words']) +
+                         len(example['meta']['words_left']) +
+                         len(example['meta']['words_right']) for example in batch])
+        x_words = np.zeros((len(batch), max_words, 300))
+        for ii in range(len(batch)):
+            all_words = batch[ii]['meta']['words_left'] + \
+                        batch[ii]['meta']['words'] + \
+                        batch[ii]['meta']['words_right']
+            for jj in range(len(all_words)):
+                x_words[ii, jj, :] = self._ft.get_word_vector(str(all_words[jj]))
+        return x_words

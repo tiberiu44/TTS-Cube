@@ -802,7 +802,7 @@ class Languasito(nn.Module):
 
 
 class Languasito2(nn.Module):
-    def __init__(self, num_phones, num_speakers, max_pitch, max_duration, lr: float = 2e-4):
+    def __init__(self, num_phones, num_speakers, max_pitch, max_duration, cond_type=None, lr: float = 2e-4):
         super(Languasito2, self).__init__()
         PHON_EMB_SIZE = 64
         SPEAKER_EMB_SIZE = 128
@@ -811,7 +811,16 @@ class Languasito2(nn.Module):
         CHAR_CNN_NL = 3
         CHAR_RNN_NL = 2
         CHAR_RNN_SIZE = 256
-        EXTERNAL_COND = 0  # this will be used to add external conditioning (e.g. transformer) - not currently used
+        if cond_type == 'fasttext':
+            EXTERNAL_COND = 512  # this will be used to add external conditioning (e.g. transformer) - not currently used
+            self._lm_t = nn.LSTM(input_size=300, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
+            self._lm_g = nn.LSTM(input_size=300, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
+            self._use_cond = True
+        else:
+            EXTERNAL_COND = 0
+            self._lm_t = nn.Linear(1, 1)
+            self._lm_g = nn.Linear(1, 1)
+            self._use_cond = False
         DUR_RNN_SIZE = 256
         DUR_RNN_LAYERS = 2
         PITCH_RNN_SIZE = 256
@@ -912,6 +921,11 @@ class Languasito2(nn.Module):
         # append speaker embeddings and external....
         expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
         hidden_char_speaker_ext = torch.cat([hidden, expanded_speaker], dim=-1)
+        if self._use_cond:
+            cond, _ = self._lm_t(X['x_words'])
+            phon2word = X['x_phon2word']
+            cond_sel = self._get_cond_selection(cond, phon2word)
+            hidden_char_speaker_ext = torch.cat([hidden_char_speaker_ext, cond_sel], dim=-1)
         hidden_dur, _ = self._dur_rnn(hidden_char_speaker_ext)
         output_dur = self._dur_output(hidden_dur)
 
@@ -948,6 +962,12 @@ class Languasito2(nn.Module):
         expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
         pitch = X['y_pitch'].unsqueeze(2) / self._max_pitch
         hidden = torch.cat([hidden, expanded_speaker], dim=-1)
+        if self._use_cond:
+            cond, _ = self._lm_g(X['x_words'])
+            phon2word = X['x_phon2word']
+            cond_sel = self._get_cond_selection(cond, phon2word)
+            hidden = torch.cat([hidden, cond_sel], dim=-1)
+
         hidden = self._expand_i(hidden, X['y_frame2phone'])
         m_size = min(hidden.shape[1], pitch.shape[1])
         hidden = torch.cat([hidden[:, :m_size, :], pitch[:, :m_size, :]], dim=-1)
@@ -1021,6 +1041,11 @@ class Languasito2(nn.Module):
                 index[ii, jj + len(alignments[ii]), 0] = ii
                 index[ii, jj + len(alignments[ii]), 1] = alignments[ii][-1]
         return x[index[:, :, 0], index[:, :, 1]]
+
+    def _get_cond_selection(self, cond, phon2word):
+        index_b = torch.arange(0, cond.shape[0], 1, device=self._get_device()). \
+            unsqueeze(1).repeat(1, phon2word.shape[1])
+        return cond[index_b, phon2word]
 
     def _prepare_mel(self, x):
         lst = [torch.ones((x.shape[0], 1, x.shape[2]), device=self._get_device()) * -5]

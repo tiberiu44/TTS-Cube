@@ -22,11 +22,12 @@ from hifigan.meldataset import mel_spectrogram
 
 
 class Cubegan(pl.LightningModule):
-    def __init__(self, encodings: CubeganEncodings, lr: float = 2e-4):
+    def __init__(self, encodings: CubeganEncodings, lr: float = 2e-4, cond_type=None):
         super(Cubegan, self).__init__()
         self._lr = lr
         self._encodings = encodings
         self._val_loss = 9999
+        self._conditioning = cond_type
 
         json_config = json.load(open('hifigan/config_v1.json'))
         h = AttrDict(json_config)
@@ -34,7 +35,7 @@ class Cubegan(pl.LightningModule):
         self._mpd = MultiPeriodDiscriminator()
         self._msd = MultiScaleDiscriminator()
         self._languasito = Languasito2(len(encodings.phon2int), len(encodings.speaker2int), encodings.max_pitch,
-                                       encodings.max_duration)
+                                       encodings.max_duration, cond_type=cond_type)
         self._loss_cross = nn.CrossEntropyLoss(ignore_index=int(max(encodings.max_pitch, encodings.max_duration) + 1))
         self._generator.train()
         self._mpd.train()
@@ -220,6 +221,7 @@ class Cubegan(pl.LightningModule):
                                                     self._languasito._speaker_emb_g.parameters(),
                                                     self._languasito._char_cnn_g.parameters(),
                                                     self._languasito._char_rnn_g.parameters(),
+                                                    self._languasito._lm_g.parameters(),
                                                     self._languasito._cond_rnn.parameters(),
                                                     self._languasito._cond_output.parameters()),
                                     2e-4, betas=[0.8, 0.99])
@@ -231,11 +233,12 @@ class Cubegan(pl.LightningModule):
                                                     self._languasito._speaker_emb_t.parameters(),
                                                     self._languasito._char_cnn_t.parameters(),
                                                     self._languasito._char_rnn_t.parameters(),
+                                                    self._languasito._lm_t.parameters(),
                                                     self._languasito._dur_rnn.parameters(),
                                                     self._languasito._dur_output.parameters(),
                                                     self._languasito._pitch_rnn.parameters(),
                                                     self._languasito._pitch_output.parameters()),
-                                     1e-4, betas=[0.8, 0.99])
+                                    1e-4, betas=[0.8, 0.99])
         return optim_g, optim_d, optim_t
 
     @torch.jit.ignore

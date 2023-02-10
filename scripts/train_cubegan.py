@@ -65,13 +65,15 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
             cubegan_synthesize_dataset(pl_module,
                                        output_path='generated_files/free/',
                                        devset_path='data/processed/dev/',
-                                       limit=10)
+                                       limit=10,
+                                       conditioning=pl_module._conditioning)
 
 
 def _train(params):
     config = {
         'sample_rate': params.sample_rate,
-        'hop_size': params.hop_size
+        'hop_size': params.hop_size,
+        'conditioning': params.lm
     }
     conf_file = '{0}.yaml'.format(params.output_base)
     yaml.dump(config, open(conf_file, 'w'))
@@ -91,7 +93,12 @@ def _train(params):
     else:
         encodings.compute(trainset)
         encodings.save('{0}.encodings'.format(params.output_base))
-    collate = CubeganCollate(encodings)
+    if params.lm:
+        conditioning = params.lm
+        cond_type = params.lm.split(':')[0]
+    else:
+        conditioning = None
+    collate = CubeganCollate(encodings, conditioning_type=conditioning)
     sys.stdout.write('Number of speakers: {0}\n'.format(len(encodings.speaker2int)))
     sys.stdout.write('Number of phones: {0}\n'.format(len(encodings.phon2int)))
     sys.stdout.write('Maximum F0: {0}\n'.format(encodings.max_pitch))
@@ -105,7 +112,7 @@ def _train(params):
                            num_workers=params.num_workers,
                            collate_fn=collate.collate_fn)
 
-    model = Cubegan(encodings, lr=params.lr)
+    model = Cubegan(encodings, lr=params.lr, cond_type=cond_type)
 
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
@@ -150,6 +157,7 @@ if __name__ == '__main__':
     parser.add_argument('--epoch-generation', dest='epoch_generation', type=int, default=10,
                         help='End-to-end generation of validation set at every n-th epoch (default=10). '
                              'Files are stored in generated_files/free')
+    parser.add_argument('--lm', dest='lm', help='what lm conditioning to use: fasttext:<LANG> or bert:<LANG>')
 
     parser.add_argument('--resume', dest='resume', action='store_true')
 

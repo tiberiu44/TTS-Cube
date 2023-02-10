@@ -5,6 +5,8 @@ import os
 import json
 import numpy as np
 from PIL import Image
+import yaml
+from yaml import Loader
 
 import tqdm
 
@@ -78,9 +80,9 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
 
 
-def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True):
+def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True, conditioning=None):
     enc = model._encodings
-    collate = CubeganCollate(enc)
+    collate = CubeganCollate(enc, conditioning_type=conditioning)
     # load validation set
     dataset = TextcoderDataset(devset_path)
     m_gen = len(dataset)
@@ -103,11 +105,15 @@ def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-
 if __name__ == '__main__':
     encodings = CubeganEncodings()
     encodings.load('data/cubegan-neb-baseline.encodings')
-    model = Cubegan(encodings)
+    import yaml
+
+    conf = yaml.load(open('data/cubegan-neb-baseline.yaml'), Loader)
+    model = Cubegan(encodings, cond_type=conf['conditioning'])
     model.load('data/cubegan-neb-baseline.last')
     model.eval()
     # cubegan_synthesize_dataset(model, 'generated_files/forced/tmp/', 'data/processed/dev', free=False)
-    cubegan_synthesize_dataset(model, 'generated_files/free/tmp/', 'data/processed/dev', free=True)
+    cubegan_synthesize_dataset(model, 'generated_files/free/tmp/', 'data/processed/dev', free=True,
+                               conditioning=conf['conditioning'])
     # synthesize_devset('data/textcoder-neb-baseline',
     #                   'data/models/vocoder/neb-noft/g_00600000',
     #                   output_path='generated_files/free/',
