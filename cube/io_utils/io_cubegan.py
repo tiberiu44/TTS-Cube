@@ -103,8 +103,9 @@ class CubeganCollate:
         self._ignore_index = int(max(encodings.max_pitch, encodings.max_duration) + 1)
         self._conditioning_type = None
         if conditioning_type is not None and conditioning_type.startswith('fasttext'):
-            fasttext.util.download_model('fr', if_exists='ignore')
-            self._ft = fasttext.load_model('cc.fr.300.bin')
+            lang = conditioning_type.split(':')[-1]
+            fasttext.util.download_model(lang, if_exists='ignore')
+            self._ft = fasttext.load_model('cc.{0}.300.bin'.format(lang))
             self._conditioning_type = 'fasttext'
 
     def collate_fn(self, batch):
