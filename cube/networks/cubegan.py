@@ -22,12 +22,16 @@ from hifigan.meldataset import mel_spectrogram
 
 
 class Cubegan(pl.LightningModule):
-    def __init__(self, encodings: CubeganEncodings, lr: float = 2e-4, cond_type=None):
+    def __init__(self, encodings: CubeganEncodings, lr: float = 2e-4, conditioning=None):
         super(Cubegan, self).__init__()
         self._lr = lr
         self._encodings = encodings
         self._val_loss = 9999
-        self._conditioning = cond_type
+        self._conditioning = conditioning
+        if conditioning is not None:
+            cond_type = conditioning.split(':')[0]
+        else:
+            cond_type = None
 
         json_config = json.load(open('hifigan/config_v1.json'))
         h = AttrDict(json_config)

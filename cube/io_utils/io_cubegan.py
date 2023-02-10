@@ -104,6 +104,7 @@ class CubeganCollate:
         self._conditioning_type = None
         if conditioning_type is not None and conditioning_type.startswith('fasttext'):
             lang = conditioning_type.split(':')[-1]
+            print(lang)
             fasttext.util.download_model(lang, if_exists='ignore')
             self._ft = fasttext.load_model('cc.{0}.300.bin'.format(lang))
             self._conditioning_type = 'fasttext'

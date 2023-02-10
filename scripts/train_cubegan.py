@@ -112,7 +112,7 @@ def _train(params):
                            num_workers=params.num_workers,
                            collate_fn=collate.collate_fn)
 
-    model = Cubegan(encodings, lr=params.lr, cond_type=cond_type)
+    model = Cubegan(encodings, lr=params.lr, conditioning=conditioning)
 
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
