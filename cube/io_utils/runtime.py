@@ -84,7 +84,7 @@ def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-
     enc = model._encodings
     collate = CubeganCollate(enc, conditioning_type=conditioning)
     # load validation set
-    dataset = TextcoderDataset(devset_path)
+    dataset = CubeganDataset(devset_path)
     m_gen = len(dataset)
     if limit != -1 and limit < m_gen:
         m_gen = limit
