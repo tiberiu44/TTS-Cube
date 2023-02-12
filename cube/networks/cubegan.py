@@ -24,7 +24,9 @@ from hifigan.meldataset import mel_spectrogram
 class Cubegan(pl.LightningModule):
     def __init__(self, encodings: CubeganEncodings, lr: float = 2e-4, conditioning=None):
         super(Cubegan, self).__init__()
-        self._lr = lr
+        self._current_lr = lr
+        self._learning_rate = lr
+        self._global_step = 0
         self._encodings = encodings
         self._val_loss = 9999
         self._conditioning = conditioning
@@ -138,9 +140,18 @@ class Cubegan(pl.LightningModule):
         loss_text = loss_pitch + loss_duration
         loss_text.backward()
         opt_t.step()
-        output_obj = {'loss_g': loss_gen_all, 'loss_t': loss_text, 'loss_d': loss_disc_all,
-                      'loss_v': loss_gen_all + loss_disc_all, 'loss': loss_gen_all + loss_disc_all + loss_text}
+        output_obj = {'loss_g': loss_gen_all,
+                      'loss_t': loss_text,
+                      'loss_d': loss_disc_all,
+                      'loss_v': loss_gen_all + loss_disc_all,
+                      'loss': loss_gen_all + loss_disc_all + loss_text,
+                      'lr': self._current_lr}
         self.log_dict(output_obj, prog_bar=True)
+        self._global_step += 1
+        self._current_lr = self._compute_lr(self._learning_rate, 1e-5, self._global_step)
+        opt_d.param_groups[0]['lr'] = self._current_lr
+        opt_g.param_groups[0]['lr'] = self._current_lr
+        opt_t.param_groups[0]['lr'] = self._current_lr
         return output_obj
 
     def validation_step(self, batch, batch_ids):
@@ -228,11 +239,11 @@ class Cubegan(pl.LightningModule):
                                                     self._languasito._lm_g.parameters(),
                                                     self._languasito._cond_rnn.parameters(),
                                                     self._languasito._cond_output.parameters()),
-                                    2e-4, betas=[0.8, 0.99])
+                                    self._current_lr, betas=[0.8, 0.99])
         optim_d = torch.optim.AdamW(itertools.chain(self._msd.parameters(),
                                                     self._mpd.parameters()
                                                     ),
-                                    2e-4, betas=[0.8, 0.99])
+                                    self._current_lr, betas=[0.8, 0.99])
         optim_t = torch.optim.AdamW(itertools.chain(self._languasito._phon_emb_t.parameters(),
                                                     self._languasito._speaker_emb_t.parameters(),
                                                     self._languasito._char_cnn_t.parameters(),
@@ -242,7 +253,7 @@ class Cubegan(pl.LightningModule):
                                                     self._languasito._dur_output.parameters(),
                                                     self._languasito._pitch_rnn.parameters(),
                                                     self._languasito._pitch_output.parameters()),
-                                    1e-4, betas=[0.8, 0.99])
+                                    self._current_lr, betas=[0.8, 0.99])
         return optim_g, optim_d, optim_t
 
     @torch.jit.ignore
