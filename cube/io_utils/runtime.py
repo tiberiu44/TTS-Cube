@@ -99,17 +99,18 @@ def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-
             else:
                 audio = model(X)
             audio = audio.detach().cpu().numpy().squeeze()
+            audio = np.asarray(audio * 32767, dtype=np.int16)
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
 
 
 if __name__ == '__main__':
     encodings = CubeganEncodings()
-    encodings.load('data/cubegan-neb-baseline.encodings')
+    encodings.load('data/cubegan-neb-fasttext.encodings')
     import yaml
 
-    conf = yaml.load(open('data/cubegan-neb-baseline.yaml'), Loader)
-    model = Cubegan(encodings, cond_type=conf['conditioning'])
-    model.load('data/cubegan-neb-baseline.last')
+    conf = yaml.load(open('data/cubegan-neb-fasttext.yaml'), Loader)
+    model = Cubegan(encodings, conditioning=conf['conditioning'])
+    model.load('data/cubegan-neb-fasttext.last')
     model.eval()
     # cubegan_synthesize_dataset(model, 'generated_files/forced/tmp/', 'data/processed/dev', free=False)
     cubegan_synthesize_dataset(model, 'generated_files/free/tmp/', 'data/processed/dev', free=True,
