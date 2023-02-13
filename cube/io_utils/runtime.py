@@ -112,9 +112,10 @@ if __name__ == '__main__':
     model = Cubegan(encodings, conditioning=conf['conditioning'])
     model.load('data/cubegan-neb-fasttext.last')
     model.eval()
-    # cubegan_synthesize_dataset(model, 'generated_files/forced/tmp/', 'data/processed/dev', free=False)
-    cubegan_synthesize_dataset(model, 'generated_files/free/tmp/', 'data/processed/dev', free=True,
+    cubegan_synthesize_dataset(model, 'generated_files/forced/tmp/', 'data/processed/dev', free=False,
                                conditioning=conf['conditioning'])
+    # cubegan_synthesize_dataset(model, 'generated_files/free/tmp/', 'data/processed/dev', free=True,
+    #                            conditioning=conf['conditioning'])
     # synthesize_devset('data/textcoder-neb-baseline',
     #                   'data/models/vocoder/neb-noft/g_00600000',
     #                   output_path='generated_files/free/',

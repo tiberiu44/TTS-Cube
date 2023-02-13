@@ -52,7 +52,7 @@ class Cubegan(pl.LightningModule):
 
     def forward(self, X):
         with torch.no_grad():
-            _, _, conditioning = self._languasito(X)
+            _, _, _, conditioning = self._languasito(X)
             return self._generator(conditioning.permute(0, 2, 1))
 
     def inference(self, X):
@@ -63,21 +63,26 @@ class Cubegan(pl.LightningModule):
     def training_step(self, batch, batch_ids):
         opt_g, opt_d, opt_t = self.optimizers()
 
-        p_dur, p_pitch, conditioning = self._languasito(batch)
+        p_dur, p_pitch, p_vuv, conditioning = self._languasito(batch)
         t_dur = batch['y_dur']
         t_pitch = batch['y_pitch']
+        t_vuv = (t_pitch > 1).float()
         # match shapes
         m_size = min(t_dur.shape[1], p_dur.shape[1])
         t_dur = t_dur[:, :m_size]
         p_dur = p_dur[:, :m_size, :]
         m_size = min(t_pitch.shape[1], p_pitch.shape[1])
         t_pitch = t_pitch[:, :m_size]
-        p_pitch = p_pitch[:, :m_size, :]
+        p_pitch = p_pitch[:, :m_size]
+        t_vuv = t_vuv[:, :m_size]
+        p_vuv = p_vuv[:, :m_size]
 
         loss_duration = self._loss_cross(p_dur.reshape(-1, p_dur.shape[2]), t_dur.reshape(-1))
 
-        loss_pitch = self._loss_cross(p_pitch.reshape(-1, p_pitch.shape[2]),
-                                      t_pitch.reshape(-1))
+        # loss_pitch = self._loss_cross(p_pitch.reshape(-1, p_pitch.shape[2]),
+        #                               t_pitch.reshape(-1))
+        loss_pitch = (torch.abs(t_pitch / self._languasito._max_pitch - p_pitch) * t_vuv).mean() + \
+                     torch.abs(t_vuv - p_vuv).mean()
 
         y = batch['y_audio']
 
@@ -155,21 +160,24 @@ class Cubegan(pl.LightningModule):
         return output_obj
 
     def validation_step(self, batch, batch_ids):
-        p_dur, p_pitch, conditioning = self._languasito(batch)
+        p_dur, p_pitch, p_vuv, conditioning = self._languasito(batch)
         t_dur = batch['y_dur']
         t_pitch = batch['y_pitch']
+        t_vuv = (t_pitch > 1).float()
         # match shapes
         m_size = min(t_dur.shape[1], p_dur.shape[1])
         t_dur = t_dur[:, :m_size]
         p_dur = p_dur[:, :m_size, :]
         m_size = min(t_pitch.shape[1], p_pitch.shape[1])
         t_pitch = t_pitch[:, :m_size]
-        p_pitch = p_pitch[:, :m_size, :]
+        p_pitch = p_pitch[:, :m_size]
+        t_vuv = t_vuv[:, :m_size]
+        p_vuv = p_vuv[:, :m_size]
 
         loss_duration = self._loss_cross(p_dur.reshape(-1, p_dur.shape[2]), t_dur.reshape(-1))
 
-        loss_pitch = self._loss_cross(p_pitch.reshape(-1, p_pitch.shape[2]),
-                                      t_pitch.reshape(-1))
+        loss_pitch = (torch.abs(t_pitch / self._languasito._max_pitch - p_pitch) * t_vuv).mean() + \
+                     torch.abs(t_vuv - p_vuv).mean()
 
         y = batch['y_audio']
         # select random section of audio (because we canot train the gan on the entire sequence

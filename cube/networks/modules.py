@@ -832,6 +832,8 @@ class Languasito2(nn.Module):
         self._pframes = 1
         self._lr = lr
         self._max_pitch = max_pitch
+        self._pitch_mean = 180
+        self._pitch_stdev = 30
         self._max_dur = max_duration
         # phoneme embeddings
         self._phon_emb_t = nn.Embedding(num_phones + 1, PHON_EMB_SIZE, padding_idx=0)
@@ -887,7 +889,7 @@ class Languasito2(nn.Module):
                                   num_layers=PITCH_RNN_LAYERS,
                                   bidirectional=True,
                                   batch_first=True)
-        self._pitch_output = LinearNorm(PITCH_RNN_SIZE * 2, int(max_pitch) + 1)
+        self._pitch_output = LinearNorm(PITCH_RNN_SIZE * 2, 2)
         # conditioning for the GAN
         self._cond_rnn = nn.LSTM(input_size=CHAR_RNN_SIZE * 2 + SPEAKER_EMB_SIZE + EXTERNAL_COND + 1,
                                  hidden_size=COND_RNN_SIZE,
@@ -943,7 +945,9 @@ class Languasito2(nn.Module):
         # pitch
         hidden_pitch, _ = self._pitch_rnn(hidden)
         output_pitch = self._pitch_output(hidden_pitch)
-        return output_dur, output_pitch
+        output_vuv = torch.sigmoid(output_pitch[:, :, 1])
+        output_pitch = torch.sigmoid(output_pitch[:, :, 0])
+        return output_dur, output_pitch, output_vuv
 
     def _cond_forward(self, X):
         x_char = X['x_char']
@@ -975,24 +979,15 @@ class Languasito2(nn.Module):
         return self._cond_output(hidden)
 
     def forward(self, X):
-        output_dur, output_pitch = self._text_forward(X)
+        output_dur, output_pitch, output_vuv = self._text_forward(X)
         conditioning = self._cond_forward(X)
-        return output_dur, output_pitch, conditioning
+        return output_dur, output_pitch, output_vuv, conditioning
 
     def inference(self, X):
         del X['y_frame2phone']
-        output_dur, output_pitch = self._text_forward(X)
-        # output_dur = torch.argmax(output_dur, dim=-1)
-        output_pitch = torch.argmax(output_pitch, dim=-1)
-
-        # frame2phone = []
-        # phon_index = 0
-        # for dur in output_dur.detach().cpu().numpy().squeeze():
-        #     for ii in range(dur):
-        #         frame2phone.append(phon_index)
-        #     phon_index += 1
-        # from ipdb import set_trace
-        # set_trace()
+        output_dur, output_pitch, output_vuv = self._text_forward(X)
+        output_vuv = torch.round(output_vuv)  # convert to binary 0/1
+        output_pitch = (output_pitch * self._max_pitch) * output_vuv  # bring to range and mask
         X['y_pitch'] = output_pitch
         conditioning = self._cond_forward(X)
 

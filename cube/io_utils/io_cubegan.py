@@ -120,7 +120,7 @@ class CubeganCollate:
         y_mgc = np.ones((len(batch), max_mel, 80)) * -5
         x_speaker = np.zeros((len(batch), 1))
         y_dur = np.zeros((len(batch), max_char))
-        y_pitch = np.ones((len(batch), max_mel)) * self._ignore_index
+        y_pitch = np.zeros((len(batch), max_mel))
         y_frame2phone = []  # Hop-size
         y_audio = np.zeros((len(batch), max_mel * 240), dtype=np.float)
         for ii in range(len(batch)):
