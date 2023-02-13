@@ -190,9 +190,9 @@ def _import_dataset(params):
     print("Trainset will contain {0} examples and devset {1} examples".format(len(trainset), len(devset)))
     input_folder = params.input_file[:params.input_file.rfind('/')]
     print("Processing trainset")
-    _import_audio(trainset, "data/processed/train/", input_folder, params.sample_rate, params.hop_size)
+    _import_audio(trainset, "data/processed/train/", input_folder, params.sample_rate, params.hop_size, params.prefix)
     print("Processing devset")
-    _import_audio(devset, "data/processed/dev/", input_folder, params.sample_rate, params.hop_size)
+    _import_audio(devset, "data/processed/dev/", input_folder, params.sample_rate, params.hop_size, params.prefix)
 
 
 if __name__ == '__main__':
