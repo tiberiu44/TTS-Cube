@@ -30,6 +30,7 @@ class Cubegan(pl.LightningModule):
         self._encodings = encodings
         self._val_loss = 9999
         self._conditioning = conditioning
+        self._loaded_optimizer_states = None
         if conditioning is not None:
             cond_type = conditioning.split(':')[0]
         else:
@@ -262,6 +263,13 @@ class Cubegan(pl.LightningModule):
                                                     self._languasito._pitch_rnn.parameters(),
                                                     self._languasito._pitch_output.parameters()),
                                     self._current_lr, betas=[0.8, 0.99])
+
+        if self._loaded_optimizer_states is not None:
+            for k, opt in zip(self._loaded_optimizer_states, [optim_g, optim_d, optim_t]):
+                opt_state = self._loaded_optimizer_states[k]
+                opt.load_state_dict(opt_state)
+            self._loaded_optimizer_states = None  # free memory
+
         return optim_g, optim_d, optim_t
 
     @torch.jit.ignore

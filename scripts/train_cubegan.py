@@ -62,6 +62,7 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
             opt_dict = {str(ii): opt.state_dict() for ii, opt in enumerate(opts)}
         else:
             opt_dict = {'0': opts.state_dict()}
+        opt_dict['global_step'] = pl_module._global_step
         torch.save(opt_dict, fname)
         # torch.save(opt.state_dict(), fname)
         if epoch % self._generate_epoch == 0:
@@ -124,6 +125,10 @@ def _train(params):
         sys.stdout.write('Resuming from previous checkpoint\n')
         sys.stdout.flush()
         model.load('{0}.last'.format(params.output_base))
+        opts_state = torch.load('{0}.opt.last'.format(params.output_base))
+        # opts = model.optimizers()
+        model._loaded_optimizer_state = opts_state
+        model._global_step = opts_state['global_step']
 
     trainer = pl.Trainer(
         accelerator=params.accelerator,
