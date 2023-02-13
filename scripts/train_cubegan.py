@@ -56,7 +56,13 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
         fname = "{0}.opt.last".format(self.store_prefix)
         sys.stdout.write('\tStoring {0}\n'.format(fname))
         sys.stdout.flush()
-        opt = pl_module.optimizers()
+        opts = pl_module.optimizers()
+
+        if isinstance(opts, list):
+            opt_dict = {str(ii): opt.state_dict() for ii, opt in enumerate(opts)}
+        else:
+            opt_dict = {'0': opts.state_dict()}
+        torch.save(opt_dict, fname)
         # torch.save(opt.state_dict(), fname)
         if epoch % self._generate_epoch == 0:
             sys.stdout.write('\tGenerating validation set\n')
