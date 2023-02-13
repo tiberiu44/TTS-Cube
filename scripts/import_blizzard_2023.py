@@ -86,7 +86,7 @@ def render_spectrogram(mgc, output_file):
     img.save(output_file)
 
 
-def _import_audio(dataset, output_folder, input_folder, sample_rate, hop_size):
+def _import_audio(dataset, output_folder, input_folder, sample_rate, hop_size, prefix):
     vocoder = MelVocoder()
     wav = None
     last_file = None
@@ -94,7 +94,7 @@ def _import_audio(dataset, output_folder, input_folder, sample_rate, hop_size):
     oms = sample_rate / 1000
     for ii in tqdm.tqdm(range(len(dataset)), ncols=80):
         item = dataset[ii]
-        id = "FILE_{0:08d}".format(ii)
+        id = "{0}_{1:08d}".format(prefix, ii)
         item['id'] = id
         if last_file != item['orig_filename']:
             wav, _ = librosa.load('{0}/{1}.wav'.format(input_folder, item['orig_filename']), sr=sample_rate)
@@ -211,6 +211,8 @@ if __name__ == '__main__':
                       help='Upsample or downsample data to this sample-rate (default=24000)')
     parser.add_option('--hop-size', type='int', dest='hop_size', default=240,
                       help='Frame analysis hop-size (default=240)')
+    parser.add_option('--prefix', dest='prefix', default='FILE',
+                      help='What prefix to use for the filenames')
 
     (params, _) = parser.parse_args(sys.argv)
     if params.input_file:
