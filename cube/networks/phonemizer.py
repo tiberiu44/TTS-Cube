@@ -13,20 +13,40 @@ class CubenetPhonemizer(pl.LightningModule):
         self._encodings = encodings
         self._lr = lr
         # remove dummy and add initialization code here
-        self._dummy = nn.Embedding(len(encodings.graphemes), len(encodings.phonemes))
+        self._char_emb = nn.Embedding(len(encodings.graphemes), 32)
+        self._case_emb = nn.Embedding(2, 8)
+        convs = []
+        input_size = 40
+        for ii in range(3):  # _0_ v1 v2 v3 v4 v5 v6 _0_ ->
+            convs.append(nn.Conv1d(in_channels=input_size, out_channels=256, kernel_size=3, padding=1))
+            convs.append(nn.Tanh())
+            input_size = 256
+        self._convs = nn.ModuleList(convs)
+        self._rnn = nn.LSTM(input_size=256, hidden_size=200, num_layers=2, batch_first=True, bidirectional=True)
+        self._output_softmax = nn.Linear(200 * 2, len(encodings.phonemes))
         self._loss_function = nn.CrossEntropyLoss(ignore_index=0)
         self._val_loss = 9999
         self._val_sacc = 0
         self._val_pacc = 0
 
     def forward(self, X):
-        x_char = X['x_char']
-        x_case = X['x_case']
+        x_char = X['x_char']  # size (batch_size x sequence len) [[0 1 1 2 3 4 2 1]]
+        x_case = X['x_case']  # size (batch_size x sequence len)
+        h_char = self._char_emb(x_char)  # size (batch_size x sequence len x 32)
+        h_case = self._case_emb(x_case)  # size (batch_size x sequence len x 8)
+        h = torch.cat([h_char, h_case], dim=-1)
+        # for images: initial input is (batch_size x X x Y x bpp) -> permute has to be permute(0,3,1,2)
+        h = h.permute(0, 2, 1)
+        for conv in self._convs:
+            h = conv(h)
+        h = h.permute(0, 2, 1)  # (batch_size x sequence len x 256)
+        output_lstm, _ = self._rnn(h)
+
         # add forward code here
-        return self._dummy(x_char)
+        return self._output_softmax(output_lstm)
 
     def training_step(self, batch, batch_idx):
-        y_target = batch['y_phon']
+        y_target = batch['y_phon']  # size (batch_size x sequence len)
         y_pred = self.forward(batch)
         y_pred = y_pred.reshape(y_pred.shape[0] * y_pred.shape[1], -1)
         y_target = y_target.reshape(-1)
