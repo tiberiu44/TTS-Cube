@@ -57,11 +57,13 @@ class CubenetPhonemizer(pl.LightningModule):
         y_target = batch['y_phon']
         del batch['y_phon']  # this is not actually going to be present during runtime
         y_pred = self.forward(batch)
+        y_pred_tmp = y_pred
+        y_target_tmp = y_target
         y_pred = y_pred.reshape(y_pred.shape[0] * y_pred.shape[1], -1)
         y_target = y_target.reshape(-1)
         loss = self._loss_function(y_pred, y_target)
-        return {'loss': loss.item(), 'target': y_target.detach().cpu().numpy(),
-                'pred': torch.argmax(y_pred, dim=-1).detach().cpu().numpy()}
+        return {'loss': loss.item(), 'target': y_target_tmp.detach().cpu().numpy(),
+                'pred': torch.argmax(y_pred_tmp, dim=-1).detach().cpu().numpy()}
 
     def validation_epoch_end(self, outputs):
         perr = 0
@@ -69,21 +71,25 @@ class CubenetPhonemizer(pl.LightningModule):
         loss = sum([output['loss'] for output in outputs])
         self._val_loss = loss / len(outputs)
         total_phones = 0
+        total_seqs = 0
         for output in outputs:
-            target = output['target']
-            pred = output['pred']
-            seq_ok = True
-            for t, p in zip(target.squeeze(), pred.squeeze()):
-                if t != 0:
-                    total_phones += 1
-                if t != p and t != 0 and p != 0:
-                    perr += 1
-                    seq_ok = False
-            if not seq_ok:
-                serr += 1
+            target_seqs = output['target']
+            pred_seqs = output['pred']
+            for target, pred in zip(target_seqs, pred_seqs):
+                total_seqs += 1
+                seq_ok = True
+                for t, p in zip(target.squeeze(), pred.squeeze()):
+                    if t != 0:
+                        total_phones += 1
+                    if t != p and t != 0 and p != 0:
+                        perr += 1
+                        seq_ok = False
+                if not seq_ok:
+                    serr += 1
 
         self._val_pacc = 1.0 - (perr / total_phones)
-        self._val_sacc = 1.0 - (serr / len(outputs))
+        self._val_sacc = 1.0 - (serr / total_seqs)
+
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self._lr)
