@@ -12,7 +12,7 @@ class Text2FeatBlizzard:
     def __init__(self, phonemizer_path: str):
         self._encodings = PhonemizerEncodings('{0}.encodings'.format(phonemizer_path))
         self._phonemizer = CubenetPhonemizer(self._encodings)
-        self._phonemizer.load('{0}.pacc.best'.format(phonemizer_path))
+        self._phonemizer.load('{0}.model'.format(phonemizer_path))
         self._phonemizer.eval()
         self._tokenizer = SimpleTokenizer()
         self._collate = PhonemizerCollate(self._encodings)

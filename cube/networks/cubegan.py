@@ -46,8 +46,9 @@ class Cubegan(pl.LightningModule):
                                        encodings.max_duration, cond_type=cond_type)
         self._loss_cross = nn.CrossEntropyLoss(ignore_index=int(max(encodings.max_pitch, encodings.max_duration) + 1))
         self._generator.train()
-        self._mpd.train()
-        self._msd.train()
+        if train:
+            self._mpd.train()
+            self._msd.train()
 
         self._loss_l1 = nn.L1Loss()
         self.automatic_optimization = False

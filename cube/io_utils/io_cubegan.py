@@ -61,6 +61,8 @@ class CubeganEncodings:
         self.phon2int = {}
         self.max_duration = 0
         self.max_pitch = 0
+        if filename is not None:
+            self.load(filename)
 
     def compute(self, dataset: CubeganDataset):
         for example in tqdm.tqdm(dataset, ncols=80, desc='Computing encodings'):
