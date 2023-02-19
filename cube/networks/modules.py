@@ -816,6 +816,11 @@ class Languasito2(nn.Module):
             self._lm_t = nn.LSTM(input_size=300, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
             self._lm_g = nn.LSTM(input_size=300, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
             self._use_cond = True
+        elif cond_type == 'hf':
+            EXTERNAL_COND = 512  # this will be used to add external conditioning (e.g. transformer) - not currently used
+            self._lm_t = nn.LSTM(input_size=768, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
+            self._lm_g = nn.LSTM(input_size=768, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
+            self._use_cond = True
         else:
             EXTERNAL_COND = 0
             self._lm_t = nn.Linear(1, 1)

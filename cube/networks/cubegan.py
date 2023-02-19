@@ -19,6 +19,7 @@ from hifigan.models import Generator, MultiPeriodDiscriminator, MultiScaleDiscri
     discriminator_loss
 from hifigan.env import AttrDict
 from hifigan.meldataset import mel_spectrogram
+from transformers import AutoModel
 
 
 class Cubegan(pl.LightningModule):
@@ -49,6 +50,9 @@ class Cubegan(pl.LightningModule):
         if train:
             self._mpd.train()
             self._msd.train()
+
+        if cond_type == 'hf':  # we need to add the transformed model here, because it needs special gradient updates
+            self._hf = AutoModel.from_pretrained(conditioning.split(':')[-1])
 
         self._loss_l1 = nn.L1Loss()
         self.automatic_optimization = False
