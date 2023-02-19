@@ -15,16 +15,21 @@ sys.path.append('')
 
 from torch.utils.data.dataset import Dataset
 from cube.networks.g2p import SimpleTokenizer
+from cube.utils.hf import HFTokenizer
 import fasttext.util
 import fasttext
 
 
 class CubeganDataset(Dataset):
-    def __init__(self, base_path: str):
+    def __init__(self, base_path: str, hf_model: str = None):
         self._base_path = base_path
         self._examples = []
         train_files_tmp = [join(base_path, f) for f in listdir(base_path) if isfile(join(base_path, f))]
         tok = SimpleTokenizer()
+        if hf_model is not None:
+            self._hf_tok = HFTokenizer(hf_model)
+        else:
+            self._hf_tok = None
 
         for file in tqdm.tqdm(train_files_tmp, desc='\tLoading dataset', ncols=80):
             if file[-4:] == '.mgc':
@@ -34,8 +39,14 @@ class CubeganDataset(Dataset):
                 pitch_file = '{0}.pitch'.format(bpath)
                 if os.path.exists(json_file) and os.path.exists(pitch_file):
                     example = json.load(open(json_file))
-                    example['words_left'] = tok(example['left_context'])
-                    example['words_right'] = tok(example['right_context'])
+                    tmp = tok(example['left_context'])
+                    example['words_left'] = [w.word for w in tmp]
+                    tmp = tok(example['right_context'])
+                    example['words_right'] = [w.word for w in tmp]
+                    if self._hf_tok is not None:
+                        example['words_hf'] = self._hf_tok(example['words'])
+                        example['words_left_hf'] = self._hf_tok(example['words_left'])
+                        example['words_right_hf'] = self._hf_tok(example['words_right'])
                     self._examples.append(example)
 
     def __len__(self):

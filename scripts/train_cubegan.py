@@ -82,13 +82,22 @@ def _train(params):
         'hop_size': params.hop_size,
         'conditioning': params.lm
     }
+    if params.lm:
+        conditioning = params.lm
+        cond_type = params.lm.split(':')[0]
+    else:
+        conditioning = None
     conf_file = '{0}.yaml'.format(params.output_base)
     yaml.dump(config, open(conf_file, 'w'))
     sys.stdout.write('=================Config=================\n')
     sys.stdout.write(open(conf_file).read())
     sys.stdout.write('========================================\n\n')
-    trainset = CubeganDataset(params.train_folder)
-    devset = CubeganDataset(params.dev_folder)
+    if cond_type == 'hf':
+        hf_model = params.lm.split(':')[-1]
+    else:
+        hf_model = None
+    trainset = CubeganDataset(params.train_folder, hf_model=hf_model)
+    devset = CubeganDataset(params.dev_folder, hf_model=hf_model)
     sys.stdout.write('==================Data==================\n')
     sys.stdout.write('Training files: {0}\n'.format(len(trainset)))
     sys.stdout.write('Validation files: {0}\n'.format(len(devset)))
@@ -100,11 +109,7 @@ def _train(params):
     else:
         encodings.compute(trainset)
         encodings.save('{0}.encodings'.format(params.output_base))
-    if params.lm:
-        conditioning = params.lm
-        cond_type = params.lm.split(':')[0]
-    else:
-        conditioning = None
+
     collate = CubeganCollate(encodings, conditioning_type=conditioning)
     sys.stdout.write('Number of speakers: {0}\n'.format(len(encodings.speaker2int)))
     sys.stdout.write('Number of phones: {0}\n'.format(len(encodings.phon2int)))
