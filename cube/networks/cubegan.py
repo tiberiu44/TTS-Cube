@@ -36,6 +36,7 @@ class Cubegan(pl.LightningModule):
             cond_type = conditioning.split(':')[0]
         else:
             cond_type = None
+        self._cond_type = cond_type
 
         json_config = json.load(open('hifigan/config_v1.json'))
         h = AttrDict(json_config)
@@ -68,7 +69,7 @@ class Cubegan(pl.LightningModule):
             return self._generator(conditioning.permute(0, 2, 1))
 
     def training_step(self, batch, batch_ids):
-        opt_g, opt_d, opt_t = self.optimizers()
+        opt_g, opt_d, opt_t, opt_b = self.optimizers()
 
         p_dur, p_pitch, p_vuv, conditioning = self._languasito(batch)
         t_dur = batch['y_dur']
@@ -167,6 +168,8 @@ class Cubegan(pl.LightningModule):
         return output_obj
 
     def validation_step(self, batch, batch_ids):
+        from ipdb import set_trace
+        set_trace()
         p_dur, p_pitch, p_vuv, conditioning = self._languasito(batch)
         t_dur = batch['y_dur']
         t_pitch = batch['y_pitch']
@@ -269,14 +272,19 @@ class Cubegan(pl.LightningModule):
                                                     self._languasito._pitch_rnn.parameters(),
                                                     self._languasito._pitch_output.parameters()),
                                     self._current_lr, betas=[0.8, 0.99])
+        if self._cond_type == 'hf':
+            optim_b = torch.optim.Adam(self._hf.parameters(), lr=1e-6)
+        else:
+            optim_b = None
 
         if self._loaded_optimizer_states is not None:
-            for k, opt in zip(self._loaded_optimizer_states, [optim_g, optim_d, optim_t]):
-                opt_state = self._loaded_optimizer_states[k]
-                opt.load_state_dict(opt_state)
+            for k, opt in zip(self._loaded_optimizer_states, [optim_g, optim_d, optim_t, optim_b]):
+                if opt is not None:
+                    opt_state = self._loaded_optimizer_states[k]
+                    opt.load_state_dict(opt_state)
             self._loaded_optimizer_states = None  # free memory
 
-        return optim_g, optim_d, optim_t
+        return optim_g, optim_d, optim_t, optim_b
 
     @torch.jit.ignore
     def save(self, path):
