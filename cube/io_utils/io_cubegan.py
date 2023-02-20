@@ -154,7 +154,10 @@ class CubeganCollate:
             y_frame2phone.append(example['meta']['frame2phon'])
             phone2word = example['meta']['phon2word']
             # this works for fasttext, not sure about bert
-            x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) + len(example['meta']['words_left'])
+            if self._conditioning_type == 'fasttext':
+                x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) + len(example['meta']['words_left'])
+            else:
+                x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) # the RNN will only see bert aligned data
             for phone_idx in y_frame2phone[-1]:
                 y_dur[ii, phone_idx] += 1
             for jj in range(max_char - len(example['meta']['phones'])):

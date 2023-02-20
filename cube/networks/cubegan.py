@@ -52,7 +52,7 @@ class Cubegan(pl.LightningModule):
             self._mpd.train()
             self._msd.train()
 
-        if cond_type == 'hf':  # we need to add the transformed model here, because it needs special gradient updates
+        if cond_type == 'hf':  # seems better to add the transformer model here
             self._hf = AutoModel.from_pretrained(conditioning.split(':')[-1])
 
         self._loss_l1 = nn.L1Loss()
@@ -60,18 +60,31 @@ class Cubegan(pl.LightningModule):
 
     def forward(self, X):
         with torch.no_grad():
-            _, _, _, conditioning = self._languasito(X)
+            if self._hf is not None:
+                hf_cond = self._hf(X['x_tok_ids'])['last_hidden_state']
+            else:
+                hf_cond = None
+            _, _, _, conditioning = self._languasito(X, hf_cond=hf_cond)
             return self._generator(conditioning.permute(0, 2, 1))
 
     def inference(self, X):
         with torch.no_grad():
-            conditioning = self._languasito.inference(X)
+            if self._hf is not None:
+                hf_cond = self._hf(X['x_tok_ids'])['last_hidden_state']
+            else:
+                hf_cond = None
+            conditioning = self._languasito.inference(X, hf_cond=hf_cond)
             return self._generator(conditioning.permute(0, 2, 1))
 
     def training_step(self, batch, batch_ids):
         opt_g, opt_d, opt_t, opt_b = self.optimizers()
 
-        p_dur, p_pitch, p_vuv, conditioning = self._languasito(batch)
+        if self._hf is not None:
+            hf_cond = self._hf(batch['x_tok_ids'])['last_hidden_state']
+        else:
+            hf_cond = None
+
+        p_dur, p_pitch, p_vuv, conditioning = self._languasito(batch, hf_cond=hf_cond)
         t_dur = batch['y_dur']
         t_pitch = batch['y_pitch']
         t_vuv = (t_pitch > 1).float()
@@ -118,6 +131,7 @@ class Cubegan(pl.LightningModule):
         y_mel = mel_spectrogram(y.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
         y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), 1024, 80, 24000, 240, 1024, 0, 12000)
 
+        opt_b.zero_grad()
         opt_d.zero_grad()
 
         # MPD
@@ -147,12 +161,13 @@ class Cubegan(pl.LightningModule):
         loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
         loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
 
-        loss_gen_all.backward()
+        loss_gen_all.backward(retain_graph=True)
         opt_g.step()
         opt_t.zero_grad()
         loss_text = loss_pitch + loss_duration
-        loss_text.backward()
+        loss_text.backward(retain_graph=True)
         opt_t.step()
+        opt_b.step()
         output_obj = {'loss_g': loss_gen_all,
                       'loss_t': loss_text,
                       'loss_d': loss_disc_all,
@@ -168,9 +183,12 @@ class Cubegan(pl.LightningModule):
         return output_obj
 
     def validation_step(self, batch, batch_ids):
-        from ipdb import set_trace
-        set_trace()
-        p_dur, p_pitch, p_vuv, conditioning = self._languasito(batch)
+        if self._hf is not None:
+            hf_cond = self._hf(batch['x_tok_ids'])['last_hidden_state']
+        else:
+            hf_cond = None
+        p_dur, p_pitch, p_vuv, conditioning = self._languasito(batch, hf_cond=hf_cond)
+
         t_dur = batch['y_dur']
         t_pitch = batch['y_pitch']
         t_vuv = (t_pitch > 1).float()
