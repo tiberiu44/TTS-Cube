@@ -929,7 +929,7 @@ class Languasito2(nn.Module):
         expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
         hidden_char_speaker_ext = torch.cat([hidden, expanded_speaker], dim=-1)
         if self._use_cond:
-            if 'x_tok_ids' in X:
+            if 'x_tok_ids' in X and X['x_tok_ids'] is not None:
                 x_words = self._expand_i_hf(hf_cond, X['x_word2tok'])
             else:
                 x_words = X['x_words']
@@ -977,7 +977,7 @@ class Languasito2(nn.Module):
         hidden = torch.cat([hidden, expanded_speaker], dim=-1)
         if self._use_cond:
 
-            if 'x_tok_ids' in X:
+            if 'x_tok_ids' in X and X['x_tok_ids'] is not None:
                 x_words = self._expand_i_hf(hf_cond, X['x_word2tok'])
             else:
                 x_words = X['x_words']
