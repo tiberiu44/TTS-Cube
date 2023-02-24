@@ -80,7 +80,8 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
 
 
-def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True, conditioning=None):
+def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True, conditioning=None,
+                               speaker=None):
     enc = model._encodings
     collate = CubeganCollate(enc, conditioning_type=conditioning)
     # load validation set
@@ -93,7 +94,8 @@ def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-
         m_gen = limit
     with torch.no_grad():
         for ii in tqdm.tqdm(range(m_gen)):
-            dataset[ii]['meta']['speaker'] = 'neb'
+            if speaker is not None:
+                dataset[ii]['meta']['speaker'] = 'neb'
             X = collate.collate_fn([dataset[ii]])
             for key in X:
                 if isinstance(X[key], torch.Tensor):
@@ -117,9 +119,9 @@ if __name__ == '__main__':
     model.load('data/cubenet-multi-bert.last')
     model.eval()
     cubegan_synthesize_dataset(model, 'generated_files/forced/tmp/', 'data/processed/dev', free=False,
-                               conditioning=conf['conditioning'])
+                               conditioning=conf['conditioning'], speaker='neb')
     cubegan_synthesize_dataset(model, 'generated_files/free/tmp/', 'data/processed/dev', free=True,
-                               conditioning=conf['conditioning'])
+                               conditioning=conf['conditioning'], speaker='neb')
     # synthesize_devset('data/textcoder-neb-baseline',
     #                   'data/models/vocoder/neb-noft/g_00600000',
     #                   output_path='generated_files/free/',
