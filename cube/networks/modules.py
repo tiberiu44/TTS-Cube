@@ -1063,7 +1063,7 @@ class Languasito2(nn.Module):
         for ii in range(len(alignments)):
             for jj in alignments[ii]:
                 index[ii, jj, 0] = alignments[ii][jj][0]
-            index[ii, jj, 1] = alignments[ii][jj][1] + 1
+                index[ii, jj, 1] = alignments[ii][jj][1] + 1
 
         return x[index[:, :, 0], index[:, :, 1]]
 
