@@ -40,6 +40,12 @@ class CubeganDataset(Dataset):
                 pitch_file = '{0}.pitch'.format(bpath)
                 if os.path.exists(json_file) and os.path.exists(pitch_file):
                     example = json.load(open(json_file))
+                    # check if we have long alignments
+                    durs = np.zeros((len(example['phones'])))
+                    for index in example['frame2phone']:
+                        durs[index] += 1
+                    if max(durs) > 400:
+                        continue
                     tmp = tok(example['left_context'])
                     example['words_left'] = [w.word for w in tmp]
                     tmp = tok(example['right_context'])
@@ -157,7 +163,7 @@ class CubeganCollate:
             if self._conditioning_type == 'fasttext':
                 x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) + len(example['meta']['words_left'])
             else:
-                x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) # the RNN will only see bert aligned data
+                x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word)  # the RNN will only see bert aligned data
             for phone_idx in y_frame2phone[-1]:
                 y_dur[ii, phone_idx] += 1
             for jj in range(max_char - len(example['meta']['phones'])):
