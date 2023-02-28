@@ -80,16 +80,22 @@ def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str =
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
 
 
-def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True, conditioning=None):
+def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True, conditioning=None,
+                               speaker=None):
     enc = model._encodings
     collate = CubeganCollate(enc, conditioning_type=conditioning)
     # load validation set
-    dataset = CubeganDataset(devset_path)
+    hf_model = None
+    if conditioning is not None and conditioning.startswith('hf'):
+        hf_model = conditioning.split(':')[-1]
+    dataset = CubeganDataset(devset_path, hf_model=hf_model)
     m_gen = len(dataset)
     if limit != -1 and limit < m_gen:
         m_gen = limit
     with torch.no_grad():
         for ii in tqdm.tqdm(range(m_gen)):
+            if speaker is not None:
+                dataset[ii]['meta']['speaker'] = 'neb'
             X = collate.collate_fn([dataset[ii]])
             for key in X:
                 if isinstance(X[key], torch.Tensor):
@@ -105,17 +111,17 @@ def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-
 
 if __name__ == '__main__':
     encodings = CubeganEncodings()
-    encodings.load('data/cubegan-neb-fasttext.encodings')
+    encodings.load('data/cubenet-multi-bert.encodings')
     import yaml
 
-    conf = yaml.load(open('data/cubegan-neb-fasttext.yaml'), Loader)
+    conf = yaml.load(open('data/cubenet-multi-bert.yaml'), Loader)
     model = Cubegan(encodings, conditioning=conf['conditioning'])
-    model.load('data/cubegan-neb-fasttext.last')
+    model.load('data/cubenet-multi-bert.last')
     model.eval()
     cubegan_synthesize_dataset(model, 'generated_files/forced/tmp/', 'data/processed/dev', free=False,
-                               conditioning=conf['conditioning'])
-    # cubegan_synthesize_dataset(model, 'generated_files/free/tmp/', 'data/processed/dev', free=True,
-    #                            conditioning=conf['conditioning'])
+                               conditioning=conf['conditioning'], speaker='neb')
+    cubegan_synthesize_dataset(model, 'generated_files/free/tmp/', 'data/processed/dev', free=True,
+                               conditioning=conf['conditioning'], speaker='neb')
     # synthesize_devset('data/textcoder-neb-baseline',
     #                   'data/models/vocoder/neb-noft/g_00600000',
     #                   output_path='generated_files/free/',

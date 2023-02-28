@@ -5,12 +5,14 @@ import torch
 import numpy as np
 import scipy.io
 from pathlib import Path
+import random
 
 sys.path.append('')
 from cube.io_utils.repository import download_model
 from cube.networks.cubegan import Cubegan
 from cube.io_utils.io_cubegan import CubeganEncodings, CubeganCollate
 from cube.io_utils.io_text import Text2FeatBlizzard
+from cube.utils.hf import HFTokenizer
 
 
 class TTSCube:
@@ -24,6 +26,10 @@ class TTSCube:
         self._text2feat = Text2FeatBlizzard(phonemizer_path=phonemizer_path)
         self._model.eval()
         self._text2feat._phonemizer.eval()
+        if cond_type.startswith('hf:'):
+            self._hf_tok = HFTokenizer(cond_type.split(':')[-1])
+        else:
+            self._hf_tok = None
 
     @staticmethod
     def load(model_name: str):
@@ -42,6 +48,10 @@ class TTSCube:
             rez['meta']['words_left'] = []
             rez['meta']['words_right'] = []
             rez['meta']['frame2phon'] = [0] * 100
+            if self._hf_tok is not None:
+                rez['meta']['words_hf'] = self._hf_tok(rez['meta']['words'])
+                rez['meta']['words_left_hf'] = {'tok_ids': []}
+                rez['meta']['words_right_hf'] = {'tok_ids': []}
             with torch.no_grad():
                 X = self._collate.collate_fn([rez])
                 for key in X:
@@ -54,6 +64,6 @@ class TTSCube:
 
 
 if __name__ == '__main__':
-    model = TTSCube.load('blizzard2023')
+    model = TTSCube.load('blizzard2023-hf')
     audio = model('Bonjour! Je suis un system artificialle.', speaker='neb')
     scipy.io.wavfile.write('tmp.wav', 24000, audio)

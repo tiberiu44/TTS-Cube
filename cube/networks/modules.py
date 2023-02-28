@@ -816,6 +816,11 @@ class Languasito2(nn.Module):
             self._lm_t = nn.LSTM(input_size=300, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
             self._lm_g = nn.LSTM(input_size=300, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
             self._use_cond = True
+        elif cond_type == 'hf':
+            EXTERNAL_COND = 512  # this will be used to add external conditioning (e.g. transformer) - not currently used
+            self._lm_t = nn.LSTM(input_size=768, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
+            self._lm_g = nn.LSTM(input_size=768, num_layers=2, hidden_size=256, batch_first=True, bidirectional=True)
+            self._use_cond = True
         else:
             EXTERNAL_COND = 0
             self._lm_t = nn.Linear(1, 1)
@@ -907,7 +912,7 @@ class Languasito2(nn.Module):
         self._val_loss_mel = 9999
         self._val_loss_total = 999
 
-    def _text_forward(self, X):
+    def _text_forward(self, X, hf_cond=None):
         x_char = X['x_char']
         x_speaker = X['x_speaker']
         speaker_cond = self._speaker_emb_t(x_speaker)
@@ -924,7 +929,11 @@ class Languasito2(nn.Module):
         expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
         hidden_char_speaker_ext = torch.cat([hidden, expanded_speaker], dim=-1)
         if self._use_cond:
-            cond, _ = self._lm_t(X['x_words'])
+            if 'x_tok_ids' in X and X['x_tok_ids'] is not None:
+                x_words = self._expand_i_hf(hf_cond, X['x_word2tok'])
+            else:
+                x_words = X['x_words']
+            cond, _ = self._lm_t(x_words)
             phon2word = X['x_phon2word']
             cond_sel = self._get_cond_selection(cond, phon2word)
             hidden_char_speaker_ext = torch.cat([hidden_char_speaker_ext, cond_sel], dim=-1)
@@ -949,7 +958,7 @@ class Languasito2(nn.Module):
         output_pitch = torch.sigmoid(output_pitch[:, :, 0])
         return output_dur, output_pitch, output_vuv
 
-    def _cond_forward(self, X):
+    def _cond_forward(self, X, hf_cond=None):
         x_char = X['x_char']
         x_speaker = X['x_speaker']
         speaker_cond = self._speaker_emb_g(x_speaker)
@@ -967,7 +976,12 @@ class Languasito2(nn.Module):
         pitch = X['y_pitch'].unsqueeze(2) / self._max_pitch
         hidden = torch.cat([hidden, expanded_speaker], dim=-1)
         if self._use_cond:
-            cond, _ = self._lm_g(X['x_words'])
+
+            if 'x_tok_ids' in X and X['x_tok_ids'] is not None:
+                x_words = self._expand_i_hf(hf_cond, X['x_word2tok'])
+            else:
+                x_words = X['x_words']
+            cond, _ = self._lm_g(x_words)
             phon2word = X['x_phon2word']
             cond_sel = self._get_cond_selection(cond, phon2word)
             hidden = torch.cat([hidden, cond_sel], dim=-1)
@@ -978,18 +992,18 @@ class Languasito2(nn.Module):
         hidden, _ = self._cond_rnn(hidden)
         return self._cond_output(hidden)
 
-    def forward(self, X):
-        output_dur, output_pitch, output_vuv = self._text_forward(X)
-        conditioning = self._cond_forward(X)
+    def forward(self, X, hf_cond=None):
+        output_dur, output_pitch, output_vuv = self._text_forward(X, hf_cond=hf_cond)
+        conditioning = self._cond_forward(X, hf_cond=hf_cond)
         return output_dur, output_pitch, output_vuv, conditioning
 
-    def inference(self, X):
+    def inference(self, X, hf_cond=None):
         del X['y_frame2phone']
-        output_dur, output_pitch, output_vuv = self._text_forward(X)
+        output_dur, output_pitch, output_vuv = self._text_forward(X, hf_cond=hf_cond)
         output_vuv = torch.round(output_vuv)  # convert to binary 0/1
         output_pitch = (output_pitch * self._max_pitch) * output_vuv  # bring to range and mask
         X['y_pitch'] = output_pitch
-        conditioning = self._cond_forward(X)
+        conditioning = self._cond_forward(X, hf_cond=hf_cond)
 
         return conditioning
 
@@ -1035,6 +1049,22 @@ class Languasito2(nn.Module):
             for jj in range(m_size - len(alignments[ii])):
                 index[ii, jj + len(alignments[ii]), 0] = ii
                 index[ii, jj + len(alignments[ii]), 1] = alignments[ii][-1]
+        return x[index[:, :, 0], index[:, :, 1]]
+
+    def _expand_i_hf(self, x, alignments):
+        max_words = 0
+        for a in alignments:
+            for k in a:
+                if k > max_words:
+                    max_words = k
+        index = np.zeros((len(alignments), max_words + 1, 2))
+        tmp = torch.zeros((x.shape[0], 1, x.shape[2]), device=self._get_device())
+        x = torch.cat([tmp, x], dim=1)
+        for ii in range(len(alignments)):
+            for jj in alignments[ii]:
+                index[ii, jj, 0] = alignments[ii][jj][0]
+                index[ii, jj, 1] = alignments[ii][jj][1] + 1
+
         return x[index[:, :, 0], index[:, :, 1]]
 
     def _get_cond_selection(self, cond, phon2word):

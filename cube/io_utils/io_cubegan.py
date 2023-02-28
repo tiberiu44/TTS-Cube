@@ -1,4 +1,5 @@
 import os.path
+import random
 
 import torch
 import torch.nn as nn
@@ -15,16 +16,21 @@ sys.path.append('')
 
 from torch.utils.data.dataset import Dataset
 from cube.networks.g2p import SimpleTokenizer
+from cube.utils.hf import HFTokenizer
 import fasttext.util
 import fasttext
 
 
 class CubeganDataset(Dataset):
-    def __init__(self, base_path: str):
+    def __init__(self, base_path: str, hf_model: str = None):
         self._base_path = base_path
         self._examples = []
         train_files_tmp = [join(base_path, f) for f in listdir(base_path) if isfile(join(base_path, f))]
         tok = SimpleTokenizer()
+        if hf_model is not None:
+            self._hf_tok = HFTokenizer(hf_model)
+        else:
+            self._hf_tok = None
 
         for file in tqdm.tqdm(train_files_tmp, desc='\tLoading dataset', ncols=80):
             if file[-4:] == '.mgc':
@@ -34,8 +40,14 @@ class CubeganDataset(Dataset):
                 pitch_file = '{0}.pitch'.format(bpath)
                 if os.path.exists(json_file) and os.path.exists(pitch_file):
                     example = json.load(open(json_file))
-                    example['words_left'] = tok(example['left_context'])
-                    example['words_right'] = tok(example['right_context'])
+                    tmp = tok(example['left_context'])
+                    example['words_left'] = [w.word for w in tmp]
+                    tmp = tok(example['right_context'])
+                    example['words_right'] = [w.word for w in tmp]
+                    if self._hf_tok is not None:
+                        example['words_hf'] = self._hf_tok(example['words'])
+                        example['words_left_hf'] = self._hf_tok(example['words_left'])
+                        example['words_right_hf'] = self._hf_tok(example['words_right'])
                     self._examples.append(example)
 
     def __len__(self):
@@ -100,24 +112,30 @@ class CubeganEncodings:
 
 
 class CubeganCollate:
-    def __init__(self, encodings: CubeganEncodings, conditioning_type=None):
+    def __init__(self, encodings: CubeganEncodings, conditioning_type=None, training=True):
         self._encodings = encodings
         self._ignore_index = int(max(encodings.max_pitch, encodings.max_duration) + 1)
         self._conditioning_type = None
+        self._training = training
         if conditioning_type is not None and conditioning_type.startswith('fasttext'):
             lang = conditioning_type.split(':')[-1]
-            print(lang)
             fasttext.util.download_model(lang, if_exists='ignore')
             self._ft = fasttext.load_model('cc.{0}.300.bin'.format(lang))
             self._conditioning_type = 'fasttext'
+        elif conditioning_type is not None and conditioning_type.startswith('hf'):
+            self._conditioning_type = 'hf'
 
     def collate_fn(self, batch):
         max_char = max([len(example['meta']['phones']) for example in batch])
         max_mel = max([example['mgc'].shape[0] for example in batch])
         x_char = np.zeros((len(batch), max_char))
         x_words = None
+        tok_ids = None
+        word2tok = None
         if self._conditioning_type == 'fasttext':
             x_words = self._get_ft_embeddings(batch)
+        elif self._conditioning_type == 'hf':
+            tok_ids, word2tok = self._get_hf_ids(batch)
         x_phoneme2word = np.zeros((len(batch), max_char), dtype=np.long)
         y_mgc = np.ones((len(batch), max_mel, 80)) * -5
         x_speaker = np.zeros((len(batch), 1))
@@ -136,7 +154,10 @@ class CubeganCollate:
             y_frame2phone.append(example['meta']['frame2phon'])
             phone2word = example['meta']['phon2word']
             # this works for fasttext, not sure about bert
-            x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) + len(example['meta']['words_left'])
+            if self._conditioning_type == 'fasttext':
+                x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) + len(example['meta']['words_left'])
+            else:
+                x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) # the RNN will only see bert aligned data
             for phone_idx in y_frame2phone[-1]:
                 y_dur[ii, phone_idx] += 1
             for jj in range(max_char - len(example['meta']['phones'])):
@@ -149,9 +170,13 @@ class CubeganCollate:
 
         if x_words is not None:
             x_words = torch.tensor(x_words, dtype=torch.float)
+        if tok_ids is not None:
+            tok_ids = torch.tensor(tok_ids, dtype=torch.long)
         return {
             'x_char': torch.tensor(x_char, dtype=torch.long),
             'x_words': x_words,
+            'x_tok_ids': tok_ids,
+            'x_word2tok': word2tok,
             'x_phon2word': torch.tensor(x_phoneme2word),
             'x_speaker': torch.tensor(x_speaker, dtype=torch.long),
             'y_mgc': torch.tensor(y_mgc, dtype=torch.float),
@@ -173,3 +198,36 @@ class CubeganCollate:
             for jj in range(len(all_words)):
                 x_words[ii, jj, :] = self._ft.get_word_vector(str(all_words[jj]))
         return x_words
+
+    def _get_hf_ids(self, batch):
+        max_toks = max([len(example['meta']['words_hf']['tok_ids']) +
+                        len(example['meta']['words_left_hf']['tok_ids']) +
+                        len(example['meta']['words_right_hf']['tok_ids']) for example in batch])
+
+        # we use coordinates for runtime, where bert will be run on word windows
+        toks = np.zeros((len(batch), min(512, max_toks)), dtype=np.long)
+        word2tok = []
+        for ii in range(len(batch)):
+            e_w2k = {}
+            example = batch[ii]
+            l_toks = example['meta']['words_left_hf']['tok_ids']
+            l_size = len(l_toks)
+            c_toks = example['meta']['words_hf']['tok_ids']
+            c_size = len(c_toks)
+            r_toks = example['meta']['words_right_hf']['tok_ids']
+            r_size = len(r_toks)
+            if l_size + c_size + r_size <= 512:
+                start = 0
+            elif c_size <= 512:
+                start = random.randint(0, 512 - c_size)
+            else:
+                start = l_size
+            offset = l_size - start
+            e_toks = l_toks + c_toks + r_toks
+            e_toks = e_toks[start:]
+            toks[ii, :min(toks.shape[1], len(e_toks))] = e_toks[:min(toks.shape[1], len(e_toks))]
+            for word in example['meta']['words_hf']['word2tok']:
+                e_w2k[word] = (ii, example['meta']['words_hf']['word2tok'][word] + offset)
+            word2tok.append(e_w2k)
+
+        return toks, word2tok
