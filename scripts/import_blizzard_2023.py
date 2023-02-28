@@ -111,8 +111,72 @@ def _import_audio(dataset, output_folder, input_folder, sample_rate, hop_size, p
         np.save(open('{0}.pitch'.format(output_base), 'wb'), pitch)
 
 
+def _get_real_alignments(dataset, position):
+    item = dataset[position]
+    # start
+    new_start = item['start']
+    new_end = item['end']
+    import copy
+    durs = copy.deepcopy(item['durs'])
+    if position > 0 and dataset[position - 1]['orig_fn'] == dataset[position]['orig_fn']:  # same chapter
+        prev_end = dataset[position - 1]['end'] - 130
+        new_start = prev_end
+        durs[0] = item['start'] - prev_end + 130
+
+    # end
+    if position < len(dataset) and dataset[position]['orig_fn'] == dataset[position + 1]['orig_fn']:
+        next_start = dataset[position + 1]['start'] + 130
+        new_end = next_start
+        # seek what phone received the 130 duration - not always the last one
+        for ii in range(len(durs) - 1, 0, -1):
+            if durs[ii] == 130:
+                break
+        durs[ii] = next_start - item['end'] + 130
+
+    return new_start, new_end, durs
+
+
+def _correct_alignments(lines):
+    dataset = []
+    for ii in tqdm.tqdm(range(len(lines)), ncols=120, desc='alignments'):
+        line = lines[ii].strip()
+        parts = line.split('|')
+        if len(parts) < 6:
+            continue
+        if '{' in parts[3] and '}' in parts[3]:
+            continue
+        durs = [int(x) for x in parts[5].strip().split(' ')]
+        phon = parts[4].split(' ')
+        text = parts[3]
+        orig_start = int(parts[1])
+        orig_end = int(parts[2])
+        orig_fn = parts[0]
+        dataset.append({
+            'orig_fn': orig_fn,
+            'start': orig_start,
+            'end': orig_end,
+            'text': text,
+            'phon': phon,
+            'durs': durs
+        })
+
+    tmp = []
+    for ii in range(len(dataset)):
+        new_start, new_end, new_durs = _get_real_alignments(dataset, ii)
+        p0 = dataset[ii]['orig_fn']
+        p1 = str(new_start)
+        p2 = str(new_end)
+        p3 = dataset[ii]['text']
+        p4 = ' '.join(dataset[ii]['phon'])
+        p5 = ' '.join([str(x) for x in new_durs])
+        tmp.append('|'.join([p0, p1, p2, p3, p4, p5]))
+
+    return tmp
+
+
 def _import_dataset(params):
     lines = open(params.input_file).readlines()
+    lines = _correct_alignments(lines)
     valid_sents = 0
     total_time = 0
     dataset = []
