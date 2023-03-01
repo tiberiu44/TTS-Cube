@@ -56,7 +56,8 @@ class Cubegan(pl.LightningModule):
             self._hf = AutoModel.from_pretrained(conditioning.split(':')[-1])
         else:
             self._hf = None
-            self._dummy = nn.Linear(1, 1)
+            if train:
+                self._dummy = nn.Linear(1, 1)
 
         self._loss_l1 = nn.L1Loss()
         self.automatic_optimization = False
