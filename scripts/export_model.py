@@ -22,7 +22,7 @@ def _export_model(params):
     model.load('{0}.last'.format(params.input_model))
     del model._mpd
     del model._msd
-    if model._dummy:
+    if hasattr(model, '_dummy'):
         del model._dummy
     model.save('{0}.model'.format(params.input_model))
     sys.stdout.write('done\n')
