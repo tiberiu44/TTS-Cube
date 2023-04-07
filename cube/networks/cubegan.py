@@ -56,6 +56,8 @@ class Cubegan(pl.LightningModule):
             self._hf = AutoModel.from_pretrained(conditioning.split(':')[-1])
         else:
             self._hf = None
+            if train:
+                self._dummy = nn.Linear(1, 1)
 
         self._loss_l1 = nn.L1Loss()
         self.automatic_optimization = False
@@ -295,7 +297,7 @@ class Cubegan(pl.LightningModule):
         if self._cond_type == 'hf':
             optim_b = torch.optim.Adam(self._hf.parameters(), lr=1e-6)
         else:
-            optim_b = None
+            optim_b = torch.optim.Adam(self._dummy.parameters(), lr=1e-6)
 
         if self._loaded_optimizer_states is not None:
             for k, opt in zip(self._loaded_optimizer_states, [optim_g, optim_d, optim_t, optim_b]):

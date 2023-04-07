@@ -40,6 +40,12 @@ class CubeganDataset(Dataset):
                 pitch_file = '{0}.pitch'.format(bpath)
                 if os.path.exists(json_file) and os.path.exists(pitch_file):
                     example = json.load(open(json_file))
+                    # check if we have long alignments
+                    durs = np.zeros((len(example['phones'])))
+                    for index in example['frame2phon']:
+                        durs[index] += 1
+                    if max(durs) > 400:
+                        continue
                     tmp = tok(example['left_context'])
                     example['words_left'] = [w.word for w in tmp]
                     tmp = tok(example['right_context'])
@@ -53,12 +59,26 @@ class CubeganDataset(Dataset):
     def __len__(self):
         return len(self._examples)
 
+    def _make_absolute_silence(self, audio, pitch, meta):
+        max_phone = max(meta['frame2phon'])
+        frame2phon = meta['frame2phon']
+        zero_frame = np.zeros((240))
+        for iFrame in range(len(frame2phon)):
+            if frame2phon[iFrame] == 0 or frame2phon[iFrame] == max_phone:
+                start = iFrame * 240
+                stop = start + 240
+                audio[start:stop] = zero_frame
+                pitch[iFrame] = 0
+        return audio, pitch
+
     def __getitem__(self, item):
         description = self._examples[item]
         base_fn = '{0}/{1}'.format(self._base_path, description['id'])
         mgc = np.load('{0}.mgc'.format(base_fn))
         pitch = np.load('{0}.pitch'.format(base_fn))
         audio, sr = librosa.load('{0}.wav'.format(base_fn), sr=24000)
+        audio, pitch = self._make_absolute_silence(audio, pitch, description)
+
         return {
             'meta': description,
             'mgc': mgc,
@@ -157,7 +177,7 @@ class CubeganCollate:
             if self._conditioning_type == 'fasttext':
                 x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) + len(example['meta']['words_left'])
             else:
-                x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word) # the RNN will only see bert aligned data
+                x_phoneme2word[ii, :len(phone2word)] = np.array(phone2word)  # the RNN will only see bert aligned data
             for phone_idx in y_frame2phone[-1]:
                 y_dur[ii, phone_idx] += 1
             for jj in range(max_char - len(example['meta']['phones'])):
@@ -172,6 +192,9 @@ class CubeganCollate:
             x_words = torch.tensor(x_words, dtype=torch.float)
         if tok_ids is not None:
             tok_ids = torch.tensor(tok_ids, dtype=torch.long)
+        for iExample in range(y_dur.shape[0]):
+            m_size = len(batch[iExample]['meta']['phones'])
+            y_dur[iExample, :m_size] = np.clip(y_dur[iExample, :m_size], 0, 100)  # clip durations to 1 second
         return {
             'x_char': torch.tensor(x_char, dtype=torch.long),
             'x_words': x_words,

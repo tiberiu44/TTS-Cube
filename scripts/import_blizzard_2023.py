@@ -124,7 +124,7 @@ def _get_real_alignments(dataset, position):
         durs[0] = item['start'] - prev_end + 130
 
     # end
-    if position < len(dataset)-1 and dataset[position]['orig_fn'] == dataset[position + 1]['orig_fn']:
+    if position < len(dataset) and dataset[position]['orig_fn'] == dataset[position + 1]['orig_fn']:
         next_start = dataset[position + 1]['start'] + 130
         new_end = next_start
         # seek what phone received the 130 duration - not always the last one
