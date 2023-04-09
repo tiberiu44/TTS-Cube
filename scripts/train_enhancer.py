@@ -13,83 +13,108 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
+import os
 import sys
 import json
 import yaml
 import pytorch_lightning as pl
+import torch
 
 sys.path.append('')
-from cube.networks.vocoder import CubenetVocoder
+from cube.networks.cubegan import Cubegan
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
-from cube.io_utils.io_vocoder import VocoderDataset, VocoderCollate
+from cube.io_utils.io_cubegan import CubeganEncodings, CubeganDataset, CubeganCollate
+from cube.io_utils.runtime import cubegan_synthesize_dataset
 
 
 class PrintAndSaveCallback(pl.callbacks.Callback):
-    def __init__(self, store_prefix):
+    def __init__(self, store_prefix, generate_epoch):
         super().__init__()
         self.store_prefix = store_prefix
-        self._best_loss_lr = 99999
-        self._best_loss_hr = 99999
+        self._best_loss = 99999
+        self._generate_epoch = generate_epoch
 
     def on_validation_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
         epoch = trainer.current_epoch
-        val_loss_lr = pl_module._val_loss_lr
-        val_loss_hr = pl_module._val_loss_hr
-        sys.stdout.write('\n\n\tVal loss lr: {0}\n\tVal loss hr: {1}\n'.format(val_loss_lr, val_loss_hr))
+        val_loss = pl_module._val_loss
+        sys.stdout.write('\n\n\tVal loss: {0}\n'.
+                         format(pl_module._val_loss))
         sys.stdout.flush()
-        if val_loss_lr < self._best_loss_lr:
-            self._best_loss_lr = val_loss_lr
-            fname = "{0}.lr.best".format(self.store_prefix)
+        if val_loss < self._best_loss:
+            self._best_loss = val_loss
+            fname = "{0}.best".format(self.store_prefix)
             sys.stdout.write('\tStoring {0}\n'.format(fname))
             sys.stdout.flush()
-            pl_module._wavernn_lr.save(fname)
-        if val_loss_hr < self._best_loss_hr:
-            self._best_loss_hr = val_loss_hr
-            fname = "{0}.hr.best".format(self.store_prefix)
-            sys.stdout.write('\tStoring {0}\n'.format(fname))
-            sys.stdout.flush()
-            pl_module._wavernn_hr.save(fname)
+            pl_module.save(fname)
 
         fname = "{0}.last".format(self.store_prefix)
         sys.stdout.write('\tStoring {0}\n'.format(fname))
         sys.stdout.flush()
         pl_module.save(fname)
+        fname = "{0}.opt.last".format(self.store_prefix)
+        sys.stdout.write('\tStoring {0}\n'.format(fname))
+        sys.stdout.flush()
+        opts = pl_module.optimizers()
+
+        if isinstance(opts, list):
+            opt_dict = {str(ii): opt.state_dict() for ii, opt in enumerate(opts)}
+        else:
+            opt_dict = {'0': opts.state_dict()}
+        opt_dict['global_step'] = pl_module._global_step
+        torch.save(opt_dict, fname)
+        # torch.save(opt.state_dict(), fname)
+        if epoch % self._generate_epoch == 0:
+            sys.stdout.write('\tGenerating validation set\n')
+            sys.stdout.flush()
+            os.makedirs('generated_files/free/', exist_ok=True)
+            cubegan_synthesize_dataset(pl_module,
+                                       output_path='generated_files/free/',
+                                       devset_path='data/processed/dev/',
+                                       limit=10,
+                                       conditioning=pl_module._conditioning)
 
 
 def _train(params):
     config = {
-        'num_layers_lr': params.num_layers_lr,
-        'layer_size_lr': params.layer_size_lr,
-        'num_layers_hr': params.num_layers_hr,
-        'layer_size_hr': params.layer_size_hr,
-        'upsample': params.upsample,
         'sample_rate': params.sample_rate,
-        'output': params.output,
-        'sample_rate_low': params.sample_rate_low,
-        'hop_size': params.hop_size
+        'hop_size': params.hop_size,
+        'conditioning': params.lm
     }
+    if params.lm:
+        conditioning = params.lm
+        cond_type = params.lm.split(':')[0]
+    else:
+        conditioning = None
     conf_file = '{0}.yaml'.format(params.output_base)
     yaml.dump(config, open(conf_file, 'w'))
     sys.stdout.write('=================Config=================\n')
     sys.stdout.write(open(conf_file).read())
     sys.stdout.write('========================================\n\n')
-    trainset = VocoderDataset(params.train_folder, target_sample_rate=params.sample_rate,
-                              lowres_sample_rate=params.sample_rate_low,
-                              hop_size=params.hop_size,
-                              max_segment_size=params.maximum_segment_size, random_start=True)
-    devset = VocoderDataset(params.dev_folder, target_sample_rate=params.sample_rate,
-                            lowres_sample_rate=params.sample_rate_low,
-                            hop_size=params.hop_size,
-                            max_segment_size=params.maximum_segment_size, random_start=False)
+    if cond_type == 'hf':
+        hf_model = params.lm.split(':')[-1]
+    else:
+        hf_model = None
+    trainset = CubeganDataset(params.train_folder, hf_model=hf_model)
+    devset = CubeganDataset(params.dev_folder, hf_model=hf_model)
     sys.stdout.write('==================Data==================\n')
     sys.stdout.write('Training files: {0}\n'.format(len(trainset)))
     sys.stdout.write('Validation files: {0}\n'.format(len(devset)))
     sys.stdout.write('========================================\n\n')
     sys.stdout.write('================Training================\n')
-    collate = VocoderCollate(x_zero=0)
+    encodings = CubeganEncodings()
+    if params.resume:
+        encodings.load('{0}.encodings'.format(params.output_base))
+    else:
+        encodings.compute(trainset)
+        encodings.save('{0}.encodings'.format(params.output_base))
+
+    collate = CubeganCollate(encodings, conditioning_type=conditioning)
+    sys.stdout.write('Number of speakers: {0}\n'.format(len(encodings.speaker2int)))
+    sys.stdout.write('Number of phones: {0}\n'.format(len(encodings.phon2int)))
+    sys.stdout.write('Maximum F0: {0}\n'.format(encodings.max_pitch))
+    sys.stdout.write('Maximum duration: {0}\n'.format(encodings.max_duration))
     trainloader = DataLoader(trainset,
                              batch_size=params.batch_size,
                              num_workers=params.num_workers,
@@ -98,25 +123,23 @@ def _train(params):
                            batch_size=params.batch_size,
                            num_workers=params.num_workers,
                            collate_fn=collate.collate_fn)
-    model = CubenetVocoder(num_layers_hr=params.num_layers_hr,
-                           layer_size_hr=params.layer_size_hr,
-                           num_layers_lr=params.num_layers_lr,
-                           layer_size_lr=params.layer_size_lr,
-                           upsample=params.upsample,
-                           upsample_low=params.sample_rate // params.sample_rate_low,
-                           learning_rate=params.lr,
-                           output=params.output)
+
+    model = Cubegan(encodings, lr=params.lr, conditioning=conditioning)
 
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
         sys.stdout.flush()
         model.load('{0}.last'.format(params.output_base))
+        opts_state = torch.load('{0}.opt.last'.format(params.output_base))
+        # opts = model.optimizers()
+        model._loaded_optimizer_state = opts_state
+        model._global_step = opts_state['global_step']
 
     trainer = pl.Trainer(
         accelerator=params.accelerator,
         devices=params.devices,
         max_epochs=-1,
-        callbacks=[PrintAndSaveCallback(params.output_base)]
+        callbacks=[PrintAndSaveCallback(params.output_base, params.epoch_generation)]
     )
 
     trainer.fit(model, trainloader, devloader)
@@ -125,8 +148,8 @@ def _train(params):
 if __name__ == '__main__':
     parser = ArgumentParser(description='NLP-Cube Trainer Helper')
     parser.add_argument('--output-base', action='store', dest='output_base',
-                        default='data/vocoder',
-                        help='Where to store the model (default=data/vocoder)')
+                        default='data/cubegan',
+                        help='Where to store the model (default=data/cubegan)')
     parser.add_argument('--batch-size', dest='batch_size', default=16,
                         type=int, help='Batch size (default=16)')
     parser.add_argument('--num-workers', dest='num_workers', default=4,
@@ -143,24 +166,14 @@ if __name__ == '__main__':
                         help='Location of training files (default=data/processed/dev)')
     parser.add_argument('--sample-rate', dest='sample_rate', type=int, default=24000,
                         help='Number of parallel samples (default=24000)')
-    parser.add_argument('--sample-rate-low', dest='sample_rate_low', type=int, default=2400,
-                        help='Number of parallel samples (default=2400)')
-    parser.add_argument('--layer-size-hr', dest='layer_size_hr', default=512, type=int,
-                        help='LSTM layer size (default=512)')
-    parser.add_argument('--num-layers-hr', dest='num_layers_hr', default=1, type=int,
-                        help='Number of LSTM layers (default=1)')
-    parser.add_argument('--layer-size-lr', dest='layer_size_lr', default=512, type=int,
-                        help='LSTM layer size (default=512)')
-    parser.add_argument('--num-layers-lr', dest='num_layers_lr', default=1, type=int,
-                        help='Number of LSTM layers (default=1)')
     parser.add_argument('--hop-size', dest='hop_size', type=int, default=240,
                         help='Hop-size for mel (default=240)')
-    parser.add_argument('--upsample', dest='upsample', default=240, type=int,
-                        help='Upsample layers (default=10)')
-    parser.add_argument('--lr', dest='lr', default=1e-4, type=float,
-                        help='Learning rate (default=1e-4)')
-    parser.add_argument('--output', dest='output', default='mol',
-                        help='Output type (mol|gm|mulaw|beta|raw) (default=mol)')
+    parser.add_argument('--lr', dest='lr', default=2e-4, type=float,
+                        help='Learning rate (default=2e-4)')
+    parser.add_argument('--epoch-generation', dest='epoch_generation', type=int, default=10,
+                        help='End-to-end generation of validation set at every n-th epoch (default=10). '
+                             'Files are stored in generated_files/free')
+    parser.add_argument('--lm', dest='lm', help='what lm conditioning to use: fasttext:<LANG> or bert:<LANG>')
 
     parser.add_argument('--resume', dest='resume', action='store_true')
 

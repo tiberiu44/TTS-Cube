@@ -15,7 +15,6 @@ sys.path.append('hifigan')
 
 from cube.networks.textcoder import CubenetTextcoder
 from cube.networks.cubegan import Cubegan
-from cube.io_utils.io_textcoder import TextcoderCollate, TextcoderEncodings, TextcoderDataset
 from cube.io_utils.io_cubegan import CubeganEncodings, CubeganCollate, CubeganDataset
 from hifigan.models import Generator
 from hifigan.env import AttrDict
@@ -36,49 +35,6 @@ def render_spectrogram(mgc, output_file):
 
     img = Image.fromarray(bitmap)  # smp.toimage(bitmap)
     img.save(output_file)
-
-
-def synthesize_devset(textcoder_path: str, vocoder_path: str, devset_path: str = 'data/processed/dev',
-                      output_path: str = 'generated_files/', forced_synthesis: bool = True, limit=-1):
-    # load vocoder
-    config_file = os.path.join(os.path.split(vocoder_path)[0], 'config.json')
-    with open(config_file) as f:
-        data = f.read()
-
-    json_config = json.loads(data)
-    h = AttrDict(json_config)
-
-    vocoder = Generator(h)
-    vocoder.load_state_dict(torch.load(vocoder_path, map_location='cpu')['generator'])
-    vocoder.remove_weight_norm()
-    vocoder.eval()
-
-    # load textcoder
-    enc = TextcoderEncodings()
-    enc.load('{0}.encodings'.format(textcoder_path))
-    textcoder = CubenetTextcoder(enc)
-    textcoder.load('{0}.last'.format(textcoder_path))
-    textcoder.eval()
-    # load validation set
-    dataset = TextcoderDataset(devset_path)
-    collate = TextcoderCollate(enc)
-    m_gen = len(dataset)
-    if limit != -1 and limit < m_gen:
-        m_gen = limit
-    with torch.no_grad():
-        for ii in tqdm.tqdm(range(m_gen)):
-            X = collate.collate_fn([dataset[ii]])
-            if forced_synthesis:
-                _, _, _, mel = textcoder(X)
-            else:
-                mel = textcoder.inference(X)
-            render_spectrogram(mel.detach().cpu().numpy().squeeze(0),
-                               '{0}/{1}.png'.format(output_path, dataset[ii]['meta']['id']))
-            mel = torch.log(10 ** (mel))
-            audio = vocoder(mel.permute(0, 2, 1)).detach().cpu().numpy().squeeze()
-            audio = np.array(audio * 32767, dtype=np.int16)
-            scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
-
 
 def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True, conditioning=None,
                                speaker=None):
