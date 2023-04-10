@@ -1,17 +1,22 @@
 import random
 from pysndfx import AudioEffectsChain
+import numpy as np
+import os
+from os import listdir
+from os.path import isfile, join
+import librosa
 
 _fx = (
     AudioEffectsChain()
-        .reverb()
+    .reverb()
 )
 
 _fx2 = (
     AudioEffectsChain()
-        .highshelf()
-        .reverb()
-        .phaser()
-        .lowshelf()
+    .highshelf()
+    .reverb()
+    .phaser()
+    .lowshelf()
 )
 
 
@@ -34,13 +39,13 @@ _noise_files = [join('data/noise', f) for f in listdir('data/noise/') if
                 isfile(join('data/noise', f)) and f.endswith('.wav')]
 
 
-def _add_real_noise(x_raw):
+def _add_real_noise(x_raw, orig_sr=48000):
     while True:
         noise_file = _noise_files[random.randint(0, len(_noise_files) - 1)]
         file_size = os.path.getsize(noise_file)
-        if file_size > 22050:
+        if file_size > orig_sr:
             break
-    noise_audio, _ = librosa.load(noise_file, sr=22050, mono=True)
+    noise_audio, _ = librosa.load(noise_file, sr=orig_sr, mono=True)
     noise_audio = (noise_audio / (max(abs(noise_audio)))) * (random.random() / 4 + 0.2)
     while len(noise_audio) < len(x_raw):
         noise_audio = np.concatenate((noise_audio, noise_audio))
@@ -48,30 +53,35 @@ def _add_real_noise(x_raw):
     return x_raw + noise_audio
 
 
-def _downsample(x_raw):
+def _downsample(x_raw, orig_sr):
     p = random.random()
     if p < 0.5:
         sr = 8000
-    else:
+    elif p < 0.7:
         sr = 16000
-    x = librosa.resample(x_raw, orig_sr=22050, target_sr=sr)
-    x = librosa.resample(x, orig_sr=sr, target_sr=22050)
+    elif p < 0.9:
+        sr = 22050
+    else:
+        sr = 24000
+    x = librosa.resample(x_raw, orig_sr=orig_sr, target_sr=sr)
+    x = librosa.resample(x, orig_sr=sr, target_sr=orig_sr)
     return x
 
 
-def alter(x_raw, prob=0.1):
+def alter(x_raw, prob=0.1, real_sr=48000):
+    p = random.random()
+    if p < prob:
+        x_raw = _add_real_noise(x_raw, orig_sr=real_sr)
     p = random.random()
     if p < prob:
         x_raw = _add_reverb(x_raw)
     p = random.random()
     if p < prob:
         x_raw = _add_noise(x_raw)
-    p = random.random()
-    if p < prob:
-        x_raw = _add_real_noise(x_raw)
+
 
     p = random.random()
     if p < prob:
-        x_raw = _downsample(x_raw)
+        x_raw = _downsample(x_raw, orig_sr=real_sr)
 
     return x_raw
