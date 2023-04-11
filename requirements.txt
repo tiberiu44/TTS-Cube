@@ -9,3 +9,4 @@ pytorch_lightning
 pillow
 matplotlib
 pysndfx
+vector_quantize_pytorch

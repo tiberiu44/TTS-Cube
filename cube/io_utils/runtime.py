@@ -15,6 +15,7 @@ sys.path.append('hifigan')
 
 from cube.networks.cubegan import Cubegan
 from cube.io_utils.io_cubegan import CubeganEncodings, CubeganCollate, CubeganDataset
+from cube.io_utils.io_enhancer import EnhancerDataset, collate_fn
 from hifigan.models import Generator
 from hifigan.env import AttrDict
 import scipy.io
@@ -63,6 +64,24 @@ def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-
             audio = audio.detach().cpu().numpy().squeeze()
             audio = np.asarray(audio * 32767, dtype=np.int16)
             scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 24000, audio)
+
+
+def cubedall_synthesize(model: Cubegan, output_path, devset_path, limit=-1):
+    dataset = EnhancerDataset(devset_path)
+    m_gen = len(dataset)
+    if limit != -1 and limit < m_gen:
+        m_gen = limit
+    with torch.no_grad():
+        for ii in tqdm.tqdm(range(m_gen)):
+            X = collate_fn([dataset[ii]])
+            for key in X:
+                if isinstance(X[key], torch.Tensor):
+                    X[key] = X[key].to(model.get_device())
+            audio = model(X)
+
+            audio = audio.detach().cpu().numpy().squeeze()
+            audio = np.asarray(audio * 32767, dtype=np.int16)
+            scipy.io.wavfile.write('{0}/{1}.wav'.format(output_path, dataset[ii]['meta']['id']), 48000, audio)
 
 
 if __name__ == '__main__':

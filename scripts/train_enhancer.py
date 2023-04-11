@@ -25,7 +25,7 @@ from cube.networks.enhancer import Cubedall
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 from cube.io_utils.io_enhancer import EnhancerDataset, collate_fn
-from cube.io_utils.runtime import cubegan_synthesize_dataset
+from cube.io_utils.runtime import cubedall_synthesize
 
 
 class PrintAndSaveCallback(pl.callbacks.Callback):
@@ -69,11 +69,10 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
             sys.stdout.write('\tGenerating validation set\n')
             sys.stdout.flush()
             os.makedirs('generated_files/free/', exist_ok=True)
-            cubegan_synthesize_dataset(pl_module,
-                                       output_path='generated_files/free/',
-                                       devset_path='data/processed/dev/',
-                                       limit=10,
-                                       conditioning=pl_module._conditioning)
+            cubedall_synthesize(pl_module,
+                                output_path='generated_files/enhanced/',
+                                devset_path='data/processed/dev/',
+                                limit=10)
 
 
 def _train(params):
