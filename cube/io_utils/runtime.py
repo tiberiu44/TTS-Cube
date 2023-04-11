@@ -83,9 +83,9 @@ def cubedall_synthesize(model: Cubegan, output_path, devset_path, limit=-1):
             audio = audio.detach().cpu().numpy().squeeze()
             audio = np.asarray(audio * 32767, dtype=np.int16)
             scipy.io.wavfile.write('{0}/{1}.out.wav'.format(output_path, index), 48000, audio)
-            audio = np.asarray(X['x'] * 32767, dtype=np.int16)
+            audio = np.asarray(X['x'].cpu().numpy() * 32767, dtype=np.int16)
             scipy.io.wavfile.write('{0}/{1}.inp.wav'.format(output_path, index), 48000, audio)
-            audio = np.asarray(X['y'] * 32767, dtype=np.int16)
+            audio = np.asarray(X['y'].cpu().numpy() * 32767, dtype=np.int16)
             scipy.io.wavfile.write('{0}/{1}.tar.wav'.format(output_path, index), 48000, audio)
             index += 1
 
