@@ -74,7 +74,7 @@ def cubedall_synthesize(model: Cubegan, output_path, devset_path, limit=-1):
     index = 0
     with torch.no_grad():
         for ii in tqdm.tqdm(range(m_gen)):
-            X = collate_fn([dataset[ii]])
+            X = collate_fn([dataset[ii]], 48000 * 3)
             for key in X:
                 if isinstance(X[key], torch.Tensor):
                     X[key] = X[key].to(model.get_device())
