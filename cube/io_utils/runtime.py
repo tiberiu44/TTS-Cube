@@ -71,6 +71,7 @@ def cubedall_synthesize(model: Cubegan, output_path, devset_path, limit=-1):
     m_gen = len(dataset)
     if limit != -1 and limit < m_gen:
         m_gen = limit
+    index = 0
     with torch.no_grad():
         for ii in tqdm.tqdm(range(m_gen)):
             X = collate_fn([dataset[ii]])
@@ -81,11 +82,12 @@ def cubedall_synthesize(model: Cubegan, output_path, devset_path, limit=-1):
 
             audio = audio.detach().cpu().numpy().squeeze()
             audio = np.asarray(audio * 32767, dtype=np.int16)
-            scipy.io.wavfile.write('{0}/{1}.out.wav'.format(output_path, dataset[ii]['meta']['id']), 48000, audio)
+            scipy.io.wavfile.write('{0}/{1}.out.wav'.format(output_path, index), 48000, audio)
             audio = np.asarray(X['x'] * 32767, dtype=np.int16)
-            scipy.io.wavfile.write('{0}/{1}.inp.wav'.format(output_path, dataset[ii]['meta']['id']), 48000, audio)
+            scipy.io.wavfile.write('{0}/{1}.inp.wav'.format(output_path, index), 48000, audio)
             audio = np.asarray(X['y'] * 32767, dtype=np.int16)
-            scipy.io.wavfile.write('{0}/{1}.tar.wav'.format(output_path, dataset[ii]['meta']['id']), 48000, audio)
+            scipy.io.wavfile.write('{0}/{1}.tar.wav'.format(output_path, index), 48000, audio)
+            index += 1
 
 
 if __name__ == '__main__':
