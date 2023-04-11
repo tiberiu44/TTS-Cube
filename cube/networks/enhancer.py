@@ -101,15 +101,15 @@ class Cubedall(pl.LightningModule):
         loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
         loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
         loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
-        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
+        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_vq
 
-        loss_gen_all.backward(retain_graph=True)
+        loss_gen_all.backward()
         opt_g.step()
         output_obj = {'loss_g': loss_gen_all,
                       'loss_vq': loss_vq,
                       'loss_d': loss_disc_all,
                       'loss_v': loss_gen_all + loss_disc_all,
-                      'loss': loss_gen_all + loss_disc_all + loss_vq,
+                      'loss': loss_gen_all + loss_disc_all,
                       'lr': self._current_lr}
         self.log_dict(output_obj, prog_bar=True)
         self._global_step += 1
@@ -156,14 +156,16 @@ class Cubedall(pl.LightningModule):
         loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
         loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
         loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
-        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
+        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_vq
 
         output_obj = {'loss_g': loss_gen_all,
                       'loss_vq': loss_vq,
                       'loss_d': loss_disc_all,
                       'loss_v': loss_gen_all + loss_disc_all,
-                      'loss': loss_gen_all + loss_disc_all + loss_vq,
+                      'loss': loss_gen_all + loss_disc_all,
                       'lr': self._current_lr}
+
+        return output_obj
 
     def validation_epoch_end(self, outputs: []) -> None:
         target_loss = sum(x['loss_mel'] for x in outputs) / len(outputs)
