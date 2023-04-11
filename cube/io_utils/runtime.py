@@ -13,7 +13,6 @@ import tqdm
 sys.path.append('')
 sys.path.append('hifigan')
 
-from cube.networks.textcoder import CubenetTextcoder
 from cube.networks.cubegan import Cubegan
 from cube.io_utils.io_cubegan import CubeganEncodings, CubeganCollate, CubeganDataset
 from hifigan.models import Generator
@@ -35,6 +34,7 @@ def render_spectrogram(mgc, output_file):
 
     img = Image.fromarray(bitmap)  # smp.toimage(bitmap)
     img.save(output_file)
+
 
 def cubegan_synthesize_dataset(model: Cubegan, output_path, devset_path, limit=-1, free=True, conditioning=None,
                                speaker=None):

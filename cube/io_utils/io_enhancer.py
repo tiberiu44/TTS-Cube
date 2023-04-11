@@ -1,4 +1,5 @@
 import copy
+import random
 
 import torch
 import numpy as np
@@ -43,8 +44,38 @@ class EnhancerDataset(Dataset):
         }
 
 
-def collate_fn(batch):
-    pass
+def collate_fn(batch, max_segment_size=24000):
+    x = np.zeros((len(batch), max_segment_size))
+    y = np.zeros((len(batch), max_segment_size))
+    sr = np.zeros((len(batch), 5))
+    for index in range(len(batch)):
+        example = batch[index]
+        ssr = example['sample_rate']
+        if ssr == 8000:
+            sr[index, 0] = 1
+        elif ssr == 16000:
+            sr[index, 1] = 1
+        elif ssr == 22050:
+            sr[index, 2] = 1
+        elif ssr == 24000:
+            sr[index, 3] = 1
+        else:
+            sr[index, 4] = 1
+        sx = example['x']
+        sy = example['y']
+        if sx.shape[0] < max_segment_size:
+            x[index, :sx.shape[0]] = sx
+            y[index, :sy.shape[0]] = sy
+        else:
+            start = random.randint(0, sx.shape[0] - max_segment_size - 1)
+            x[index, :] = sx[start:start + max_segment_size]
+            y[index, :] = sy[start:start + max_segment_size]
+
+    return {
+        'x': torch.tensor(x, dtype=torch.float),
+        'y': torch.tensor(y, dtype=torch.float),
+        'sr': torch.tensor(sr, dtype=torch.float)
+    }
 
 
 if __name__ == '__main__':

@@ -21,10 +21,10 @@ import pytorch_lightning as pl
 import torch
 
 sys.path.append('')
-from cube.networks.cubegan import Cubegan
+from cube.networks.enhancer import Cubedall
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
-from cube.io_utils.io_cubegan import CubeganEncodings, CubeganDataset, CubeganCollate
+from cube.io_utils.io_enhancer import EnhancerDataset, collate_fn
 from cube.io_utils.runtime import cubegan_synthesize_dataset
 
 
@@ -77,54 +77,24 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
 
 
 def _train(params):
-    config = {
-        'sample_rate': params.sample_rate,
-        'hop_size': params.hop_size,
-        'conditioning': params.lm
-    }
-    if params.lm:
-        conditioning = params.lm
-        cond_type = params.lm.split(':')[0]
-    else:
-        conditioning = None
-    conf_file = '{0}.yaml'.format(params.output_base)
-    yaml.dump(config, open(conf_file, 'w'))
-    sys.stdout.write('=================Config=================\n')
-    sys.stdout.write(open(conf_file).read())
-    sys.stdout.write('========================================\n\n')
-    if cond_type == 'hf':
-        hf_model = params.lm.split(':')[-1]
-    else:
-        hf_model = None
-    trainset = CubeganDataset(params.train_folder, hf_model=hf_model)
-    devset = CubeganDataset(params.dev_folder, hf_model=hf_model)
+    trainset = EnhancerDataset(params.train_folder)
+    devset = EnhancerDataset(params.dev_folder)
     sys.stdout.write('==================Data==================\n')
     sys.stdout.write('Training files: {0}\n'.format(len(trainset)))
     sys.stdout.write('Validation files: {0}\n'.format(len(devset)))
     sys.stdout.write('========================================\n\n')
     sys.stdout.write('================Training================\n')
-    encodings = CubeganEncodings()
-    if params.resume:
-        encodings.load('{0}.encodings'.format(params.output_base))
-    else:
-        encodings.compute(trainset)
-        encodings.save('{0}.encodings'.format(params.output_base))
 
-    collate = CubeganCollate(encodings, conditioning_type=conditioning)
-    sys.stdout.write('Number of speakers: {0}\n'.format(len(encodings.speaker2int)))
-    sys.stdout.write('Number of phones: {0}\n'.format(len(encodings.phon2int)))
-    sys.stdout.write('Maximum F0: {0}\n'.format(encodings.max_pitch))
-    sys.stdout.write('Maximum duration: {0}\n'.format(encodings.max_duration))
     trainloader = DataLoader(trainset,
                              batch_size=params.batch_size,
                              num_workers=params.num_workers,
-                             collate_fn=collate.collate_fn)
+                             collate_fn=collate_fn)
     devloader = DataLoader(devset,
                            batch_size=params.batch_size,
                            num_workers=params.num_workers,
-                           collate_fn=collate.collate_fn)
+                           collate_fn=collate_fn)
 
-    model = Cubegan(encodings, lr=params.lr, conditioning=conditioning)
+    model = Cubedall(lr=params.lr)
 
     if params.resume:
         sys.stdout.write('Resuming from previous checkpoint\n')
@@ -149,7 +119,7 @@ if __name__ == '__main__':
     parser = ArgumentParser(description='NLP-Cube Trainer Helper')
     parser.add_argument('--output-base', action='store', dest='output_base',
                         default='data/cubegan',
-                        help='Where to store the model (default=data/cubegan)')
+                        help='Where to store the model (default=data/cubedall)')
     parser.add_argument('--batch-size', dest='batch_size', default=16,
                         type=int, help='Batch size (default=16)')
     parser.add_argument('--num-workers', dest='num_workers', default=4,
@@ -164,16 +134,11 @@ if __name__ == '__main__':
                         help='Location of training files (default=data/processed/train)')
     parser.add_argument('--dev-folder', dest='dev_folder', default='data/processed/dev',
                         help='Location of training files (default=data/processed/dev)')
-    parser.add_argument('--sample-rate', dest='sample_rate', type=int, default=24000,
-                        help='Number of parallel samples (default=24000)')
-    parser.add_argument('--hop-size', dest='hop_size', type=int, default=240,
-                        help='Hop-size for mel (default=240)')
     parser.add_argument('--lr', dest='lr', default=2e-4, type=float,
                         help='Learning rate (default=2e-4)')
     parser.add_argument('--epoch-generation', dest='epoch_generation', type=int, default=10,
                         help='End-to-end generation of validation set at every n-th epoch (default=10). '
                              'Files are stored in generated_files/free')
-    parser.add_argument('--lm', dest='lm', help='what lm conditioning to use: fasttext:<LANG> or bert:<LANG>')
 
     parser.add_argument('--resume', dest='resume', action='store_true')
 

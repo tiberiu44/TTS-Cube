@@ -19,6 +19,7 @@ import torch.nn as nn
 import numpy as np
 import tqdm
 from cube.networks.loss import BetaOutput, GaussianOutput, MULAWOutput, MOLOutput, RAWOutput
+import torch.nn.functional as F
 
 
 class LinearNorm(torch.nn.Module):
@@ -388,419 +389,6 @@ class UpsampleNetR(nn.Module):
         return c
 
 
-class WaveRNN(nn.Module):
-    def __init__(self,
-                 num_layers: int = 2,
-                 layer_size: int = 512,
-                 upsample=100,
-                 upsample_low=10,
-                 use_lowres=True,
-                 learning_rate=1e-4,
-                 output='mol'):
-        super(WaveRNN, self).__init__()
-        self._upsample_lowres_i = UpsampleNetI(upsample_low)
-        # hardcode upsample layers
-        # if upsample == 240:
-        #     self._upsample_lowres_i = UpsampleNetI(upsample_low)
-        #     upsample = [5, 4, 4, 3]  # 240
-        #     upsample_low = [2, 5]
-        # else:
-        #     upsample = [2, 2, 2, 3]  # 24
-        self._learning_rate = learning_rate
-        # self._upsample_mel = UpsampleNet(upsample_scales=upsample, in_channels=80, out_channels=80)
-        self._upsample_mel = UpsampleNetR(upsample=upsample)
-        self._use_lowres = use_lowres
-        if self._use_lowres:
-            self._upsample_lowres = UpsampleNetR(upsample=upsample_low)
-            self._lowres_conv = nn.ModuleList()
-            ic = 1
-            for ii in range(3):
-                self._lowres_conv.append(ConvNorm(ic, 20, kernel_size=7, padding=3))
-                ic = 20
-        ic = 80 + 1
-        if use_lowres:
-            ic += 21
-        self._skip = LinearNorm(ic, layer_size, w_init_gain='tanh')
-        rnn_list = []
-        for ii in range(num_layers):
-            rnn = nn.GRU(input_size=ic, hidden_size=layer_size, num_layers=1, batch_first=True)
-            ic = layer_size
-            rnn_list.append(rnn)
-        self._rnns = nn.ModuleList(rnn_list)
-        self._preoutput = LinearNorm(layer_size, 256)
-
-        if output == 'mol':
-            self._output_functions = MOLOutput()
-        elif output == 'gm':
-            self._output_functions = GaussianOutput()
-        elif output == 'beta':
-            self._output_functions = BetaOutput()
-        elif output == 'mulaw':
-            self._output_functions = MULAWOutput()
-        elif output == 'raw':
-            self._output_functions = RAWOutput()
-
-        self._output = LinearNorm(256, self._output_functions.sample_size, w_init_gain='linear')
-        self._val_loss = 9999
-
-    def forward(self, X):
-        if 'x' in X:
-            return self._train_forward(X)
-        else:
-            return self._inference(X)
-
-    def _inference(self, X):
-        with torch.no_grad():
-            mel = X['mel']
-            if self._use_lowres:
-                low_x = X['x_low']
-                interp_x = self._upsample_lowres_i(low_x.unsqueeze(1)).permute(0, 2, 1)
-                hidden = low_x.unsqueeze(1)
-                for conv in self._lowres_conv:
-                    hidden = torch.tanh(conv(hidden))
-                upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
-
-            upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
-            cond = upsampled_mel
-            if self._use_lowres:
-                msize = min(upsampled_mel.shape[1], upsampled_x.shape[1], interp_x.shape[1])
-                cond = torch.cat([upsampled_mel[:, :msize, :],
-                                  upsampled_x[:, :msize, :],
-                                  interp_x[:, :msize, :]],
-                                 dim=-1)
-
-            last_x = torch.ones((cond.shape[0], 1, 1),
-                                device=self._get_device()) * 0  # * self._x_zero
-            output_list = []
-            hxs = [None for _ in range(len(self._rnns))]
-            # index = 0
-            for ii in tqdm.tqdm(range(cond.shape[1]), ncols=80):
-                hidden = cond[:, ii, :].unsqueeze(1)
-                # res = self._skip(torch.cat([cond[:, ii, :].unsqueeze(1), last_x], dim=-1))
-                hidden = torch.cat([hidden, last_x], dim=-1)
-                for ll in range(len(self._rnns)):
-                    rnn_input = hidden  # torch.cat([hidden, last_x], dim=-1)
-                    rnn = self._rnns[ll]
-                    rnn_output, hxs[ll] = rnn(rnn_input, hx=hxs[ll])
-                    hidden = rnn_output
-                    # res = res + hidden
-
-                preoutput = torch.tanh(self._preoutput(hidden))
-                output = self._output(preoutput)
-                output = output.reshape(output.shape[0], -1, self._output_functions.sample_size)
-                samples = self._output_functions.sample(output)
-                # if self._use_lowres and ii < interp_x.shape[1]:
-                #     last_x = (samples + interp_x[:, ii, :]).unsqueeze(1)
-                # else:
-                last_x = samples.unsqueeze(1)
-                output_list.append(samples.unsqueeze(1))
-
-        output_list = torch.cat(output_list, dim=1)
-        # if self._use_lowres:
-        #     min_s = min(interp_x.shape[1], output_list.shape[1])
-        #     output_list = output_list[:, :min_s].squeeze() + interp_x[:, :min_s].squeeze()
-        return output_list.detach().cpu().numpy()  # self._output_functions.decode(output_list)
-
-    def _train_forward(self, X):
-        mel = X['mel']
-        gs_x = X['x']
-
-        upsampled_mel = self._upsample_mel(mel.permute(0, 2, 1)).permute(0, 2, 1)
-        # check if we are using lowres signal conditioning
-        if self._use_lowres:
-            low_x = X['x_low']
-            interp_x = self._upsample_lowres_i(low_x.unsqueeze(1)).squeeze(1)
-            hidden = low_x.unsqueeze(1)
-            for conv in self._lowres_conv:
-                hidden = torch.tanh(conv(hidden))
-
-            upsampled_x = self._upsample_lowres(hidden).permute(0, 2, 1)
-            msize = min(upsampled_mel.shape[1], gs_x.shape[1], upsampled_x.shape[1], interp_x.shape[1])
-            upsampled_x = upsampled_x[:, :msize, :]
-        else:
-            msize = min(upsampled_mel.shape[1], gs_x.shape[1])
-
-        upsampled_mel = upsampled_mel[:, :msize, :]
-        gs_x = gs_x[:, :msize].unsqueeze(2)
-        if self._use_lowres:
-            hidden = torch.cat([upsampled_mel, upsampled_x, interp_x.unsqueeze(2), gs_x], dim=-1)
-        else:
-            hidden = torch.cat([upsampled_mel, gs_x], dim=-1)
-        # res = self._skip(hidden)
-
-        for ll in range(len(self._rnns)):
-            rnn_input = hidden
-            rnn_output, _ = self._rnns[ll](rnn_input)
-            hidden = rnn_output
-            # res = res + hidden
-        preoutput = torch.tanh(self._preoutput(hidden))
-        output = self._output(preoutput)
-        return output
-
-    def validation_step(self, batch, batch_idx):
-        gs_audio = batch['x']
-        x = batch['x']
-        x = x[:, :-1]
-        x = torch.nn.functional.pad(x, (1, 0), mode='constant', value=0)
-        batch['x'] = x
-        output = self.forward(batch)
-        target_x = gs_audio
-        pred_x = output
-        loss = self._output_functions.loss(pred_x, target_x)
-        return loss
-
-    def training_step(self, batch, batch_idx):
-        gs_audio = batch['x']
-        x = batch['x']
-        x = x[:, :-1]
-        x = torch.nn.functional.pad(x, (1, 0), mode='constant', value=0)
-        batch['x'] = x
-        output = self.forward(batch)
-        target_x = gs_audio
-        pred_x = output
-        loss = self._output_functions.loss(pred_x, target_x)
-        return loss
-
-    def validation_epoch_end(self, outputs) -> None:
-        loss = sum(outputs) / len(outputs)
-        self.log("val_loss", loss)
-        self._val_loss = loss
-
-    def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self._learning_rate)
-
-    @torch.jit.ignore
-    def _get_device(self):
-        if self._output.linear_layer.weight.device.type == 'cpu':
-            return 'cpu'
-        return '{0}:{1}'.format(self._output.linear_layer.weight.device.type,
-                                str(self._output.linear_layer.weight.device.index))
-
-    @torch.jit.ignore
-    def save(self, path):
-        torch.save(self.state_dict(), path)
-
-    @torch.jit.ignore
-    def load(self, path):
-        # from ipdb import set_trace
-        # set_trace()
-        # tmp = torch.load(path, map_location='cpu')
-        self.load_state_dict(torch.load(path, map_location='cpu'))
-
-
-class Languasito(nn.Module):
-    def __init__(self, num_phones, num_speakers, max_pitch, max_duration, lr: float = 2e-4):
-        super(Languasito, self).__init__()
-        PHON_EMB_SIZE = 64
-        SPEAKER_EMB_SIZE = 128
-        CHAR_CNN_SIZE = 256
-        CHAR_CNN_KS = 3
-        CHAR_CNN_NL = 3
-        CHAR_RNN_NL = 2
-        CHAR_RNN_SIZE = 256
-        OVERLAY_RNN_LAYERS = 2
-        OVERLAY_RNN_SIZE = 512
-        EXTERNAL_COND = 0  # this will be used to add external conditioning (e.g. transformer) - not currently used
-        DUR_RNN_SIZE = 256
-        DUR_RNN_LAYERS = 2
-        PITCH_RNN_SIZE = 256
-        PITCH_RNN_LAYERS = 2
-        MEL_RNN_SIZE = 512
-        MEL_RNN_LAYERS = 2
-        PRENET_SIZE = 256
-        PRENET_LAYERS = 2
-        MEL_SIZE = 80
-        self._pframes = 1
-        self._lr = lr
-        self._max_pitch = max_pitch
-        self._max_dur = max_duration
-        # phoneme embeddings
-        self._phon_emb = nn.Embedding(num_phones + 1, PHON_EMB_SIZE, padding_idx=0)
-        # speaker embeddings
-        self._speaker_emb = nn.Embedding(num_speakers + 1, SPEAKER_EMB_SIZE, padding_idx=0)
-        # phoneme/char CNN
-        inp_s = PHON_EMB_SIZE
-        char_cnn = []
-        for ii in range(CHAR_CNN_NL):
-            conv = ConvNorm(inp_s,
-                            CHAR_CNN_SIZE,
-                            kernel_size=CHAR_CNN_KS,
-                            padding=CHAR_CNN_KS // 2,
-                            w_init_gain='tanh')
-            char_cnn.append(conv)
-            char_cnn.append(nn.Tanh())
-            inp_s = CHAR_CNN_SIZE
-        self._char_cnn = nn.ModuleList(char_cnn)
-        # phoneme/char RNN
-        self._rnn_char = nn.LSTM(input_size=inp_s,
-                                 hidden_size=CHAR_RNN_SIZE,
-                                 num_layers=CHAR_RNN_NL,
-                                 bidirectional=True,
-                                 batch_first=True)
-        # rnn over the upsampled data - this helps with co-articulation of sounds
-        self._rnn_overlay = nn.LSTM(input_size=CHAR_RNN_SIZE * 2 + SPEAKER_EMB_SIZE + EXTERNAL_COND,
-                                    hidden_size=OVERLAY_RNN_SIZE,
-                                    num_layers=OVERLAY_RNN_LAYERS,
-                                    bidirectional=True,
-                                    batch_first=True)
-        # duration
-        # this comes after the textcnn+speaker_emb+external_cond(could be a transformer)
-        self._dur_rnn = nn.LSTM(input_size=CHAR_RNN_SIZE * 2 + SPEAKER_EMB_SIZE + EXTERNAL_COND,
-                                hidden_size=DUR_RNN_SIZE,
-                                num_layers=DUR_RNN_LAYERS,
-                                bidirectional=True,
-                                batch_first=True)
-        self._dur_output = LinearNorm(DUR_RNN_SIZE * 2, max_duration + 1)
-        # pitch
-        # this comes after the rnn_overlay+speaker_emb+external_cond(could be a transformer)
-        self._pitch_rnn = nn.LSTM(input_size=OVERLAY_RNN_SIZE * 2,
-                                  hidden_size=PITCH_RNN_SIZE,
-                                  num_layers=PITCH_RNN_LAYERS,
-                                  bidirectional=True,
-                                  batch_first=True)
-        self._pitch_output = LinearNorm(PITCH_RNN_SIZE * 2, int(max_pitch) + 1)
-        # conditioning for the GAN
-        self._rnn_cond = nn.LSTM(input_size=OVERLAY_RNN_SIZE * 2 + 1,
-                                 hidden_size=256,
-                                 num_layers=2,
-                                 bidirectional=True,
-                                 batch_first=True)
-        self._cond_output = LinearNorm(512, 80)
-
-        self.automatic_optimization = False
-        self._loss_l1 = nn.L1Loss()
-        self._loss_mse = nn.MSELoss()
-        self._loss_cross = nn.CrossEntropyLoss(ignore_index=int(max(max_pitch, max_duration) + 1))
-        self._val_loss_durs = 9999
-        self._val_loss_pitch = 9999
-        self._val_loss_mel = 9999
-        self._val_loss_total = 999
-
-    def forward(self, X):
-        x_char = X['x_char']
-        x_speaker = X['x_speaker']
-        speaker_cond = self._speaker_emb(x_speaker)
-        # compute character embeddings
-        hidden = self._phon_emb(x_char)
-        hidden = hidden.permute(0, 2, 1)
-        for layer in self._char_cnn:
-            hidden = layer(hidden)
-        hidden = hidden.permute(0, 2, 1)
-        hidden, _ = self._rnn_char(hidden)
-        # done with character processing
-        # append speaker and, if possible, external cond
-        expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
-        hidden = torch.cat([hidden, expanded_speaker], dim=-1)
-
-        # duration
-        hidden_dur, _ = self._dur_rnn(hidden)
-        output_dur = self._dur_output(hidden_dur)
-
-        # align/repeat to match alignments
-        hidden = self._expand(hidden, X['y_frame2phone'])
-        # overlay
-        hidden, _ = self._rnn_overlay(hidden)
-        hidden_overlay = hidden
-        # pitch
-        hidden_pitch, _ = self._pitch_rnn(hidden)
-        output_pitch = self._pitch_output(hidden_pitch)
-
-        # compute conditioning
-        pitch = X['y_pitch'].unsqueeze(2) / self._max_pitch
-        m_size = min(hidden_overlay.shape[1], pitch.shape[1])
-        hidden_cond = torch.cat([hidden_overlay[:, :m_size, :], pitch[:, :m_size, :]], dim=-1)
-        hidden, _ = self._rnn_cond(hidden_cond)
-        conditioning = self._cond_output(hidden)
-
-        return output_dur, output_pitch, conditioning
-
-    def inference(self, X):
-        x_char = X['x_char']
-        x_speaker = X['x_speaker']
-        speaker_cond = self._speaker_emb(x_speaker)
-        # compute character embeddings
-        hidden = self._phon_emb(x_char)
-        hidden = hidden.permute(0, 2, 1)
-        for layer in self._char_cnn:
-            hidden = layer(hidden)
-        hidden = hidden.permute(0, 2, 1)
-        hidden, _ = self._rnn_char(hidden)
-        # done with character processing
-        # append speaker and, if possible, external cond
-        expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
-        hidden = torch.cat([hidden, expanded_speaker], dim=-1)
-        # duration
-        hidden_dur, _ = self._dur_rnn(hidden)
-        output_dur = self._dur_output(hidden_dur)
-        # we have the durations, we need to simulate alignments here
-        output_dur = torch.argmax(output_dur, dim=-1)
-        frame2phone = []
-        phon_index = 0
-        for dur in output_dur.detach().cpu().numpy().squeeze():
-            for ii in range(dur):
-                frame2phone.append(phon_index)
-            phon_index += 1
-        # align/repeat to match alignments
-        hidden = self._expand(hidden, [frame2phone])
-        # overlay
-        hidden, _ = self._rnn_overlay(hidden)
-        hidden_overlay = hidden
-        # pitch
-        hidden_pitch, _ = self._pitch_rnn(hidden)
-        output_pitch = self._pitch_output(hidden_pitch)
-        # conditioning
-        pitch = torch.argmax(output_pitch, dim=-1)
-        hidden_cond = torch.cat([hidden_overlay, pitch.unsqueeze(2) / self._max_pitch], dim=-1)
-        hidden, _ = self._rnn_cond(hidden_cond)
-        conditioning = self._cond_output(hidden)
-
-        return conditioning
-
-    @torch.jit.ignore
-    def save(self, path):
-        torch.save(self.state_dict(), path)
-
-    @torch.jit.ignore
-    def load(self, path):
-        self.load_state_dict(torch.load(path, map_location='cpu'))
-
-    @staticmethod
-    def _compute_lr(initial_lr, delta, step):
-        return initial_lr / (1 + delta * step)
-
-    @torch.jit.ignore
-    def _get_device(self):
-        if self._dur_output.linear_layer.weight.device.type == 'cpu':
-            return 'cpu'
-        return '{0}:{1}'.format(self._dur_output.linear_layer.weight.device.type,
-                                str(self._dur_output.linear_layer.weight.device.index))
-
-    def _expand(self, x, alignments):
-        m_size = max([len(a) // self._pframes for a in alignments])
-        tmp = []
-        for ii in range(len(alignments)):
-            c_batch = []
-            for jj in range(len(alignments[ii]) // self._pframes):
-                c_batch.append(x[ii, alignments[ii][jj * self._pframes], :].unsqueeze(0))
-            for jj in range(m_size - len(alignments[ii]) // self._pframes):
-                c_batch.append(x[ii, -1, :].unsqueeze(0))
-            c_batch = torch.cat(c_batch, dim=0)
-            tmp.append(c_batch.unsqueeze(0))
-        return torch.cat(tmp, dim=0)
-
-    def _prepare_mel(self, x):
-        lst = [torch.ones((x.shape[0], 1, x.shape[2]), device=self._get_device()) * -5]
-        for ii in range(x.shape[1] // self._pframes):
-            lst.append(x[:, (ii + 1) * self._pframes - 1, :].unsqueeze(1))
-        return torch.cat(lst, dim=1)
-
-    def _prepare_pitch(self, x):
-        lst = []
-        for ii in range(x.shape[1] // self._pframes):
-            lst.append(x[:, (ii + 1) * self._pframes - 1].unsqueeze(1))
-        return torch.cat(lst, dim=1)
-
-
 class Languasito2(nn.Module):
     def __init__(self, num_phones, num_speakers, max_pitch, max_duration, cond_type=None, lr: float = 2e-4):
         super(Languasito2, self).__init__()
@@ -1083,3 +671,285 @@ class Languasito2(nn.Module):
         for ii in range(x.shape[1] // self._pframes):
             lst.append(x[:, (ii + 1) * self._pframes - 1].unsqueeze(1))
         return torch.cat(lst, dim=1)
+
+
+class CausalConv1d(nn.Conv1d):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.causal_padding = self.dilation[0] * (self.kernel_size[0] - 1)
+
+    def forward(self, x):
+        return self._conv_forward(F.pad(x, [self.causal_padding, 0]), self.weight, self.bias)
+
+
+class ResidualUnit(nn.Module):
+    def __init__(self, in_channels, out_channels, dilation):
+        super().__init__()
+
+        self.dilation = dilation
+
+        self.layers = nn.Sequential(
+            CausalConv1d(in_channels=in_channels, out_channels=out_channels,
+                         kernel_size=7, dilation=dilation),
+            nn.ELU(),
+            nn.Conv1d(in_channels=in_channels, out_channels=out_channels,
+                      kernel_size=1)
+        )
+
+    def forward(self, x):
+        return x + self.layers(x)
+
+
+class EncoderBlock(nn.Module):
+    def __init__(self, out_channels, stride):
+        super().__init__()
+
+        self.layers = nn.Sequential(
+            ResidualUnit(in_channels=out_channels // 2,
+                         out_channels=out_channels // 2, dilation=1),
+            nn.ELU(),
+            ResidualUnit(in_channels=out_channels // 2,
+                         out_channels=out_channels // 2, dilation=3),
+            nn.ELU(),
+            ResidualUnit(in_channels=out_channels // 2,
+                         out_channels=out_channels // 2, dilation=9),
+            nn.ELU(),
+            CausalConv1d(in_channels=out_channels // 2, out_channels=out_channels,
+                         kernel_size=2 * stride, stride=stride)
+        )
+
+    def forward(self, x):
+        return self.layers(x)
+
+
+class CubedallEncoder(nn.Module):
+    def __init__(self, C, D, strides=[4, 4, 5, 6]):
+        super(CubedallEncoder, self).__init__()
+        self.layers = nn.Sequential(
+            CausalConv1d(in_channels=1, out_channels=C, kernel_size=7),
+            nn.ELU(),
+            EncoderBlock(out_channels=2 * C, stride=strides[0]),
+            nn.ELU(),
+            EncoderBlock(out_channels=4 * C, stride=strides[1]),
+            nn.ELU(),
+            EncoderBlock(out_channels=8 * C, stride=strides[2]),
+            nn.ELU(),
+            EncoderBlock(out_channels=16 * C, stride=strides[3]),
+            nn.ELU(),
+            CausalConv1d(in_channels=16 * C, out_channels=D, kernel_size=3)
+        )
+
+    def forward(self, x):
+        return self.layers(x)
+
+# class Languasito(nn.Module):
+#     def __init__(self, num_phones, num_speakers, max_pitch, max_duration, lr: float = 2e-4):
+#         super(Languasito, self).__init__()
+#         PHON_EMB_SIZE = 64
+#         SPEAKER_EMB_SIZE = 128
+#         CHAR_CNN_SIZE = 256
+#         CHAR_CNN_KS = 3
+#         CHAR_CNN_NL = 3
+#         CHAR_RNN_NL = 2
+#         CHAR_RNN_SIZE = 256
+#         OVERLAY_RNN_LAYERS = 2
+#         OVERLAY_RNN_SIZE = 512
+#         EXTERNAL_COND = 0  # this will be used to add external conditioning (e.g. transformer) - not currently used
+#         DUR_RNN_SIZE = 256
+#         DUR_RNN_LAYERS = 2
+#         PITCH_RNN_SIZE = 256
+#         PITCH_RNN_LAYERS = 2
+#         MEL_RNN_SIZE = 512
+#         MEL_RNN_LAYERS = 2
+#         PRENET_SIZE = 256
+#         PRENET_LAYERS = 2
+#         MEL_SIZE = 80
+#         self._pframes = 1
+#         self._lr = lr
+#         self._max_pitch = max_pitch
+#         self._max_dur = max_duration
+#         # phoneme embeddings
+#         self._phon_emb = nn.Embedding(num_phones + 1, PHON_EMB_SIZE, padding_idx=0)
+#         # speaker embeddings
+#         self._speaker_emb = nn.Embedding(num_speakers + 1, SPEAKER_EMB_SIZE, padding_idx=0)
+#         # phoneme/char CNN
+#         inp_s = PHON_EMB_SIZE
+#         char_cnn = []
+#         for ii in range(CHAR_CNN_NL):
+#             conv = ConvNorm(inp_s,
+#                             CHAR_CNN_SIZE,
+#                             kernel_size=CHAR_CNN_KS,
+#                             padding=CHAR_CNN_KS // 2,
+#                             w_init_gain='tanh')
+#             char_cnn.append(conv)
+#             char_cnn.append(nn.Tanh())
+#             inp_s = CHAR_CNN_SIZE
+#         self._char_cnn = nn.ModuleList(char_cnn)
+#         # phoneme/char RNN
+#         self._rnn_char = nn.LSTM(input_size=inp_s,
+#                                  hidden_size=CHAR_RNN_SIZE,
+#                                  num_layers=CHAR_RNN_NL,
+#                                  bidirectional=True,
+#                                  batch_first=True)
+#         # rnn over the upsampled data - this helps with co-articulation of sounds
+#         self._rnn_overlay = nn.LSTM(input_size=CHAR_RNN_SIZE * 2 + SPEAKER_EMB_SIZE + EXTERNAL_COND,
+#                                     hidden_size=OVERLAY_RNN_SIZE,
+#                                     num_layers=OVERLAY_RNN_LAYERS,
+#                                     bidirectional=True,
+#                                     batch_first=True)
+#         # duration
+#         # this comes after the textcnn+speaker_emb+external_cond(could be a transformer)
+#         self._dur_rnn = nn.LSTM(input_size=CHAR_RNN_SIZE * 2 + SPEAKER_EMB_SIZE + EXTERNAL_COND,
+#                                 hidden_size=DUR_RNN_SIZE,
+#                                 num_layers=DUR_RNN_LAYERS,
+#                                 bidirectional=True,
+#                                 batch_first=True)
+#         self._dur_output = LinearNorm(DUR_RNN_SIZE * 2, max_duration + 1)
+#         # pitch
+#         # this comes after the rnn_overlay+speaker_emb+external_cond(could be a transformer)
+#         self._pitch_rnn = nn.LSTM(input_size=OVERLAY_RNN_SIZE * 2,
+#                                   hidden_size=PITCH_RNN_SIZE,
+#                                   num_layers=PITCH_RNN_LAYERS,
+#                                   bidirectional=True,
+#                                   batch_first=True)
+#         self._pitch_output = LinearNorm(PITCH_RNN_SIZE * 2, int(max_pitch) + 1)
+#         # conditioning for the GAN
+#         self._rnn_cond = nn.LSTM(input_size=OVERLAY_RNN_SIZE * 2 + 1,
+#                                  hidden_size=256,
+#                                  num_layers=2,
+#                                  bidirectional=True,
+#                                  batch_first=True)
+#         self._cond_output = LinearNorm(512, 80)
+#
+#         self.automatic_optimization = False
+#         self._loss_l1 = nn.L1Loss()
+#         self._loss_mse = nn.MSELoss()
+#         self._loss_cross = nn.CrossEntropyLoss(ignore_index=int(max(max_pitch, max_duration) + 1))
+#         self._val_loss_durs = 9999
+#         self._val_loss_pitch = 9999
+#         self._val_loss_mel = 9999
+#         self._val_loss_total = 999
+#
+#     def forward(self, X):
+#         x_char = X['x_char']
+#         x_speaker = X['x_speaker']
+#         speaker_cond = self._speaker_emb(x_speaker)
+#         # compute character embeddings
+#         hidden = self._phon_emb(x_char)
+#         hidden = hidden.permute(0, 2, 1)
+#         for layer in self._char_cnn:
+#             hidden = layer(hidden)
+#         hidden = hidden.permute(0, 2, 1)
+#         hidden, _ = self._rnn_char(hidden)
+#         # done with character processing
+#         # append speaker and, if possible, external cond
+#         expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
+#         hidden = torch.cat([hidden, expanded_speaker], dim=-1)
+#
+#         # duration
+#         hidden_dur, _ = self._dur_rnn(hidden)
+#         output_dur = self._dur_output(hidden_dur)
+#
+#         # align/repeat to match alignments
+#         hidden = self._expand(hidden, X['y_frame2phone'])
+#         # overlay
+#         hidden, _ = self._rnn_overlay(hidden)
+#         hidden_overlay = hidden
+#         # pitch
+#         hidden_pitch, _ = self._pitch_rnn(hidden)
+#         output_pitch = self._pitch_output(hidden_pitch)
+#
+#         # compute conditioning
+#         pitch = X['y_pitch'].unsqueeze(2) / self._max_pitch
+#         m_size = min(hidden_overlay.shape[1], pitch.shape[1])
+#         hidden_cond = torch.cat([hidden_overlay[:, :m_size, :], pitch[:, :m_size, :]], dim=-1)
+#         hidden, _ = self._rnn_cond(hidden_cond)
+#         conditioning = self._cond_output(hidden)
+#
+#         return output_dur, output_pitch, conditioning
+#
+#     def inference(self, X):
+#         x_char = X['x_char']
+#         x_speaker = X['x_speaker']
+#         speaker_cond = self._speaker_emb(x_speaker)
+#         # compute character embeddings
+#         hidden = self._phon_emb(x_char)
+#         hidden = hidden.permute(0, 2, 1)
+#         for layer in self._char_cnn:
+#             hidden = layer(hidden)
+#         hidden = hidden.permute(0, 2, 1)
+#         hidden, _ = self._rnn_char(hidden)
+#         # done with character processing
+#         # append speaker and, if possible, external cond
+#         expanded_speaker = speaker_cond.repeat(1, hidden.shape[1], 1)
+#         hidden = torch.cat([hidden, expanded_speaker], dim=-1)
+#         # duration
+#         hidden_dur, _ = self._dur_rnn(hidden)
+#         output_dur = self._dur_output(hidden_dur)
+#         # we have the durations, we need to simulate alignments here
+#         output_dur = torch.argmax(output_dur, dim=-1)
+#         frame2phone = []
+#         phon_index = 0
+#         for dur in output_dur.detach().cpu().numpy().squeeze():
+#             for ii in range(dur):
+#                 frame2phone.append(phon_index)
+#             phon_index += 1
+#         # align/repeat to match alignments
+#         hidden = self._expand(hidden, [frame2phone])
+#         # overlay
+#         hidden, _ = self._rnn_overlay(hidden)
+#         hidden_overlay = hidden
+#         # pitch
+#         hidden_pitch, _ = self._pitch_rnn(hidden)
+#         output_pitch = self._pitch_output(hidden_pitch)
+#         # conditioning
+#         pitch = torch.argmax(output_pitch, dim=-1)
+#         hidden_cond = torch.cat([hidden_overlay, pitch.unsqueeze(2) / self._max_pitch], dim=-1)
+#         hidden, _ = self._rnn_cond(hidden_cond)
+#         conditioning = self._cond_output(hidden)
+#
+#         return conditioning
+#
+#     @torch.jit.ignore
+#     def save(self, path):
+#         torch.save(self.state_dict(), path)
+#
+#     @torch.jit.ignore
+#     def load(self, path):
+#         self.load_state_dict(torch.load(path, map_location='cpu'))
+#
+#     @staticmethod
+#     def _compute_lr(initial_lr, delta, step):
+#         return initial_lr / (1 + delta * step)
+#
+#     @torch.jit.ignore
+#     def _get_device(self):
+#         if self._dur_output.linear_layer.weight.device.type == 'cpu':
+#             return 'cpu'
+#         return '{0}:{1}'.format(self._dur_output.linear_layer.weight.device.type,
+#                                 str(self._dur_output.linear_layer.weight.device.index))
+#
+#     def _expand(self, x, alignments):
+#         m_size = max([len(a) // self._pframes for a in alignments])
+#         tmp = []
+#         for ii in range(len(alignments)):
+#             c_batch = []
+#             for jj in range(len(alignments[ii]) // self._pframes):
+#                 c_batch.append(x[ii, alignments[ii][jj * self._pframes], :].unsqueeze(0))
+#             for jj in range(m_size - len(alignments[ii]) // self._pframes):
+#                 c_batch.append(x[ii, -1, :].unsqueeze(0))
+#             c_batch = torch.cat(c_batch, dim=0)
+#             tmp.append(c_batch.unsqueeze(0))
+#         return torch.cat(tmp, dim=0)
+#
+#     def _prepare_mel(self, x):
+#         lst = [torch.ones((x.shape[0], 1, x.shape[2]), device=self._get_device()) * -5]
+#         for ii in range(x.shape[1] // self._pframes):
+#             lst.append(x[:, (ii + 1) * self._pframes - 1, :].unsqueeze(1))
+#         return torch.cat(lst, dim=1)
+#
+#     def _prepare_pitch(self, x):
+#         lst = []
+#         for ii in range(x.shape[1] // self._pframes):
+#             lst.append(x[:, (ii + 1) * self._pframes - 1].unsqueeze(1))
+#         return torch.cat(lst, dim=1)
