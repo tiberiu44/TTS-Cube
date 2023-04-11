@@ -118,7 +118,7 @@ def _train(params):
 if __name__ == '__main__':
     parser = ArgumentParser(description='NLP-Cube Trainer Helper')
     parser.add_argument('--output-base', action='store', dest='output_base',
-                        default='data/cubegan',
+                        default='data/cubedall',
                         help='Where to store the model (default=data/cubedall)')
     parser.add_argument('--batch-size', dest='batch_size', default=16,
                         type=int, help='Batch size (default=16)')
