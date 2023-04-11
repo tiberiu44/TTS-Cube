@@ -30,6 +30,7 @@ class Cubedall(pl.LightningModule):
         self._val_loss = 9999
         self._loaded_optimizer_states = None
         self._encoder = CubedallEncoder(1, 256, [4, 4, 5, 6])
+        self._w = nn.Linear(1, 1)
         self._rvq = ResidualVQ(
             dim=256,
             codebook_size=256,
@@ -204,4 +205,7 @@ class Cubedall(pl.LightningModule):
         return initial_lr / (1 + delta * step)
 
     def get_device(self):
-        return self._languasito._get_device()
+        if self._w.weight.device.type == 'cpu':
+            return 'cpu'
+        return '{0}:{1}'.format(self._w.weight.device.type,
+                                str(self._w.weight.device.index))
