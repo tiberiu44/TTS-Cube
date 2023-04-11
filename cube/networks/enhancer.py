@@ -163,6 +163,7 @@ class Cubedall(pl.LightningModule):
                       'loss_d': loss_disc_all,
                       'loss_v': loss_gen_all + loss_disc_all,
                       'loss': loss_gen_all + loss_disc_all,
+                      'loss_mel': loss_mel,
                       'lr': self._current_lr}
 
         return output_obj
