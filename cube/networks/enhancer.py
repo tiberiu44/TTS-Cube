@@ -50,10 +50,22 @@ class Cubedall(pl.LightningModule):
         self.automatic_optimization = False
 
     def forward(self, X):
-        pass
+        x = X['x']
+        # compute conditioning using encoder and VQ
+        hidden = self._encoder(x.unsqueeze(1)).permute(0, 2, 1)
+        quantized, indices, loss_vq = self._rvq(hidden)
+        # generate using conditioning
+        y_g_hat = self._generator(quantized.permute(0, 2, 1))
+        return y_g_hat
 
     def inference(self, X):
-        pass
+        x = X['x']
+        # compute conditioning using encoder and VQ
+        hidden = self._encoder(x.unsqueeze(1)).permute(0, 2, 1)
+        quantized, indices, loss_vq = self._rvq(hidden)
+        # generate using conditioning
+        y_g_hat = self._generator(quantized.permute(0, 2, 1))
+        return y_g_hat
 
     def training_step(self, batch, batch_ids):
         opt_g, opt_d = self.optimizers()
