@@ -29,7 +29,7 @@ class Cubedall(pl.LightningModule):
         self._global_step = 0
         self._val_loss = 9999
         self._loaded_optimizer_states = None
-        self._encoder = CubedallEncoder(1, 256, [4, 4, 5, 6])
+        self._encoder = CubedallEncoder(32, 256, [4, 4, 5, 6])
         self._w = nn.Linear(1, 1)
         self._rvq = ResidualVQ(
             dim=256,
@@ -114,12 +114,12 @@ class Cubedall(pl.LightningModule):
         loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
         loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
         loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
-        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_vq.mean()
+        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_vq.sum()
 
         loss_gen_all.backward()
         opt_g.step()
         output_obj = {'loss_g': loss_gen_all,
-                      'loss_vq': loss_vq.mean(),
+                      'loss_vq': loss_vq.sum(),
                       'loss_d': loss_disc_all,
                       'loss_v': loss_gen_all + loss_disc_all,
                       'loss': loss_gen_all + loss_disc_all,
@@ -169,10 +169,10 @@ class Cubedall(pl.LightningModule):
         loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
         loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
         loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
-        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_vq.mean()
+        loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel + loss_vq.sum()
 
         output_obj = {'loss_g': loss_gen_all,
-                      'loss_vq': loss_vq.mean(),
+                      'loss_vq': loss_vq.sum(),
                       'loss_d': loss_disc_all,
                       'loss_v': loss_gen_all + loss_disc_all,
                       'loss': loss_gen_all + loss_disc_all,
