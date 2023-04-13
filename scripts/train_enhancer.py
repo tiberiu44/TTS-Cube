@@ -29,11 +29,12 @@ from cube.io_utils.runtime import cubedall_synthesize
 
 
 class PrintAndSaveCallback(pl.callbacks.Callback):
-    def __init__(self, store_prefix, generate_epoch):
+    def __init__(self, store_prefix, generate_epoch, devset_path):
         super().__init__()
         self.store_prefix = store_prefix
         self._best_loss = 99999
         self._generate_epoch = generate_epoch
+        self._devset_path = devset_path
 
     def on_validation_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
@@ -68,10 +69,10 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
         if epoch % self._generate_epoch == 0:
             sys.stdout.write('\tGenerating validation set\n')
             sys.stdout.flush()
-            os.makedirs('generated_files/free/', exist_ok=True)
+            os.makedirs('generated_files/enhanced', exist_ok=True)
             cubedall_synthesize(pl_module,
                                 output_path='generated_files/enhanced/',
-                                devset_path='data/processed/dev/',
+                                devset_path=self._devset_path,
                                 limit=10)
 
 
@@ -108,7 +109,7 @@ def _train(params):
         accelerator=params.accelerator,
         devices=params.devices,
         max_epochs=-1,
-        callbacks=[PrintAndSaveCallback(params.output_base, params.epoch_generation)]
+        callbacks=[PrintAndSaveCallback(params.output_base, params.epoch_generation, params.dev_folder)]
     )
 
     trainer.fit(model, trainloader, devloader)

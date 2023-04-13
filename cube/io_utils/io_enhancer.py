@@ -63,11 +63,11 @@ def collate_fn(batch, max_segment_size=24000):
             sr[index, 4] = 1
         sx = example['x']
         sy = example['y']
-        if sx.shape[0] < max_segment_size:
+        if sy.shape[0] <= max_segment_size:
             x[index, :sx.shape[0]] = sx
             y[index, :sy.shape[0]] = sy
         else:
-            start = random.randint(0, sx.shape[0] - max_segment_size - 1)
+            start = random.randint(0, sy.shape[0] - max_segment_size - 1)
             x[index, :] = sx[start:start + max_segment_size]
             y[index, :] = sy[start:start + max_segment_size]
 
