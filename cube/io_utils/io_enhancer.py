@@ -29,19 +29,26 @@ class EnhancerDataset(Dataset):
         return len(self._examples)
 
     def __getitem__(self, item):
-        # read initial sample rate
-        w = wave.open(self._examples[item])
-        sample_rate = w.getframerate()
-        w.close()
-        # read audio and resample to 48000
-        audio, sr = librosa.load(self._examples[item], sr=self._sample_rate)
-        # alter original signal
-        x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sr)
-        return {
-            'x': x,
-            'y': audio,
-            'sample_rate': sample_rate
-        }
+        try:
+            # read initial sample rate
+            w = wave.open(self._examples[item])
+            sample_rate = w.getframerate()
+            w.close()
+            # read audio and resample to 48000
+            audio, sr = librosa.load(self._examples[item], sr=self._sample_rate)
+            # alter original signal
+            x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sr)
+            return {
+                'x': x,
+                'y': audio,
+                'sample_rate': sample_rate
+            }
+        except:
+            return {
+                'x': np.zeros((48000)),
+                'y': np.zeros((48000)),
+                'sample_rate': 48000
+            }
 
 
 def collate_fn(batch, max_segment_size=24000):
