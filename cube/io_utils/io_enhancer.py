@@ -34,6 +34,7 @@ class EnhancerDataset(Dataset):
     def __getitem__(self, item):
         try:
             audio, sample_rate = torchaudio.load(self._examples[item])
+            audio = audio[0, :]
             res = T.Resample(sample_rate, self._sample_rate, dtype=audio.dtype)
             audio = res(audio)
             x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sample_rate)
