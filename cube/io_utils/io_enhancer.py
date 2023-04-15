@@ -1,5 +1,6 @@
 import copy
 import random
+import time
 
 import torch
 import numpy as np
@@ -8,6 +9,8 @@ from os import listdir
 from os.path import isfile, join
 from scipy.signal import resample
 import wave
+import torchaudio
+import torchaudio.transforms as T
 
 from torch.utils.data.dataset import Dataset
 import sys
@@ -30,23 +33,19 @@ class EnhancerDataset(Dataset):
 
     def __getitem__(self, item):
         try:
-            # read initial sample rate
-            w = wave.open(self._examples[item])
-            sample_rate = w.getframerate()
-            w.close()
-            # read audio and resample to 48000
-            audio, sr = librosa.load(self._examples[item], sr=self._sample_rate)
-            # alter original signal
-            x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sr)
+            audio, sample_rate = torchaudio.load(self._examples[item])
+            res = T.Resample(sample_rate, self._sample_rate, dtype=audio.dtype)
+            audio = res(audio)
+            x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sample_rate)
             return {
-                'x': x,
-                'y': audio,
+                'x': x.squeeze(0),
+                'y': audio.squeeze(0),
                 'sample_rate': sample_rate
             }
         except:
             return {
-                'x': np.zeros((48000)),
-                'y': np.zeros((48000)),
+                'x': torch.zeros((48000)),
+                'y': torch.zeros((48000)),
                 'sample_rate': 48000
             }
 
@@ -87,6 +86,15 @@ def collate_fn(batch, max_segment_size=24000):
 
 if __name__ == '__main__':
     dataset = EnhancerDataset('data/processed/train')
+    avg_time = 0
+    for zz in range(5):
+        start = time.time()
+        for ii in range(10):
+            print(ii)
+            tmp = dataset[ii]
+        stop = time.time()
+        avg_time += stop - start
+    print(avg_time / 5)
     from ipdb import set_trace
 
     set_trace()
