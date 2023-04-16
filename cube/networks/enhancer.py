@@ -36,7 +36,8 @@ class Cubedall(pl.LightningModule):
             codebook_size=256,
             num_quantizers=3,
             kmeans_init=True,
-            kmeans_iters=10
+            kmeans_iters=10,
+            threshold_ema_dead_code=2,
         )
 
         json_config = json.load(open('hifigan/config_v1-48khz.json'))
