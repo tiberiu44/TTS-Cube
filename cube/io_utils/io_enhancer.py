@@ -39,14 +39,14 @@ class EnhancerDataset(Dataset):
             audio = res(audio)
             x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sample_rate)
             return {
-                'x': x.squeeze(0),
-                'y': audio.squeeze(0),
+                'x': x.squeeze(0).numpy(),
+                'y': audio.squeeze(0).numpy(),
                 'sample_rate': sample_rate
             }
         except:
             return {
-                'x': torch.zeros((48000)),
-                'y': torch.zeros((48000)),
+                'x': np.zeros((48000)),
+                'y': np.zeros((48000)),
                 'sample_rate': 48000
             }
 
