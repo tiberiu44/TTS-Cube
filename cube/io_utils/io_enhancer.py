@@ -32,9 +32,9 @@ class EnhancerDataset(Dataset):
         return len(self._examples)
 
     def __getitem__(self, item):
-        try:
+        #try:
             audio, sample_rate = torchaudio.load(self._examples[item])
-            audio = audio[0, :]
+            audio = audio[0, :].unsqueeze(0)
             res = T.Resample(sample_rate, self._sample_rate, dtype=audio.dtype)
             audio = res(audio)
             x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sample_rate)
@@ -43,12 +43,13 @@ class EnhancerDataset(Dataset):
                 'y': audio.squeeze(0).numpy(),
                 'sample_rate': sample_rate
             }
-        except:
-            return {
-                'x': np.zeros((48000)),
-                'y': np.zeros((48000)),
-                'sample_rate': 48000
-            }
+        # except:
+        #     print("err")
+        #     return {
+        #         'x': np.zeros((48000)),
+        #         'y': np.zeros((48000)),
+        #         'sample_rate': 48000
+        #     }
 
 
 def collate_fn(batch, max_segment_size=24000):

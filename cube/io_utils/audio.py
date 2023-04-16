@@ -36,7 +36,7 @@ def _add_reverb(x_raw, sample_rate):
                                                           sample_rate,
                                                           [['reverb']])[0][0, :]
 
-    return rez[0, :] + rez[1, :]
+    return rez  # rez[0, :] + rez[1, :]
 
 
 def _add_noise(x_raw, level=0.01):
@@ -58,7 +58,7 @@ def _add_real_noise(x_raw, orig_sr=48000):
         if file_size > orig_sr:
             break
     noise_audio, c_sr = torchaudio.load(noise_file)  # librosa.load(noise_file, sr=orig_sr, mono=True)
-    noise_audio = noise_audio[0, :]
+    noise_audio = noise_audio[0, :].unsqueeze(0)
     resampler = T.Resample(c_sr, orig_sr, dtype=noise_audio.dtype)
     noise_audio = resampler(noise_audio)
     noise_audio = (noise_audio / (torch.max(torch.abs(noise_audio)))) * (random.random() / 4 + 0.2)
