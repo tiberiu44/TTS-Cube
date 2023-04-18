@@ -28,7 +28,7 @@ class EnhancerDataset(Dataset):
                            isfile(join(join(base_path, 'clean'), f)) and f.endswith('.wav')]
         for file in files_tmp_clean:
             self._examples.append((file, 1))
-        files_tmp_general = [join(join(base_path, 'general'), f) for f in listdir(join(base_path, 'clean')) if
+        files_tmp_general = [join(join(base_path, 'general'), f) for f in listdir(join(base_path, 'general')) if
                              isfile(join(join(base_path, 'general'), f)) and f.endswith('.wav')]
         for file in files_tmp_general:
             self._examples.append((file, 0))
