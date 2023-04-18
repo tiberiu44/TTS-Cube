@@ -52,8 +52,12 @@ class Cubedall(pl.LightningModule):
 
     def forward(self, X):
         x = X['x']
+        denoise = X['denoise']
+        denoise = denoise.unsqueeze(1).repeat(1, 1, x.shape[1])
+        x = x.unsqueeze(1)
+        input.torch.cat([x, denoise], dim=1)
         # compute conditioning using encoder and VQ
-        hidden = self._encoder(x.unsqueeze(1)).permute(0, 2, 1)
+        hidden = self._encoder(input).permute(0, 2, 1)
         quantized, indices, loss_vq = self._rvq(hidden)
         # generate using conditioning
         y_g_hat = self._generator(quantized.permute(0, 2, 1))

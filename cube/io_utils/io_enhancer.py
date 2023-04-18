@@ -24,31 +24,47 @@ class EnhancerDataset(Dataset):
         self._base_path = base_path
         self._examples = []
         self._sample_rate = default_samplerate
-        files_tmp = [join(base_path, f) for f in listdir(base_path) if
-                     isfile(join(base_path, f)) and f.endswith('.wav')]
-        self._examples = files_tmp
+        files_tmp_clean = [join(join(base_path, 'clean'), f) for f in listdir(join(base_path, 'clean')) if
+                           isfile(join(join(base_path, 'clean'), f)) and f.endswith('.wav')]
+        for file in files_tmp_clean:
+            self._examples.append((file, 1))
+        files_tmp_general = [join(join(base_path, 'general'), f) for f in listdir(join(base_path, 'clean')) if
+                             isfile(join(join(base_path, 'general'), f)) and f.endswith('.wav')]
+        for file in files_tmp_general:
+            self._examples.append((file, 0))
 
     def __len__(self):
         return len(self._examples)
 
     def __getitem__(self, item):
         try:
-            audio, sample_rate = torchaudio.load(self._examples[item])
+            audio, sample_rate = torchaudio.load(self._examples[item][0])
+            is_clean = self._examples[item][1] == 1
             audio = audio[0, :].unsqueeze(0)
             res = T.Resample(sample_rate, self._sample_rate, dtype=audio.dtype)
             audio = res(audio)
+            if not is_clean:
+                return {
+                    'x': audio.squeeze(0).numpy(),
+                    'y': audio.squeeze(0).numpy(),
+                    'sample_rate': sample_rate,
+                    'enhanced': False
+                }
+
             x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sample_rate)
             return {
                 'x': x.squeeze(0).numpy(),
                 'y': audio.squeeze(0).numpy(),
-                'sample_rate': sample_rate
+                'sample_rate': sample_rate,
+                'denoise': False
             }
         except:
             print("err")
             return {
                 'x': np.zeros((48000)),
                 'y': np.zeros((48000)),
-                'sample_rate': 48000
+                'sample_rate': 48000,
+                'denoise': True
             }
 
 
@@ -56,6 +72,7 @@ def collate_fn(batch, max_segment_size=24000):
     x = np.zeros((len(batch), max_segment_size))
     y = np.zeros((len(batch), max_segment_size))
     sr = np.zeros((len(batch), 5))
+    denoise = np.zeros((len(batch), 1))
     for index in range(len(batch)):
         example = batch[index]
         ssr = example['sample_rate']
@@ -71,6 +88,8 @@ def collate_fn(batch, max_segment_size=24000):
             sr[index, 4] = 1
         sx = example['x']
         sy = example['y']
+        if example['denoise']:
+            denoise[index, 0] = 1
         if sy.shape[0] <= max_segment_size:
             x[index, :sx.shape[0]] = sx
             y[index, :sy.shape[0]] = sy
@@ -82,7 +101,8 @@ def collate_fn(batch, max_segment_size=24000):
     return {
         'x': torch.tensor(x, dtype=torch.float),
         'y': torch.tensor(y, dtype=torch.float),
-        'sr': torch.tensor(sr, dtype=torch.float)
+        'sr': torch.tensor(sr, dtype=torch.float),
+        'denoise': torch.tensor(denoise, dtype=torch.float)
     }
 
 

@@ -726,7 +726,7 @@ class CubedallEncoder(nn.Module):
     def __init__(self, C, D, strides=[4, 4, 5, 6]):
         super(CubedallEncoder, self).__init__()
         self.layers = nn.Sequential(
-            CausalConv1d(in_channels=1, out_channels=C, kernel_size=7),
+            CausalConv1d(in_channels=2, out_channels=C, kernel_size=7),
             nn.ELU(),
             EncoderBlock(out_channels=2 * C, stride=strides[0]),
             nn.ELU(),
@@ -736,7 +736,7 @@ class CubedallEncoder(nn.Module):
             nn.ELU(),
             EncoderBlock(out_channels=16 * C, stride=strides[3]),
             nn.ELU(),
-            CausalConv1d(in_channels=16 * C, out_channels=D, kernel_size=7, padding=3)
+            CausalConv1d(in_channels=16 * C, out_channels=D, kernel_size=7)
         )
 
     def forward(self, x):
