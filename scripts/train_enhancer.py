@@ -88,7 +88,8 @@ def _train(params):
     trainloader = DataLoader(trainset,
                              batch_size=params.batch_size,
                              num_workers=params.num_workers,
-                             collate_fn=collate_fn, shuffle=True)
+                             collate_fn=collate_fn,
+                             shuffle=True)
     devloader = DataLoader(devset,
                            batch_size=params.batch_size,
                            num_workers=params.num_workers,
