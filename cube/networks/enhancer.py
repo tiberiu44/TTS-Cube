@@ -55,7 +55,7 @@ class Cubedall(pl.LightningModule):
         denoise = X['denoise']
         denoise = denoise.unsqueeze(1).repeat(1, 1, x.shape[1])
         x = x.unsqueeze(1)
-        input.torch.cat([x, denoise], dim=1)
+        input = torch.cat([x, denoise], dim=1)
         # compute conditioning using encoder and VQ
         hidden = self._encoder(input).permute(0, 2, 1)
         quantized, indices, loss_vq = self._rvq(hidden)
@@ -68,7 +68,7 @@ class Cubedall(pl.LightningModule):
         denoise = X['denoise']
         denoise = denoise.unsqueeze(1).repeat(1, 1, x.shape[1])
         x = x.unsqueeze(1)
-        input.torch.cat([x, denoise], dim=1)
+        input = torch.cat([x, denoise], dim=1)
         # compute conditioning using encoder and VQ
         hidden = self._encoder(input).permute(0, 2, 1)
         quantized, indices, loss_vq = self._rvq(hidden)
@@ -85,7 +85,7 @@ class Cubedall(pl.LightningModule):
         denoise = batch['denoise']
         denoise = denoise.unsqueeze(1).repeat(1, 1, x.shape[1])
         x = x.unsqueeze(1)
-        input.torch.cat([x, denoise], dim=1)
+        input = torch.cat([x, denoise], dim=1)
         # compute conditioning using encoder and VQ
         h = self._encoder(input).permute(0, 2, 1)
 
@@ -152,7 +152,7 @@ class Cubedall(pl.LightningModule):
         denoise = batch['denoise']
         denoise = denoise.unsqueeze(1).repeat(1, 1, x.shape[1])
         x = x.unsqueeze(1)
-        input.torch.cat([x, denoise], dim=1)
+        input = torch.cat([x, denoise], dim=1)
         # compute conditioning using encoder and VQ
         h = self._encoder(input).permute(0, 2, 1)
 
