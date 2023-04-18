@@ -48,7 +48,7 @@ class EnhancerDataset(Dataset):
                     'x': audio.squeeze(0).numpy(),
                     'y': audio.squeeze(0).numpy(),
                     'sample_rate': sample_rate,
-                    'enhanced': False
+                    'denoise': False
                 }
 
             x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sample_rate)
@@ -56,7 +56,7 @@ class EnhancerDataset(Dataset):
                 'x': x.squeeze(0).numpy(),
                 'y': audio.squeeze(0).numpy(),
                 'sample_rate': sample_rate,
-                'denoise': False
+                'denoise': True
             }
         except:
             print("err")
