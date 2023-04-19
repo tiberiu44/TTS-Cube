@@ -34,7 +34,7 @@ class Cubedall(pl.LightningModule):
         self._rvq = ResidualVQ(
             dim=256,
             codebook_size=256,
-            num_quantizers=3,
+            num_quantizers=6,
             kmeans_init=True,
             kmeans_iters=10,
             threshold_ema_dead_code=2,
