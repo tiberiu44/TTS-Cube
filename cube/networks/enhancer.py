@@ -97,8 +97,8 @@ class Cubedall(pl.LightningModule):
         y_g_hat = y_g_hat[:, :, :m_size]
 
         # select random section of audio (because we canot train the gan on the entire sequence)
-        y_mel = mel_spectrogram(y.squeeze(1), 1024, 80, 48000, 240, 1024, 0, 24000)
-        y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), 1024, 80, 48000, 240, 1024, 0, 24000)
+        y_mel = mel_spectrogram(y.squeeze(1), 1024, 180, 48000, 240, 1024, 0, 24000)
+        y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), 1024, 180, 48000, 240, 1024, 0, 24000)
 
         opt_d.zero_grad()
 

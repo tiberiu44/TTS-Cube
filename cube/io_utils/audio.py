@@ -88,9 +88,9 @@ def _downsample(x_raw, orig_sr):
 
 
 def alter(x_raw, prob=0.1, real_sr=48000):
-    p = random.random()
-    if p < prob:
-        x_raw = _add_real_noise(x_raw, orig_sr=real_sr)
+    # p = random.random()
+    # if p < prob:
+    #    x_raw = _add_real_noise(x_raw, orig_sr=real_sr)
     p = random.random()
     if p < prob:
         x_raw = _add_reverb(x_raw, real_sr)
