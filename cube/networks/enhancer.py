@@ -33,7 +33,7 @@ class Cubedall(pl.LightningModule):
         self._w = nn.Linear(1, 1)
         self._rvq = ResidualVQ(
             dim=256,
-            codebook_size=256,
+            codebook_size=1024,
             num_quantizers=6,
             kmeans_init=True,
             kmeans_iters=10,
