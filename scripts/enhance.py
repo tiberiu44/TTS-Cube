@@ -30,7 +30,7 @@ def _enhance(params):
     with torch.no_grad():
         x = {
             'x': audio,
-            'denoise': torch.zeros((1, 1))
+            'denoise': torch.ones((1, 1))
         }
         enhanced_audio = model.inference(x)
     stop = time.time()
