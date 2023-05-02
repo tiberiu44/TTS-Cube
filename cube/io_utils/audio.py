@@ -87,6 +87,13 @@ def _downsample(x_raw, orig_sr):
     return x
 
 
+def pitch_shift(x, sr=48000):
+    # we pitch shift using linear interpolation - it is faster than actual pitch shifting
+    sf = (random.random() * 2 - 1.0) * 0.3 + 1.0
+    x_out = torch.nn.functional.interpolate(x.unsqueeze(1), scale_factor=sf, mode='linear')
+    return x_out.squeeze(1)
+
+
 def alter(x_raw, prob=0.1, real_sr=48000):
     p = random.random()
     if p < prob:

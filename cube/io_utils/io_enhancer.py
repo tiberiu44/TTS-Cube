@@ -4,11 +4,8 @@ import time
 
 import torch
 import numpy as np
-import librosa
 from os import listdir
 from os.path import isfile, join
-from scipy.signal import resample
-import wave
 import torchaudio
 import torchaudio.transforms as T
 
@@ -16,7 +13,7 @@ from torch.utils.data.dataset import Dataset
 import sys
 
 sys.path.append('')
-from cube.io_utils.audio import alter
+from cube.io_utils.audio import alter, pitch_shift
 
 
 class EnhancerDataset(Dataset):
@@ -50,7 +47,9 @@ class EnhancerDataset(Dataset):
                     'sample_rate': sample_rate,
                     'denoise': False
                 }
-
+            p = random.random()
+            if p < 0.3:
+                audio = pitch_shift(audio, sample_rate)
             x = alter(copy.deepcopy(audio), prob=0.5, real_sr=sample_rate)
             return {
                 'x': x.squeeze(0).numpy(),
