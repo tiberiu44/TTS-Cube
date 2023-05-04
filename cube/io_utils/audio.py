@@ -87,6 +87,22 @@ def _downsample(x_raw, orig_sr):
     return x
 
 
+def _phone_simulation(x, sr=48000):
+    x, sample_rate = torchaudio.sox_effects.apply_effects_tensor(
+        x,
+        sr,
+        effects=[
+            ["lowpass", "4000"],
+            ["compand", "0.02,0.05", "-60,-60,-30,-10,-20,-8,-5,-8,-2,-8", "-8", "-7", "0.05"],
+            ["rate", "8000"],
+        ],
+    )
+    x = torchaudio.functional.apply_codec(x, sample_rate, format='gsm')
+    resampler = T.Resample(8000, sr, dtype=x.dtype)
+    x = resampler(x)
+    return x
+
+
 def pitch_shift(x, sr=48000):
     # we pitch shift using linear interpolation - it is faster than actual pitch shifting
     sf = (random.random() * 2 - 1.0) * 0.3 + 1.0
@@ -98,12 +114,18 @@ def alter(x_raw, prob=0.1, real_sr=48000):
     p = random.random()
     if p < prob:
         x_raw = _add_real_noise(x_raw, orig_sr=real_sr)
+
     p = random.random()
     if p < prob:
         x_raw = _add_reverb(x_raw, real_sr)
+
     p = random.random()
     if p < prob:
         x_raw = _add_noise(x_raw)
+
+    p = random.random()
+    if p < prob:
+        x_raw = _phone_simulation(x_raw, real_sr)
 
     p = random.random()
     if p < prob:
