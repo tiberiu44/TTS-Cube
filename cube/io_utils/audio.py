@@ -100,6 +100,7 @@ def _phone_simulation(x, sr=48000):
     x = torchaudio.functional.apply_codec(x, sample_rate, format='gsm')
     resampler = T.Resample(8000, sr, dtype=x.dtype)
     x = resampler(x)
+
     return x
 
 
@@ -123,9 +124,9 @@ def alter(x_raw, prob=0.1, real_sr=48000):
     if p < prob:
         x_raw = _add_noise(x_raw)
 
-    p = random.random()
-    if p < prob:
-        x_raw = _phone_simulation(x_raw, real_sr)
+    # p = random.random()
+    # if p < prob:
+    #     x_raw = _phone_simulation(x_raw, real_sr)
 
     p = random.random()
     if p < prob:
