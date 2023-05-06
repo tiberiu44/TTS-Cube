@@ -113,7 +113,7 @@ def pitch_shift(x, sr=48000):
     x_out = torch.nn.functional.interpolate(x.unsqueeze(1), scale_factor=sf, mode='linear')
     return x_out.squeeze(1)
 
-
+# code taken from https://github.com/tencent-ailab/FRA-RIR
 def fra_rir(nsource=1, sr=16000, direct_range=[-6, 50], max_T60=0.8,
             alpha=0.25, a=-2.0, b=2.0, tau=0.2):
     """
