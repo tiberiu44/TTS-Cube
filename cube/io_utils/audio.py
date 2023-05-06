@@ -232,7 +232,8 @@ def fra_rir(nsource=1, sr=16000, direct_range=[-6, 50], max_T60=0.8,
 
 
 def _add_rir(x_raw, real_sr=48000):
-    print(x_raw.shape)
+    if len(x_raw.size()) == 1:
+        x_raw = x_raw.unsqueeze(0)
     rir, direct_rir = fra_rir(nsource=1, sr=real_sr)
     augmented = torchaudio.functional.fftconvolve(x_raw, rir)
     return augmented
