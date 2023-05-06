@@ -236,7 +236,7 @@ def _add_rir(x_raw, real_sr=48000):
         x_raw = x_raw.unsqueeze(0)
     rir, direct_rir = fra_rir(nsource=1, sr=real_sr)
     augmented = torchaudio.functional.fftconvolve(x_raw, rir)
-    return augmented[:, min(augmented.shape[1], x_raw.shape[1])]
+    return augmented[:, :min(augmented.shape[1], x_raw.shape[1])]
 
 
 def alter(x_raw, prob=0.1, real_sr=48000):
