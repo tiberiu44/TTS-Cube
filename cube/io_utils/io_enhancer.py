@@ -87,8 +87,8 @@ def collate_fn(batch, max_segment_size=24000):
             sr[index, 3] = 1
         else:
             sr[index, 4] = 1
-        sx = example['x']
-        sy = example['y']
+        sx = example['x'].squeeze()
+        sy = example['y'].squeeze()
         if example['denoise']:
             denoise[index, 0] = 1
         if sy.shape[0] <= max_segment_size:
