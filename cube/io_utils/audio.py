@@ -47,7 +47,9 @@ def _add_noise(x_raw, level=0.01):
         noise = torch.randn_like(x_raw) * level  # np.random.normal(0, level, x_raw.shape[0])
     else:
         noise = torch.rand_like(x_raw) * 2 * level - level  # 0 - level, 0 + level, x_raw.shape[0])
-    return x_raw + noise
+    new_audio = x_raw + noise
+    new_audio = new_audio / torch.max(torch.abs(new_audio)) * 0.98
+    return new_audio
 
 
 _noise_files = [join('data/noise', f) for f in listdir('data/noise/') if
