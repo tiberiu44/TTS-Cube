@@ -36,10 +36,11 @@ class EnhancerDataset(Dataset):
     def __getitem__(self, item):
         try:
             audio, sample_rate = torchaudio.load(self._examples[item][0])
-            if torch.max(audio) > 500:
-                audio = audio / 32767
+            # if torch.max(audio) > 500:
+            #     audio = audio / 32767
             is_clean = self._examples[item][1] == 1
             audio = audio[0, :].unsqueeze(0)
+            audio = audio / torch.max(torch.abs(audio)) * 0.98
             res = T.Resample(sample_rate, self._sample_rate, dtype=audio.dtype)
             audio = res(audio)
             if not is_clean:
