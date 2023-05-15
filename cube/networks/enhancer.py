@@ -56,11 +56,14 @@ class Cubedall(pl.LightningModule):
         denoise = denoise.unsqueeze(1).repeat(1, 1, x.shape[1])
         x = x.unsqueeze(1)
         input = torch.cat([x, denoise], dim=1)
-        # compute conditioning using encoder and VQ
+        # # compute conditioning using encoder and VQ
+        # hidden = self._encoder(input).permute(0, 2, 1)
+        # quantized, indices, loss_vq = self._rvq(hidden)
+        # # generate using conditioning
+        # y_g_hat = self._generator(quantized.permute(0, 2, 1))
         hidden = self._encoder(input).permute(0, 2, 1)
-        quantized, indices, loss_vq = self._rvq(hidden)
         # generate using conditioning
-        y_g_hat = self._generator(quantized.permute(0, 2, 1))
+        y_g_hat = self._generator(hidden.permute(0, 2, 1))
         return y_g_hat
 
     def inference(self, X):
