@@ -727,23 +727,23 @@ class CubedallEncoder(nn.Module):
         super(CubedallEncoder, self).__init__()
         self.layers = nn.Sequential(
             CausalConv1d(in_channels=2, out_channels=C, kernel_size=7),
-            nn.ELU(),
+            nn.Tanh(),
             EncoderBlock(out_channels=2 * C, stride=strides[0]),
-            nn.ELU(),
+            nn.Tanh(),
             EncoderBlock(out_channels=4 * C, stride=strides[1]),
-            nn.ELU(),
+            nn.Tanh(),
             EncoderBlock(out_channels=8 * C, stride=strides[2]),
-            nn.ELU(),
+            nn.Tanh(),
             EncoderBlock(out_channels=16 * C, stride=strides[3]),
-            nn.ELU(),
+            nn.Tanh(),
             ConvNorm(in_channels=16 * C, out_channels=D, kernel_size=7, padding=3),
-            nn.ELU(),
+            nn.Tanh(),
             ConvNorm(in_channels=D, out_channels=D, kernel_size=7, padding=3),
-            nn.ELU(),
+            nn.Tanh(),
             ConvNorm(in_channels=D, out_channels=D, kernel_size=7, padding=3),
-            nn.ELU(),
+            nn.Tanh(),
             ConvNorm(in_channels=D, out_channels=D, kernel_size=7, padding=3),
-            nn.ELU(),
+            nn.Tanh(),
             ConvNorm(in_channels=D, out_channels=D, kernel_size=7, padding=3)
         )
 
