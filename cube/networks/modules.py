@@ -736,7 +736,17 @@ class CubedallEncoder(nn.Module):
             nn.ELU(),
             EncoderBlock(out_channels=16 * C, stride=strides[3]),
             nn.ELU(),
-            CausalConv1d(in_channels=16*C, out_channels=D, kernel_size=3)
+            CausalConv1d(in_channels=16*C, out_channels=D, kernel_size=3),
+            nn.ELU(),
+            ConvNorm(in_channels=16 * C, out_channels=D, kernel_size=7, padding=3),
+            nn.ELU(),
+            ConvNorm(in_channels=D, out_channels=D, kernel_size=7, padding=3),
+            nn.ELU(),
+            ConvNorm(in_channels=D, out_channels=D, kernel_size=7, padding=3),
+            nn.ELU(),
+            ConvNorm(in_channels=D, out_channels=D, kernel_size=7, padding=3),
+            nn.ELU(),
+            ConvNorm(in_channels=D, out_channels=D, kernel_size=7, padding=3)
         )
 
     def forward(self, x):
