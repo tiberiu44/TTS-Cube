@@ -77,9 +77,9 @@ class Cubedall(pl.LightningModule):
         # quantized, indices, loss_vq = self._rvq(hidden)
         # # generate using conditioning
         # y_g_hat = self._generator(quantized.permute(0, 2, 1))
-        hidden = self._encoder(input).permute(0, 2, 1)
+        hidden = self._encoder(input)  # .permute(0, 2, 1)
         # generate using conditioning
-        y_g_hat = self._generator(hidden.permute(0, 2, 1))
+        y_g_hat = self._generator(hidden)  # .permute(0, 2, 1))
         return y_g_hat
 
     def training_step(self, batch, batch_ids):
