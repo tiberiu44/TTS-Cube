@@ -48,7 +48,7 @@ def _add_noise(x_raw, level=0.01):
     else:
         noise = torch.rand_like(x_raw) * 2 * level - level  # 0 - level, 0 + level, x_raw.shape[0])
     new_audio = x_raw + noise
-    new_audio = new_audio / torch.max(torch.abs(new_audio)) * 0.98
+    # new_audio = new_audio / torch.max(torch.abs(new_audio)) * 0.98
     return new_audio
 
 
@@ -66,12 +66,12 @@ def _add_real_noise(x_raw, orig_sr=48000):
     noise_audio = noise_audio[0, :].unsqueeze(0)
     resampler = T.Resample(c_sr, orig_sr, dtype=noise_audio.dtype)
     noise_audio = resampler(noise_audio)
-    noise_audio = (noise_audio / (torch.max(torch.abs(noise_audio)))) * (random.random() / 4 + 0.1)
+    xf = random.random() / 4 + 0.1
+    noise_audio = (noise_audio / (torch.max(torch.abs(noise_audio))))
     while noise_audio.shape[1] < x_raw.shape[1]:
         noise_audio = torch.cat([noise_audio, noise_audio], dim=1)
     noise_audio = noise_audio[:, :x_raw.shape[1]]
-    new_audio = x_raw + noise_audio
-    new_audio = new_audio / torch.max(torch.abs(new_audio)) * 0.98
+    new_audio = x_raw * (1.0 - xf) + noise_audio * xf
     return new_audio
 
 
