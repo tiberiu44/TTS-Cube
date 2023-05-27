@@ -23,6 +23,7 @@ def _enhance(params):
     audio, sample_rate = torchaudio.load(params.input_file)
     res = T.Resample(sample_rate, 48000, dtype=audio.dtype)
     audio = res(audio)
+    audio = audio / (torch.max(torch.abs(audio))) * 0.98
     sys.stdout.write(f'Source sample rate is {sample_rate}\n')
     start = time.time()
     sys.stdout.write('Enhancing...')
@@ -30,7 +31,7 @@ def _enhance(params):
     with torch.no_grad():
         x = {
             'x': audio,
-            'denoise': torch.ones((1, 1))
+            'denoise': torch.ones((1, 1))*0
         }
         enhanced_audio = model.inference(x)
     stop = time.time()
