@@ -61,7 +61,6 @@ def _align(tg_words, tok_words):
             ii -= 1
         else:
             jj -= 1
-        print(ii, jj)
         tg2tok[ii - 1] = jj - 1
 
     return tg2tok
@@ -79,12 +78,13 @@ def _merge(aligned_words, aligned_phons, tokenized_words):
         tok2tg[tg2tok[ii]] = ii
 
     linear = []
+    c_pos = 0
     for ii in range(len(tokenized_words)):
         word = tokenized_words[ii].word
         if ii not in tok2tg:
             obj = {
                 'word': word,
-                'phones': [{'phon': word, 'dur': 0}]
+                'phones': [{'phon': word, 'dur': 0, 'start': c_pos, 'stop': c_pos}]
             }
         else:
             phonemes = []
@@ -94,18 +94,37 @@ def _merge(aligned_words, aligned_phons, tokenized_words):
                 if phone['start'] >= w_start and phone['stop'] <= w_end:
                     phonemes.append({
                         'phon': phone['text'],
-                        'dur': phone['stop'] - phone['start']
+                        'dur': phone['stop'] - phone['start'],
+                        'start': phone['start'],
+                        'stop': phone['stop']
                     })
             obj = {
                 'word': word,
                 'phones': phonemes
             }
+            c_pos = aligned_words[tok2tg[ii]]['stop']
         linear.append(obj)
 
-    for w in linear:
-        print(w['word'], ' '.join([str(p['phon']) for p in w['phones']]))
-    from ipdb import set_trace
-    set_trace()
+    h_ss = []
+    for iWord in range(len(linear)):
+        w = linear[iWord]
+        for iPhon in range(len(w['phones'])):
+            hybrid.append(w['phones'][iPhon]['phon'])
+            h_ss.append((w['phones'][iPhon]['start'], w['phones'][iPhon]['stop']))
+            phon2word.append(iWord)
+    minPos = min([l['start'] for l in aligned_words])
+    maxPos = max([l['stop'] for l in aligned_words])
+    iPhone = 0
+    for frame in range(int((maxPos - minPos) * 100)):
+        # fixed frame size of 240 means 10ms for 24khz(also fixed here)
+        c_pos = frame / 100
+        if iPhone < len(hybrid):
+            while (c_pos > h_ss[iPhone][1]):
+                iPhone += 1
+                if iPhone >= len(hybrid):
+                    break
+        frame2phon.append(iPhone)
+
     return hybrid, phon2word, frame2phon
 
 
@@ -164,6 +183,8 @@ def _get_all_files(folder):
 
 def _import_dataset(params):
     dataset = []
+    valid_sents = 0
+    total_time = 0
     print("Search input folder for valid files")
     all_files = _get_all_files(params.input_folder)
     print(f"Found {len(all_files)} aligned files")
@@ -191,35 +212,25 @@ def _import_dataset(params):
 
         tok_words = tokenizer(orig_text)
         hybrid, phon2word, frame2phone = _merge(norm_words, phons, tok_words)
-        from ipdb import set_trace
-        set_trace()
+        valid_sents += 1
+        total_time += len(frame2phone) * 10
+
         item = {
             'orig_start': 0,
-            'orig_end': 0,
-            'orig_filename': all_files[iFiles],
+            'orig_end': len(frame2phone) * 10,
+            'orig_filename': all_files[iFiles].split('/')[-1],
             'orig_text': orig_text,
             'phones': hybrid,
-            'words': tok_words,
+            'words': [w.word for w in tok_words],
             'phon2word': phon2word,
             'frame2phon': frame2phone,
             'speaker': params.speaker
         }
         dataset.append(item)
-    # creating context
+
     for ii in range(len(dataset)):
-        l_start = max(0, ii - params.prev_sentences)
-        l_end = min(len(dataset), ii + params.next_sentences + 1)
-        # shrink window if we are at the beginning or end of a chapter - context not relevant here
-        for jj in range(l_start, ii):
-            if dataset[ii]['orig_filename'] != dataset[jj]['orig_filename']:
-                l_start += 1
-        for jj in range(l_end, ii, 1):
-            if dataset[ii]['orig_filename'] != dataset[jj]['orig_filename']:
-                l_end -= 1
-        left_context = ' '.join([item['orig_text'][1:] for item in dataset[l_start:ii]])
-        right_context = ' '.join([item['orig_text'][1:] for item in dataset[ii + 1:l_end]])
-        dataset[ii]['left_context'] = left_context
-        dataset[ii]['right_context'] = right_context
+        dataset[ii]['left_context'] = ''
+        dataset[ii]['right_context'] = ''
 
     # train-dev split
     trainset = []
@@ -242,11 +253,12 @@ def _import_dataset(params):
     print("Found {0} valid sentences, with a total audio time of {1}.".format(valid_sents, datetime.timedelta(
         seconds=(total_time / 1000))))
     print("Trainset will contain {0} examples and devset {1} examples".format(len(trainset), len(devset)))
-    input_folder = params.input_file[:params.input_file.rfind('/')]
     print("Processing trainset")
-    _import_audio(trainset, "data/processed/train/", input_folder, params.sample_rate, params.hop_size, params.prefix)
+    _import_audio(trainset, "data/processed/train/", params.input_folder, params.sample_rate, params.hop_size,
+                  params.prefix)
     print("Processing devset")
-    _import_audio(devset, "data/processed/dev/", input_folder, params.sample_rate, params.hop_size, params.prefix)
+    _import_audio(devset, "data/processed/dev/", params.input_folder, params.sample_rate, params.hop_size,
+                  params.prefix)
 
 
 if __name__ == '__main__':
