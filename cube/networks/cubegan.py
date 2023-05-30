@@ -78,6 +78,8 @@ class Cubegan(pl.LightningModule):
             else:
                 hf_cond = None
             conditioning = self._languasito.inference(X, hf_cond=hf_cond)
+            if conditioning.shape[1] == 0:
+                conditioning = torch.zeros((conditioning.shape[0], 1, conditioning.shape[2]), device=self.get_device())
             return self._generator(conditioning.permute(0, 2, 1))
 
     def training_step(self, batch, batch_ids):
