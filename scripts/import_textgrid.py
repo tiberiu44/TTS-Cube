@@ -24,6 +24,8 @@ def _cost(t1, t2):
     t2 = t2.word.lower()
     if t1 == t2:
         return 0
+    if t1 == '<eps>' and not t2.isalpha():
+        return 0
     if t1.startswith(t2) or t2.startswith(t1):
         return 0.5
     if t1.endswith(t2) or t2.endswith(t1):
@@ -192,7 +194,7 @@ def _import_dataset(params):
         tg_file = all_files[iFiles] + '.TextGrid'
         tg = textgrid.TextGrid.fromFile(tg_file)
         wav_file = all_files[iFiles] + '.wav'
-        orig_text = '§' + tg[2][0].mark
+        orig_text = ' ' + tg[2][0].mark
         norm_words = []
         for ii in range(len(tg[0])):
             w_tok = {
