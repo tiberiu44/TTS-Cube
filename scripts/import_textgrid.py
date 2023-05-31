@@ -183,6 +183,40 @@ def _get_all_files(folder):
     return all_files
 
 
+def _fetch_context(dataset, original_text):
+    full_text = open(original_text).read()
+    # pre-normalize
+    new_text = full_text.replace('\n\n\n', '\n\n')
+    while new_text != full_text:
+        full_text = new_text
+        new_text = full_text.replace('\n\n\n', '\n\n')
+
+    new_text = full_text.replace('  ', ' ')
+    while new_text != full_text:
+        full_text = new_text
+        new_text = full_text.replace('  ', ' ')
+    paragraphs = full_text.split('\n\n')
+    total_paragraphs = 0
+    matched_paragraphs = 0
+    for item in dataset:
+        total_paragraphs += 1
+        text = item['orig_text'].strip()
+        for par in paragraphs:
+            par = par.replace('\n', ' ')
+            new_par = par.replace('  ', ' ')
+            while new_par != par:
+                par = new_par
+                new_par = par.replace('  ', ' ')
+            if text.lower() in par.lower():
+                matched_paragraphs += 1
+                start_index = par.lower().find(text.lower())
+                item['left_context'] = par[:start_index].strip()
+                item['right_context'] = par[start_index + len(text):].strip()
+                break
+
+    print(f"Matched {matched_paragraphs} from {total_paragraphs}")
+
+
 def _import_dataset(params):
     dataset = []
     valid_sents = 0
@@ -255,6 +289,11 @@ def _import_dataset(params):
     print("Found {0} valid sentences, with a total audio time of {1}.".format(valid_sents, datetime.timedelta(
         seconds=(total_time / 1000))))
     print("Trainset will contain {0} examples and devset {1} examples".format(len(trainset), len(devset)))
+    if params.original_text:
+        print("Fetching context")
+        _fetch_context(trainset, params.original_text)
+        _fetch_context(devset, params.original_text)
+
     print("Processing trainset")
     _import_audio(trainset, "data/processed/train/", params.input_folder, params.sample_rate, params.hop_size,
                   params.prefix)
@@ -281,6 +320,8 @@ if __name__ == '__main__':
                       help='Frame analysis hop-size (default=240)')
     parser.add_option('--prefix', dest='prefix', default='FILE',
                       help='What prefix to use for the filenames')
+    parser.add_option('--original-text', dest='original_text',
+                      help='Used to fetch context from')
 
     (params, _) = parser.parse_args(sys.argv)
     if params.input_folder:
