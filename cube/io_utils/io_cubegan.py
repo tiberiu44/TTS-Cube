@@ -54,9 +54,24 @@ class CubeganDataset(Dataset):
                         example['words_hf'] = self._hf_tok(example['words'])
                         example['words_left_hf'] = self._hf_tok(example['words_left'])
                         example['words_right_hf'] = self._hf_tok(example['words_right'])
-                    if len(example['words_hf']['toks']) >= 512:
-                        pass
-                    else:
+                    valid = True
+                    if len(example['words_hf']['toks']) >= 512 or \
+                            len(example['words_left_hf']['toks']) >= 512 or \
+                            len(example['words_right_hf']['toks']) >= 512:
+                        valid = False
+                    for ii in example['words_hf']['word2tok']:
+                        if ii < 0:
+                            valid = False
+                            break
+                    for ii in example['words_left_hf']['word2tok']:
+                        if ii < 0:
+                            valid = False
+                            break
+                    for ii in example['words_right_hf']['word2tok']:
+                        if ii < 0:
+                            valid = False
+                            break
+                    if valid:
                         self._examples.append(example)
 
     def __len__(self):
