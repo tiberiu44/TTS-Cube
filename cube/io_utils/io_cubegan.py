@@ -60,15 +60,15 @@ class CubeganDataset(Dataset):
                                 len(example['words_right_hf']['toks']) >= 512:
                             valid = False
                         for ii in example['words_hf']['word2tok']:
-                            if ii < 0:
+                            if ii < 0 or ii >= len(example['words_hf']['toks']):
                                 valid = False
                                 break
                         for ii in example['words_left_hf']['word2tok']:
-                            if ii < 0:
+                            if ii < 0 or ii >= len(example['words_left_hf']['toks']):
                                 valid = False
                                 break
                         for ii in example['words_right_hf']['word2tok']:
-                            if ii < 0:
+                            if ii < 0 or ii >= len(example['words_right_hf']['toks']):
                                 valid = False
                                 break
                     if valid:
