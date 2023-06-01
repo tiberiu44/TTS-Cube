@@ -8,6 +8,7 @@ class HFTokenizer:
     def __call__(self, sentence):
         if len(sentence) == 0:
             return {'tok_ids': [],
+                    'toks': [],
                     'word2tok': {}}
         orig_sent = [w for w in sentence]
         for ii in range(len(sentence)):
