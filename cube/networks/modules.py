@@ -1064,6 +1064,14 @@ class Languasito2(nn.Module):
             for jj in alignments[ii]:
                 index[ii, jj, 0] = alignments[ii][jj][0]
                 index[ii, jj, 1] = alignments[ii][jj][1] + 1
+                if index[ii, jj, 0] < 0 or index[ii, jj, 1] < 0:
+                    print(index[ii, jj, 0], index[ii, jj, 1])
+                    index[ii, jj, 0] = 0
+                    index[ii, jj, 1] = 0
+                if index[ii, jj, 0] >= x.shape[0] or index[ii, jj, 1] >= x.shape[1]:
+                    print(index[ii, jj, 0], index[ii, jj, 1])
+                    index[ii, jj, 0] = 0
+                    index[ii, jj, 1] = 0
 
         return x[index[:, :, 0], index[:, :, 1]]
 

@@ -72,7 +72,7 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
             cubegan_synthesize_dataset(pl_module,
                                        output_path='generated_files/free/',
                                        devset_path='data/processed/dev/',
-                                       limit=10,
+                                       limit=-1,
                                        conditioning=pl_module._conditioning)
 
 
