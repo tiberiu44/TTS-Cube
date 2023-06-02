@@ -74,11 +74,8 @@ class CubeganDataset(Dataset):
                                     example['words_right_hf']['word2tok'][ii] >= len(example['words_right_hf']['toks']):
                                 valid = False
                                 break
-                    if valid:
-                        self._examples.append(example)
-                    else:
-                        from ipdb import set_trace
-                        set_trace()
+                if valid:
+                    self._examples.append(example)
 
     def __len__(self):
         return len(self._examples)
