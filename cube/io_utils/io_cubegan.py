@@ -260,13 +260,13 @@ class CubeganCollate:
             c_size = len(c_toks)
             r_toks = example['meta']['words_right_hf']['tok_ids']
             r_size = len(r_toks)
-            if l_size + c_size + r_size <= 512:
+            if l_size + c_size <= 512:
                 start = 0
-            elif c_size <= 512:
-                start = random.randint(0, 512 - c_size)
+                offset = l_size
             else:
-                start = l_size
-            offset = l_size - start
+                start = c_size + l_size - 512
+                offset = l_size - start
+            # offset = l_size - start
             e_toks = l_toks + c_toks + r_toks
             e_toks = e_toks[start:]
             toks[ii, :min(toks.shape[1], len(e_toks))] = e_toks[:min(toks.shape[1], len(e_toks))]
