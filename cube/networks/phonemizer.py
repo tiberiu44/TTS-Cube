@@ -144,7 +144,7 @@ class CubenetPhonemizerM2M(pl.LightningModule):
                                 bidirectional=False)
         self._att = Attention(400, 200, kernel_size=3)
         self._output_phon = nn.Linear(200, len(encodings.phonemes))
-        self._output_next_word = nn.Linear(200, 3)
+        self._output_next_word = nn.Linear(200, 20)  # max skip of 20 words
         self._loss_function = nn.CrossEntropyLoss(ignore_index=0)
         self._val_loss = 9999
         self._val_sacc = 0
