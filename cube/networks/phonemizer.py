@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import sys
+import numpy as np
 
 sys.path.append('')
 from cube.io_utils.io_phonemizer import PhonemizerEncodings
@@ -102,6 +103,26 @@ class CubenetPhonemizer(pl.LightningModule):
         self.load_state_dict(torch.load(path, map_location='cpu'))
 
 
+def _prepare_encoder_data(output_encoder, x_words, index_word):
+    output_stack = []
+    m_len = 0
+    for ii in range(index_word.shape[0]):
+        start = 0
+        m_word = min(len(x_words[ii]) - 1, index_word[ii])
+        for jj in range(m_word - 1):
+            start += len(x_words[ii][jj])
+        stop = start + len(x_words[ii][m_word])
+        output_stack.append(output_encoder[ii, start:stop, :])
+        l = stop - start
+        if l > m_len:
+            m_len = l
+
+    for ii in range(len(output_stack)):
+        output_stack[ii] = torch.nn.functional.pad(output_stack[ii],
+                                                   (0, 0, 0, m_len - output_stack[ii].shape[0])).unsqueeze(0)
+    return torch.cat(output_stack, dim=0)
+
+
 class CubenetPhonemizerM2M(pl.LightningModule):
     def __init__(self, encodings: PhonemizerEncodings, lr=2e-4):
         super(CubenetPhonemizerM2M, self).__init__()
@@ -147,9 +168,12 @@ class CubenetPhonemizerM2M(pl.LightningModule):
         _, h_decoder = self._rnn_dec(torch.zeros((x_char.shape[0], 1, 400 + 32), device=x_char.device))
         last_phone = torch.zeros((x_char.shape[0], 1), dtype=torch.long, device=x_char.device)
         index_phon = 0
+        index_word = np.zeros((x_char.shape[0]), dtype='long')
         while True:
             # attention
-            _, weighted = self._att(h_decoder[-1][-1], output_encoder)
+            attention_input = _prepare_encoder_data(output_encoder, X['x_words'], index_word)
+
+            _, weighted = self._att(h_decoder[-1][-1], attention_input)
             last_phone_emb = self._phon_emb(last_phone)
             decoder_input = torch.cat([last_phone_emb, weighted.unsqueeze(1)], dim=-1)
             decoder_output, h_decoder = self._rnn_dec(decoder_input)
@@ -164,7 +188,12 @@ class CubenetPhonemizerM2M(pl.LightningModule):
             index_phon += 1
             if 'y_phon' in X:
                 exit_condition = index_phon == X['y_phon'].shape[1]
+                if exit_condition:
+                    break
+                index_word += torch.clip(X['y_new_word'][:, index_phon] - 1, 0).detach().cpu().numpy()
             else:
+                nw = torch.clip(torch.argmax(nw_out) - 1, 0)
+                index_word += nw.detach().cpu().numpy()
                 exit_condition = index_phon >= X['x_char'].shape[1] * 2
             if exit_condition:
                 break

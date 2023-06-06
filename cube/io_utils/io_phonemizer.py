@@ -72,12 +72,14 @@ class PhonemizerCollate:
         x_case = np.zeros((len(batch), max_char))
         y_phon = np.zeros((len(batch), max_phon))
         y_new_word = np.zeros((len(batch), max_phon))
+        x_words = []
 
         for ii in range(len(batch)):
             example = batch[ii]
             text = example['orig_text']
             phones = example['hybrid']
             phon2word = example['phon2word']
+            x_words.append(example['words'])
             for jj in range(len(text)):
                 g = text[jj]
                 g_low = g.lower()
@@ -102,5 +104,6 @@ class PhonemizerCollate:
             'x_char': torch.tensor(x_char, dtype=torch.long),
             'x_case': torch.tensor(x_case, dtype=torch.long),
             'y_phon': torch.tensor(y_phon, dtype=torch.long),
-            'y_new_word': torch.tensor(y_new_word, dtype=torch.long)
+            'y_new_word': torch.tensor(y_new_word, dtype=torch.long),
+            'x_words': x_words
         }
