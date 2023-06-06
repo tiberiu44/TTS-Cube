@@ -21,7 +21,7 @@ import pytorch_lightning as pl
 import torch
 
 sys.path.append('')
-from cube.networks.phonemizer import CubenetPhonemizer
+from cube.networks.phonemizer import CubenetPhonemizerM2M
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser
 from cube.io_utils.io_phonemizer import PhonemizerEncodings, PhonemizerDataset, PhonemizerCollate
@@ -31,25 +31,17 @@ class PrintAndSaveCallback(pl.callbacks.Callback):
     def __init__(self, store_prefix):
         super().__init__()
         self.store_prefix = store_prefix
-        self._best_loss = 99999
         self._best_sacc = 0
         self._best_pacc = 0
 
     def on_validation_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
         epoch = trainer.current_epoch
-        val_loss = pl_module._val_loss
         val_pacc = pl_module._val_pacc
         val_sacc = pl_module._val_sacc
-        sys.stdout.write('\n\n\tVal loss: {0}\n\tVal PACC: {1}\n\tVal SACC: {2}\n'.
-                         format(val_loss, val_pacc, val_sacc))
+        sys.stdout.write('\n\n\tVal PACC: {0}\n\tVal SACC: {1}\n'.
+                         format(val_pacc, val_sacc))
         sys.stdout.flush()
-        if val_loss < self._best_loss:
-            self._best_loss = val_loss
-            fname = "{0}.best".format(self.store_prefix)
-            sys.stdout.write('\tStoring {0}\n'.format(fname))
-            sys.stdout.flush()
-            pl_module.save(fname)
 
         if val_pacc > self._best_pacc:
             self._best_pacc = val_pacc
@@ -97,7 +89,7 @@ def _train(params):
                            num_workers=params.num_workers,
                            collate_fn=collate.collate_fn)
 
-    model = CubenetPhonemizer(encodings, lr=params.lr)
+    model = CubenetPhonemizerM2M(encodings, lr=params.lr)
 
     trainer = pl.Trainer(
         accelerator=params.accelerator,
@@ -112,7 +104,7 @@ def _train(params):
 if __name__ == '__main__':
     parser = ArgumentParser(description='NLP-Cube Trainer Helper')
     parser.add_argument('--output-base', action='store', dest='output_base',
-                        default='data/textcoder',
+                        default='data/phonemizer',
                         help='Where to store the model (default=data/phonemizer)')
     parser.add_argument('--batch-size', dest='batch_size', default=16,
                         type=int, help='Batch size (default=16)')

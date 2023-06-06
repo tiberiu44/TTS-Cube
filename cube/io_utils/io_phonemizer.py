@@ -71,11 +71,13 @@ class PhonemizerCollate:
         x_char = np.zeros((len(batch), max_char))
         x_case = np.zeros((len(batch), max_char))
         y_phon = np.zeros((len(batch), max_phon))
+        y_new_word = np.zeros((len(batch), max_phon))
 
         for ii in range(len(batch)):
             example = batch[ii]
             text = example['orig_text']
-            phones = example['phones']
+            phones = example['hybrid']
+            phon2word = example['phon2word']
             for jj in range(len(text)):
                 g = text[jj]
                 g_low = g.lower()
@@ -85,11 +87,20 @@ class PhonemizerCollate:
                     x_char[ii, jj] = self._encodings._grapheme2int[g_low]
             for jj in range(len(phones)):
                 p = phones[jj]
+                current_p2w = phon2word[jj]
+                next_p2w = current_p2w + 1
+                if jj < len(phones) - 1:
+                    next_p2w = phon2word[jj + 1]
+                if current_p2w != next_p2w:
+                    y_new_word[ii, jj] = 2
+                else:
+                    y_new_word[ii, jj] = 1
                 if p in self._encodings._phon2int:
                     y_phon[ii, jj] = self._encodings._phon2int[p]
 
         return {
             'x_char': torch.tensor(x_char, dtype=torch.long),
             'x_case': torch.tensor(x_case, dtype=torch.long),
-            'y_phon': torch.tensor(y_phon, dtype=torch.long)
+            'y_phon': torch.tensor(y_phon, dtype=torch.long),
+            'y_new_word': torch.tensor(y_new_word, dtype=torch.long)
         }

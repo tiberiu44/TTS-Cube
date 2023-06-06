@@ -64,7 +64,8 @@ class Attention(nn.Module):
         self.dec_hid_dim = dec_hid_dim
 
         self.attn = ConvNorm(enc_hid_dim + dec_hid_dim, att_proj_size, kernel_size=kernel_size,
-                             w_init_gain='tanh')  # LinearNorm((enc_hid_dim * 2) + dec_hid_dim, att_proj_size, w_init_gain='tanh')
+                             w_init_gain='tanh',
+                             padding=kernel_size // 2)
         self.v = nn.Parameter(torch.rand(att_proj_size))
 
     def forward(self, hidden, encoder_outputs):
