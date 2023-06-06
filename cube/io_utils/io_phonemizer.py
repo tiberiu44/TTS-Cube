@@ -94,7 +94,7 @@ class PhonemizerCollate:
                 if jj < len(phones) - 1:
                     next_p2w = phon2word[jj + 1]
                 if current_p2w != next_p2w:
-                    y_new_word[ii, jj] = 2
+                    y_new_word[ii, jj] = next_p2w - current_p2w + 1
                 else:
                     y_new_word[ii, jj] = 1
                 if p in self._encodings._phon2int:
