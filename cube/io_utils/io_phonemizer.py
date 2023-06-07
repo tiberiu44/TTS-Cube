@@ -77,7 +77,10 @@ class PhonemizerCollate:
         for ii in range(len(batch)):
             example = batch[ii]
             text = example['orig_text']
-            phones = example['hybrid']
+            if 'hybrid' in example:
+                phones = example['hybrid']
+            else:
+                phones = example['phones']
             phon2word = example['phon2word']
             x_words.append(example['words'])
             for jj in range(len(text)):
