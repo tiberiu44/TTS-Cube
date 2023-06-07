@@ -187,7 +187,7 @@ class CubenetPhonemizerM2M(pl.LightningModule):
                 last_phone = torch.argmax(phon_out, dim=-1)
 
             if 'y_phon' in X:
-                exit_condition = index_phon == X['y_phon'].shape[1]
+                exit_condition = index_phon == X['y_phon'].shape[1] - 1
                 if exit_condition:
                     break
                 index_word += torch.clip(X['y_new_word'][:, index_phon] - 1, 0).detach().cpu().numpy()
