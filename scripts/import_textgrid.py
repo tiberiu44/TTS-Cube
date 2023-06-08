@@ -112,12 +112,16 @@ def _merge(aligned_words, aligned_phons, tokenized_words):
         linear.append(obj)
 
     h_ss = []
+    c_pos = 0
     for iWord in range(len(linear)):
         w = linear[iWord]
+        if len(w['phones']) == 0:
+            w['phones'] = [{'phon': w['word'], 'dur': 0, 'start': c_pos, 'stop': c_pos}]
         for iPhon in range(len(w['phones'])):
             hybrid.append(w['phones'][iPhon]['phon'])
             h_ss.append((w['phones'][iPhon]['start'], w['phones'][iPhon]['stop']))
             phon2word.append(iWord)
+        c_pos = h_ss[-1][1]
     minPos = min([l['start'] for l in aligned_words])
     maxPos = max([l['stop'] for l in aligned_words])
     iPhone = 0
