@@ -109,9 +109,8 @@ def _prepare_encoder_data(output_encoder, x_words, index_word):
     for ii in range(index_word.shape[0]):
         start = 0
         m_word = min(len(x_words[ii]) - 1, index_word[ii])
-        for jj in range(m_word):
-            start += len(x_words[ii][jj])
-        stop = start + len(x_words[ii][m_word])
+        start = x_words[m_word]['start']
+        stop = x_words[m_word]['stop']
         output_stack.append(output_encoder[ii, start:stop, :])
         l = stop - start
         if l > m_len:
@@ -171,8 +170,8 @@ class CubenetPhonemizerM2M(pl.LightningModule):
         index_word = np.zeros((x_char.shape[0]), dtype='long')
         while True:
             # attention
-            # attention_input = _prepare_encoder_data(output_encoder, X['x_words'], index_word)
-            attention_input = output_encoder
+            attention_input = _prepare_encoder_data(output_encoder, X['x_words'], index_word)
+            # attention_input = output_encoder
             _, weighted = self._att(h_decoder[-1][-1], attention_input)
             last_phone_emb = self._phon_emb(last_phone)
             decoder_input = torch.cat([last_phone_emb, weighted.unsqueeze(1)], dim=-1)
