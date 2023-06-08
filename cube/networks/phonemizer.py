@@ -252,26 +252,26 @@ class CubenetPhonemizerM2M(pl.LightningModule):
         self._validation_outputs = []
         total_phones = 0
         total_seqs = 0
-        for output in outputs:
-            target_seqs = output['target']
-            pred_seqs = output['pred']
-            for target, pred in zip(target_seqs, pred_seqs):
-                total_seqs += 1
-                seq_ok = True
-                if pred.squeeze().shape[0] == 0:
-                    continue
-                for t, p in zip(target.squeeze(), pred.squeeze()):
-                    if t != 0:
-                        total_phones += 1
-                    if t != p and t != 0 and p != 0:
-                        perr += 1
-                        seq_ok = False
-                if not seq_ok:
-                    serr += 1
-        if total_phones == 0:
-            total_phones += 1
-        self._val_pacc = 1.0 - (perr / total_phones)
-        self._val_sacc = 1.0 - (serr / total_seqs)
+        try:
+            for output in outputs:
+                target_seqs = output['target']
+                pred_seqs = output['pred']
+                for target, pred in zip(target_seqs, pred_seqs):
+                    total_seqs += 1
+                    seq_ok = True
+                    for t, p in zip(target.squeeze(), pred.squeeze()):
+                        if t != 0:
+                            total_phones += 1
+                        if t != p and t != 0 and p != 0:
+                            perr += 1
+                            seq_ok = False
+                    if not seq_ok:
+                        serr += 1
+            self._val_pacc = 1.0 - (perr / total_phones)
+            self._val_sacc = 1.0 - (serr / total_seqs)
+        except:
+            self._val_pacc = 0
+            self._val_sacc = 0
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self._lr)
