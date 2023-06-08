@@ -85,7 +85,7 @@ class PhonemizerCollate:
             # x_words.append(example['words'])
             offset = 0
             for w in example['words']:
-                x_words.append({'word': w, 'start': offset, 'stop': len(w)})
+                x_words.append({'word': w, 'start': offset, 'stop': offset + len(w)})
                 offset += len(w)
             for jj in range(len(text)):
                 g = text[jj]
