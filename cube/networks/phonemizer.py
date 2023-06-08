@@ -109,7 +109,7 @@ def _prepare_encoder_data(output_encoder, x_words, index_word):
     for ii in range(index_word.shape[0]):
         start = 0
         m_word = min(len(x_words[ii]) - 1, index_word[ii])
-        for jj in range(m_word - 1):
+        for jj in range(m_word):
             start += len(x_words[ii][jj])
         stop = start + len(x_words[ii][m_word])
         output_stack.append(output_encoder[ii, start:stop, :])
