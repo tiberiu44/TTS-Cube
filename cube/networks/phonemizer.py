@@ -258,6 +258,8 @@ class CubenetPhonemizerM2M(pl.LightningModule):
             for target, pred in zip(target_seqs, pred_seqs):
                 total_seqs += 1
                 seq_ok = True
+                if pred.squeeze().shape[0] == 0:
+                    continue
                 for t, p in zip(target.squeeze(), pred.squeeze()):
                     if t != 0:
                         total_phones += 1
@@ -266,7 +268,8 @@ class CubenetPhonemizerM2M(pl.LightningModule):
                         seq_ok = False
                 if not seq_ok:
                     serr += 1
-
+        if total_phones == 0:
+            total_phones += 1
         self._val_pacc = 1.0 - (perr / total_phones)
         self._val_sacc = 1.0 - (serr / total_seqs)
 
