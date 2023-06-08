@@ -118,7 +118,7 @@ class Text2Feat:
 
 if __name__ == '__main__':
     text2feat = Text2Feat('data/phonemizer-en')
-    rez = text2feat('This, is a very simple test.')
+    rez = text2feat('This is a simple test.')
     for ii in range(len(rez['phones'])):
         phon = rez['phones'][ii]
         word = rez['words'][rez['phon2word'][ii]]
