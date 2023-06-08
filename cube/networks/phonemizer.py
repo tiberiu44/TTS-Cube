@@ -198,7 +198,7 @@ class CubenetPhonemizerM2M(pl.LightningModule):
                 for ii, iw in zip(range(len(index_word)), index_word):
                     if iw <= len(X['x_words'][ii]):
                         reached_end = False
-            exit_condition = (index_phon >= X['x_char'].shape[1] * 2) or reached_end
+                exit_condition = (index_phon >= X['x_char'].shape[1] * 2) or reached_end
             index_phon += 1
             if exit_condition:
                 break
