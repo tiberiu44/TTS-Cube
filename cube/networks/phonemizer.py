@@ -194,7 +194,11 @@ class CubenetPhonemizerM2M(pl.LightningModule):
             else:
                 nw = torch.clip(torch.argmax(nw_out) - 1, 0)
                 index_word += nw.detach().cpu().numpy()
-                exit_condition = index_phon >= X['x_char'].shape[1] * 2
+                reached_end = True
+                for ii, iw in zip(range(len(index_word)), index_word):
+                    if iw <= len(X['x_words'][ii]):
+                        reached_end = False
+            exit_condition = (index_phon >= X['x_char'].shape[1] * 2) or reached_end
             index_phon += 1
             if exit_condition:
                 break
