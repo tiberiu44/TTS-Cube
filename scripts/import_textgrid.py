@@ -81,6 +81,7 @@ def _merge(aligned_words, aligned_phons, tokenized_words):
 
     linear = []
     c_pos = 0
+    phone_aligned = [False for _ in range(len(aligned_phons))]
     for ii in range(len(tokenized_words)):
         word = tokenized_words[ii].word
         if ii not in tok2tg:
@@ -92,14 +93,17 @@ def _merge(aligned_words, aligned_phons, tokenized_words):
             phonemes = []
             w_start = aligned_words[tok2tg[ii]]['start']
             w_end = aligned_words[tok2tg[ii]]['stop']
+            i_phone = 0
             for phone in aligned_phons:
-                if phone['start'] >= w_start and phone['stop'] <= w_end:
+                if phone['start'] >= w_start and phone['stop'] <= w_end and not phone_aligned[i_phone]:
+                    phone_aligned[i_phone] = True
                     phonemes.append({
                         'phon': phone['text'],
                         'dur': phone['stop'] - phone['start'],
                         'start': phone['start'],
                         'stop': phone['stop']
                     })
+                i_phone += 1
             obj = {
                 'word': word,
                 'phones': phonemes
@@ -230,6 +234,8 @@ def _import_dataset(params):
         wav_file = all_files[iFiles] + '.wav'
         orig_text = ' ' + tg[2][0].mark
         norm_words = []
+        if tg[0][0].mark != '<eps>' and tg[0][0].mark != '':  # insert a dummy pause at the beginning
+            norm_words.append({'text': ' ', 'start': 0, 'stop': 0})
         for ii in range(len(tg[0])):
             w_tok = {
                 'text': tg[0][ii].mark,
@@ -238,6 +244,8 @@ def _import_dataset(params):
             }
             norm_words.append(w_tok)
         phons = []
+        # if tg[0][0].mark != '<eps>' and tg[0][0].mark != '':  # insert a dummy pause at the beginning
+        #     phons.append({'text': ' ', 'start': 0, 'stop': 0})
         for jj in range(len(tg[1])):
             p_tok = {
                 'text': tg[1][jj].mark,
@@ -247,6 +255,7 @@ def _import_dataset(params):
             phons.append(p_tok)
 
         tok_words = tokenizer(orig_text)
+
         hybrid, phon2word, frame2phone = _merge(norm_words, phons, tok_words)
         valid_sents += 1
         total_time += len(frame2phone) * 10
