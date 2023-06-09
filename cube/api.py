@@ -11,7 +11,7 @@ sys.path.append('')
 from cube.io_utils.repository import download_model
 from cube.networks.cubegan import Cubegan
 from cube.io_utils.io_cubegan import CubeganEncodings, CubeganCollate
-from cube.io_utils.io_text import Text2FeatBlizzard
+from cube.io_utils.io_text import Text2FeatBlizzard, Text2Feat
 from cube.utils.hf import HFTokenizer
 
 
@@ -23,7 +23,10 @@ class TTSCube:
         self._model = Cubegan(encodings, conditioning=cond_type, train=False)
         self._model.load('{0}.model'.format(model_path))
         self._collate = CubeganCollate(encodings, conditioning_type=cond_type)
-        self._text2feat = Text2FeatBlizzard(phonemizer_path=phonemizer_path)
+        try:
+            self._text2feat = Text2FeatBlizzard(phonemizer_path=phonemizer_path)
+        except:
+            self._text2feat = Text2Feat(phonemizer_path=phonemizer_path)
         self._model.eval()
         self._text2feat._phonemizer.eval()
         if cond_type.startswith('hf:'):

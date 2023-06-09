@@ -1,5 +1,6 @@
 import sys
 import torch
+import numpy as np
 
 sys.path.append('')
 
@@ -92,22 +93,18 @@ class Text2Feat:
             y_phon_pred = torch.argmax(y_phon_pred, dim=-1)
             y_nw_pred = torch.argmax(y_nw_pred, dim=-1)
             phonemes = [self._grapheme_list[index] for index in y_phon_pred.squeeze().detach().numpy()]
-        from ipdb import set_trace
-        set_trace()
         phon2word = []
         w_index = 0
         c_pos = 0
         currated_phonemes = []
         words = [w.word for w in words]
+        nw = y_nw_pred.squeeze().detach().cpu().numpy()
         for ii in range(len(phonemes)):
 
             if phonemes[ii] != '_':
                 currated_phonemes.append(phonemes[ii])
                 phon2word.append(w_index)
-            c_pos += 1
-            if c_pos == len(words[w_index]):
-                c_pos = 0
-                w_index += 1
+            w_index += np.clip(nw[ii] - 1, 0, 9999)
         return {
             'orig_text': text,
             'words': words,
@@ -117,7 +114,7 @@ class Text2Feat:
 
 
 if __name__ == '__main__':
-    text2feat = Text2Feat('data/phonemizer-en')
+    text2feat = Text2Feat('data/en-g2p')
     rez = text2feat('This is a simple test.')
     for ii in range(len(rez['phones'])):
         phon = rez['phones'][ii]
