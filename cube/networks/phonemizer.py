@@ -109,8 +109,8 @@ def _prepare_encoder_data(output_encoder, x_words, index_word):
     for ii in range(index_word.shape[0]):
         start = 0
         m_word = min(len(x_words[ii]) - 1, index_word[ii])
-        start = x_words[m_word]['start']
-        stop = x_words[m_word]['stop']
+        start = x_words[ii][m_word]['start']
+        stop = x_words[ii][m_word]['stop']
         output_stack.append(output_encoder[ii, start:stop, :])
         l = stop - start
         if l > m_len:
@@ -197,6 +197,7 @@ class CubenetPhonemizerM2M(pl.LightningModule):
                 for ii, iw in zip(range(len(index_word)), index_word):
                     if iw < len(X['x_words'][ii]):
                         reached_end = False
+
                 exit_condition = (index_phon >= X['x_char'].shape[1] * 2) or reached_end
             index_phon += 1
             if exit_condition:
