@@ -170,8 +170,8 @@ class CubenetPhonemizerM2M(pl.LightningModule):
         index_word = np.zeros((x_char.shape[0]), dtype='long')
         while True:
             # attention
-            # attention_input = _prepare_encoder_data(output_encoder, X['x_words'], index_word)
-            attention_input = output_encoder
+            attention_input = _prepare_encoder_data(output_encoder, X['x_words'], index_word)
+            # attention_input = output_encoder
             _, weighted = self._att(decoder_output.squeeze(1), attention_input)
             last_phone_emb = self._phon_emb(last_phone)
             decoder_input = torch.cat([last_phone_emb, weighted.unsqueeze(1)], dim=-1)
