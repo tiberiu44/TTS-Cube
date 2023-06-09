@@ -177,13 +177,13 @@ class CubeganCollate:
             x_words = self._get_ft_embeddings(batch)
         elif self._conditioning_type == 'hf':
             tok_ids, word2tok = self._get_hf_ids(batch)
-        x_phoneme2word = np.zeros((len(batch), max_char), dtype=np.long)
+        x_phoneme2word = np.zeros((len(batch), max_char), dtype='long')
         y_mgc = np.ones((len(batch), max_mel, 80)) * -5
         x_speaker = np.zeros((len(batch), 1))
         y_dur = np.zeros((len(batch), max_char))
         y_pitch = np.zeros((len(batch), max_mel))
         y_frame2phone = []  # Hop-size
-        y_audio = np.zeros((len(batch), max_mel * 240), dtype=np.float)
+        y_audio = np.zeros((len(batch), max_mel * 240), dtype='float')
         for ii in range(len(batch)):
             example = batch[ii]
             y_mgc[ii, :example['mgc'].shape[0], :] = example['mgc']
@@ -249,7 +249,7 @@ class CubeganCollate:
                         len(example['meta']['words_right_hf']['tok_ids']) for example in batch])
 
         # we use coordinates for runtime, where bert will be run on word windows
-        toks = np.zeros((len(batch), min(512, max_toks)), dtype=np.long)
+        toks = np.zeros((len(batch), min(512, max_toks)), dtype='long')
         word2tok = []
         for ii in range(len(batch)):
             e_w2k = {}
