@@ -9,3 +9,5 @@ pytorch_lightning
 pillow
 matplotlib
 textgrid
+sentencepiece
+protobuf
