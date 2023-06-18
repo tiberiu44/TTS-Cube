@@ -242,7 +242,7 @@ class SimpleTokenizer:
         tokens = []
         cb = ''
         for char in utterance:
-            if char.isalpha():
+            if char.isalpha() or char == '\'':
                 cb += char
             else:
                 if cb != '':
