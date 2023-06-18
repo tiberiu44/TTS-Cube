@@ -191,6 +191,18 @@ def _get_all_files(folder):
     return all_files
 
 
+def _fix_item(item):
+    global errors
+    for ii in range(len(item['phones'])):
+        ph = item['phones'][ii]
+        for ch in ph:
+            if ch.isalpha() and ch.upper() != ch:
+                if ph not in errors:
+                    errors[ph] = len(errors)
+                item['phones'][ii] = ' '
+    return item
+
+
 def _fetch_context(dataset, original_text):
     full_text = open(original_text).read()
     # pre-normalize
@@ -306,6 +318,10 @@ def _import_dataset(params):
         print("Fetching context")
         _fetch_context(trainset, params.original_text)
         _fetch_context(devset, params.original_text)
+    for ii in range(len(trainset)):
+        trainset[ii] = _fix_item(trainset[ii])
+    for ii in range(len(devset)):
+        devset[ii] = _fix_item(devset[ii])
 
     print("Processing trainset")
     _import_audio(trainset, "data/processed/train/", params.input_folder, params.sample_rate, params.hop_size,
