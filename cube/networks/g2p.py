@@ -48,7 +48,10 @@ class G2P:
         if load_last:
             self.seq2seq.load('{0}.last'.format(path))
         else:
-            self.seq2seq.load('{0}.best'.format(path))
+            try:
+                self.seq2seq.load('{0}.best'.format(path))
+            except:
+                self.seq2seq.load('{0}.model'.format(path))
 
     def save(self, path):
         f = open('{0}.encodings'.format(path), 'w')
@@ -115,7 +118,6 @@ class G2P:
         x = torch.tensor(x, device=self._get_device(), dtype=torch.long)
         y_target = torch.tensor(y, device=self._get_device(), dtype=torch.long)
         y_pred = self.seq2seq(x, gs_output=y_target)
-
         return self.criterion(y_pred.reshape(y_pred.shape[0] * y_pred.shape[1], -1), y_target.view(-1))
 
     def transcribe(self, words):
@@ -169,7 +171,7 @@ class G2P:
         return '{0}:{1}'.format(self.seq2seq.output_emb.weight.device.type,
                                 str(self.seq2seq.output_emb.weight.device.index))
 
-    def transcribe_utterance(self, utterance, trace=False):
+    def __call__(self, utterance, trace=False):
         # print(utterance)
         tokens = self.simple_tokenizer(utterance)
         words = []
@@ -191,7 +193,12 @@ class G2P:
                 if token.word.lower() in self.lookup:
                     token.transcription = self.lookup[token.word.lower()]
             else:
-                token.transcription = [c for c in token.word]
+                if token.word == ' ':
+                    token.transcription = [' ']  # [c for c in token.word]
+                elif token.word == '-':
+                    token.transcription = ['-']
+                else:
+                    token.transcription = ['']  # [c for c in token.word]
             trace_words[i_trace]['transcription'] = token.transcription
             i_trace += 1
         if not trace:

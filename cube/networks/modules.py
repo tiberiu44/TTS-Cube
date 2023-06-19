@@ -206,7 +206,7 @@ class Mel2Style(nn.Module):
 
 
 class Seq2Seq(nn.Module):
-    def __init__(self, num_input_tokens, num_output_tokens, embedding_size=100, encoder_size=100, encoder_layers=2,
+    def __init__(self, num_input_tokens, num_output_tokens, embedding_size=100, encoder_size=200, encoder_layers=2,
                  decoder_size=200, decoder_layers=2, pad_index=0, unk_index=1, stop_index=2):
         super(Seq2Seq, self).__init__()
         self.emb_size = embedding_size
@@ -237,7 +237,7 @@ class Seq2Seq(nn.Module):
         while True:
             _, encoder_att = self.attention(decoder_hidden[-1][-1], encoder_output)
             decoder_input = torch.cat([encoder_att, last_output_emb], dim=1)
-            decoder_output, decoder_hidden = self.decoder(decoder_input.unsqueeze(1), decoder_hidden)
+            decoder_output, decoder_hidden = self.decoder(decoder_input.unsqueeze(1), hx=decoder_hidden)
             output = self.output(decoder_output.squeeze(1))
             output_list.append(output.unsqueeze(1))
 
@@ -271,7 +271,7 @@ class Seq2Seq(nn.Module):
         while True:
             _, encoder_att = self.attention(decoder_hidden[-1][-1], encoder_output)
             decoder_input = torch.cat([encoder_att, last_output_emb], dim=1)
-            decoder_output, decoder_hidden = self.decoder(decoder_input.unsqueeze(1), decoder_hidden)
+            decoder_output, decoder_hidden = self.decoder(decoder_input.unsqueeze(1), hx=decoder_hidden)
             output = self.output(decoder_output.squeeze(1))
             output_list.append(output.unsqueeze(1))
 
