@@ -35,7 +35,7 @@ class Text2FeatBlizzard:
         words = self._tokenizer(text)
 
         with torch.no_grad():
-            X = self._collate.collate_fn([{'orig_text': text, 'phones': ['1']}])
+            X = self._collate.collate_fn([{'orig_text': text, 'phones': ['1'], 'phon2word': [1], 'words': ['1']}])
             y_pred = torch.argmax(self._phonemizer(X), dim=-1)
             phonemes = [self._grapheme_list[index] for index in y_pred.squeeze().detach().numpy()]
 
