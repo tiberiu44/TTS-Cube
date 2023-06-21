@@ -201,7 +201,7 @@ class G2P:
                     token.transcription = ['"']
                 else:
                     token.transcription = ['']  # [c for c in token.word]
-
+                # token.transcription = [c for c in token.word]
             trace_words[i_trace]['transcription'] = token.transcription
             i_trace += 1
         if not trace:
