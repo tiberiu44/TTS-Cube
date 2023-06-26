@@ -85,8 +85,9 @@ class Text2Feat:
         for iToken in range(len(tokens)):
             words.append(tokens[iToken]['word'])
             for ph in tokens[iToken]['transcription']:
-                phones.append(ph)
-                phon2word.append(iToken)
+                if ph != '_':
+                    phones.append(ph)
+                    phon2word.append(iToken)
         return {
             'orig_text': text,
             'words': words,

@@ -196,9 +196,9 @@ class G2P:
                 if token.word == ' ':
                     token.transcription = [' ']  # [c for c in token.word]
                 elif token.word == '-':
-                    token.transcription = ['-']
+                    token.transcription = ['_']
                 elif token.word == '"':
-                    token.transcription = ['"']
+                    token.transcription = ['_']
                 else:
                     token.transcription = ['']  # [c for c in token.word]
                 # token.transcription = [c for c in token.word]
