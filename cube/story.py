@@ -48,7 +48,7 @@ class StoryCube:
 
         # add music
         for ii in range(len(buffer)):
-            buffer[ii] = (music[ii % len(music)] * 0.25) * 32700 + buffer[ii]
+            buffer[ii] = (music[ii % len(music)] * 0.30) * 32700 + buffer[ii]
         buffer = np.array(buffer, dtype='int16')
         return {
             'audio': buffer,
