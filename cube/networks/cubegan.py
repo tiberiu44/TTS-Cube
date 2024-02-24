@@ -316,7 +316,7 @@ class Cubegan(pl.LightningModule):
 
     @torch.jit.ignore
     def load(self, path):
-        self.load_state_dict(torch.load(path, map_location='cpu'))
+        self.load_state_dict(torch.load(path, map_location='cpu'), strict=False)
 
     @staticmethod
     def _compute_lr(initial_lr, delta, step):
